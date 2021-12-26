@@ -1,0 +1,7 @@
+name: worker
+dependencies:
+- python
+- pip
+- imageio
+# - pip:
+#   - 
