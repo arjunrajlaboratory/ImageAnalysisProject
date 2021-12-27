@@ -73,7 +73,7 @@ def main(datasetId, apiUrl, token, params):
             images[channel][time][z][xy] = image
 
         polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
-        mask = draw.polygon2mask(image.shape,polygon)
+        mask = draw.polygon2mask(image.shape, polygon)
         intensity = np.mean(image[mask])
 
         annotationClient.addAnnotationPropertyValues(datasetId, annotation['_id'], {

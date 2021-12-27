@@ -28,7 +28,6 @@ RUN wget \
 FROM base as build
 
 COPY ./environment.yml /
-COPY ./requirements.txt /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
