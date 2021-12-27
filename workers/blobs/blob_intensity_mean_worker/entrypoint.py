@@ -43,14 +43,11 @@ def main(datasetId, apiUrl, token, params):
     else:
         # Get all point annotations from the dataset
         annotationList = annotationClient.getAnnotationsByDatasetId(
-            datasetId, shape='point')
+            datasetId, shape='polygon')
 
     # We need at least one annotation
     if len(annotationList) == 0:
         return
-
-    # Constants
-    radius = 5
 
     # Cache downloaded images by location
     images = {}
@@ -75,12 +72,8 @@ def main(datasetId, apiUrl, token, params):
             # Cache the image
             images[channel][time][z][xy] = image
 
-        geojsPoint = annotation['coordinates'][0]
-        point = np.array([round(geojsPoint['y']), round(geojsPoint['x'])])
-
-        rr, cc = draw.disk(point, radius, shape=image.shape)
-        mask = np.zeros(image.shape, dtype=bool)
-        mask[rr, cc] = 1
+        polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
+        mask = draw.polygon2mask(image.shape,polygon)
         intensity = np.mean(image[mask])
 
         annotationClient.addAnnotationPropertyValues(datasetId, annotation['_id'], {
