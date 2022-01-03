@@ -45,7 +45,7 @@ def main(datasetId, apiUrl, token, params):
         return
 
     edges = np.array([[connection['parentId'], connection['childId']] for connection in connectionList])
-    nodes = np.unique(edges)
+    nodes = np.unique(edges[:, 0])  # Currently grabs children that have no children themselves, could optimize further
     # node_attributes = [(node, annotationClient.getAnnotationById(node)) for node in nodes]
     #
     # graph = nx.DiGraph()
