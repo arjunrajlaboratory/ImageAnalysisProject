@@ -2,6 +2,6 @@ name: worker
 dependencies:
 - python
 - pip
-- networkx
+#- networkx
 # - pip:
 #   - 
