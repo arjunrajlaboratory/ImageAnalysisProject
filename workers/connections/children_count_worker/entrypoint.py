@@ -53,11 +53,6 @@ def main(datasetId, apiUrl, token, params):
     graph.add_nodes_from(node_attributes)
     graph.add_edges_from(edges)
 
-    graph = nx.DiGraph()
-
-    graph.add_nodes_from(node_attributes)
-    graph.add_edges_from(edges)
-
     for node in nodes:
 
         children = list(graph.successors(node))
