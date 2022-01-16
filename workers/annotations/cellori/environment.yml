@@ -1,0 +1,15 @@
+name: worker
+dependencies:
+- python
+- pip
+- imageio
+- numba
+- numpy
+- opencv
+- rasterio
+- scikit-build
+- scikit-image
+- scipy
+- tifffile
+- pip:
+  - stitchwell
