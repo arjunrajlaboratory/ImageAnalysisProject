@@ -37,7 +37,6 @@ RUN git checkout annotation-browser
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
-RUN conda install pytorch -c pytorch
 RUN pip install cellpose --no-deps
 
 COPY ./download_models.py /
