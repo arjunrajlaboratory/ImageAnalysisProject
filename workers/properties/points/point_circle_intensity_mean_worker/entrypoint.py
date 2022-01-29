@@ -57,7 +57,12 @@ def main(datasetId, apiUrl, token, params):
 
     for annotation in annotationList:
         # Get image location
-        channel = annotation['channel']
+        channel = params.get('channel', None)
+        if channel is None:  # Default to the annotation's channel, null means Any was selected
+            channel = annotation.get('channel', None)
+        if channel is None:
+            continue
+
         location = annotation['location']
         time, z, xy = location['Time'], location['Z'], location['XY']
 
