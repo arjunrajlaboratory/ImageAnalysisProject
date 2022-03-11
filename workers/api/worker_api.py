@@ -25,19 +25,22 @@ class WorkerClient:
         # Cache downloaded images by location
         self.images = {}
 
-    def get_annotation_list(self, shape):
+    def get_annotation_list_by_id(self):
 
         annotationIds = self.params.get('annotationIds', None)
 
         annotationList = []
-        if annotationIds:
-            # Get the annotations specified by id in the parameters
-            for id in annotationIds:
-                annotationList.append(self.annotationClient.getAnnotationById(id))
-        else:
-            # Get all point annotations from the dataset
-            annotationList = self.annotationClient.getAnnotationsByDatasetId(
-                self.datasetId, shape=shape)
+        # Get the annotations specified by id in the parameters
+        for id in annotationIds:
+            annotationList.append(self.annotationClient.getAnnotationById(id))
+
+        return annotationList
+
+    def get_annotation_list_by_shape(self, shape):
+
+        # Get all point annotations from the dataset
+        annotationList = self.annotationClient.getAnnotationsByDatasetId(
+            self.datasetId, shape=shape)
 
         return annotationList
 
