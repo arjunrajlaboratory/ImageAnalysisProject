@@ -2,12 +2,19 @@ import argparse
 import json
 import sys
 
-import annotation_client.annotations as annotations
-import annotation_client.tiles as tiles
+import annotation_client.workers as workers
 
-import imageio
 import numpy as np
 from skimage import filters, measure
+
+
+def get_indices(i, image):
+    i[0] = max(i[0], 0)
+    i[1] = max(i[1], 0)
+    i[2] = min(i[2], image.shape[0])
+    i[3] = min(i[3], image.shape[1])
+
+    return i
 
 
 def main(datasetId, apiUrl, token, params):
@@ -23,27 +30,9 @@ def main(datasetId, apiUrl, token, params):
         layer: Which specific layer should be used for intensity calculations
         tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
     """
-    propertyName = params.get('customName', None)
-    if not propertyName:
-        propertyName = params.get('name', 'unknown_property')
 
-    annotationIds = params.get('annotationIds', None)
-
-    # Setup helper classes with url and credentials
-    annotationClient = annotations.UPennContrastAnnotationClient(
-        apiUrl=apiUrl, token=token)
-    datasetClient = tiles.UPennContrastDataset(
-        apiUrl=apiUrl, token=token, datasetId=datasetId)
-
-    annotationList = []
-    if annotationIds:
-        # Get the annotations specified by id in the parameters
-        for id in annotationIds:
-            annotationList.append(annotationClient.getAnnotationById(id))
-    else:
-        # Get all point annotations from the dataset
-        annotationList = annotationClient.getAnnotationsByDatasetId(
-            datasetId, shape='point')
+    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+    annotationList = workerClient.get_annotation_list_by_shape('point')
 
     # We need at least one annotation
     if len(annotationList) == 0:
@@ -52,33 +41,12 @@ def main(datasetId, apiUrl, token, params):
     # Constants
     block_size = 25
 
-    # Cache downloaded images by location
-    images = {}
-
     for annotation in annotationList:
-        # Get image location
-        channel = params.get('channel', None)
-        if channel is None:  # Default to the annotation's channel, null means Any was selected
-            channel = annotation.get('channel', None)
-        if channel is None:
-            continue
 
-        location = annotation['location']
-        time, z, xy = location['Time'], location['Z'], location['XY']
-
-        # Look for cached image. Initialize cache if necessary.
-        image = images.setdefault(channel, {}).setdefault(
-            time, {}).setdefault(z, {}).get(xy, None)
+        image = workerClient.get_image_for_annotation(annotation)
 
         if image is None:
-            # Download the image at specified location
-            pngBuffer = datasetClient.getRawImage(xy, z, time, channel)
-
-            # Read the png buffer
-            image = imageio.imread(pngBuffer)
-
-            # Cache the image
-            images[channel][time][z][xy] = image
+            continue
 
         geojsPoint = annotation['coordinates'][0]
         point = np.array([round(geojsPoint['y']), round(geojsPoint['x'])])
@@ -95,17 +63,7 @@ def main(datasetId, apiUrl, token, params):
         cell = crop[cell_binary]
         intensity = np.mean(cell)
 
-        annotationClient.addAnnotationPropertyValues(datasetId, annotation['_id'], {
-            propertyName: float(intensity)})
-
-
-def get_indices(i, image):
-    i[0] = max(i[0], 0)
-    i[1] = max(i[1], 0)
-    i[2] = min(i[2], image.shape[0])
-    i[3] = min(i[3], image.shape[1])
-
-    return i
+        workerClient.add_annotation_property_values(annotation, float(intensity))
 
 
 if __name__ == '__main__':
@@ -113,7 +71,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=True, action='store')
+    parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--parameters', type=str,
