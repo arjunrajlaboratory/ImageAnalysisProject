@@ -1,4 +1,4 @@
-FROM ubuntu:bionic as base
+FROM ubuntu:21.10 as base
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \

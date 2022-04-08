@@ -1,6 +1,6 @@
 name: worker
 dependencies:
-- python
+- python=3.9
 - pip
 - imageio
 - natsort
