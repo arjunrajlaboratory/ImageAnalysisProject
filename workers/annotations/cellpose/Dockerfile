@@ -1,4 +1,4 @@
-FROM ubuntu:21.10 as base
+FROM ubuntu:jammy as base
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \
@@ -20,10 +20,10 @@ ENV PATH="/root/miniforge3/bin:$PATH"
 ARG PATH="/root/miniforge3/bin:$PATH"
 
 RUN wget \
-    https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh \
+    https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
     && mkdir /root/.conda \
-    && bash Miniforge3-Linux-aarch64.sh -b \
-    && rm -f Miniforge3-Linux-aarch64.sh
+    && bash Miniforge3-Linux-x86_64.sh -b \
+    && rm -f Miniforge3-Linux-x86_64.sh
 
 FROM base as build
 
@@ -33,13 +33,13 @@ SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN git clone https://github.com/Kitware/UPennContrast/
 WORKDIR /UPennContrast
-RUN git config --global user.email "wniu721@gmail.com"
-RUN git config --global user.name "William Niu"
-RUN git pull origin add-annotation-worker
+# RUN git config --global user.email "wniu721@gmail.com"
+# RUN git config --global user.name "William Niu"
+# RUN git pull origin add-annotation-worker
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
-RUN pip install cellpose --no-deps
+# RUN pip install cellpose --no-deps
 
 COPY ./download_models.py /
 RUN python /download_models.py

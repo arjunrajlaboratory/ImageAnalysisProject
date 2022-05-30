@@ -1,19 +1,8 @@
 name: worker
 dependencies:
-- python=3.9
+- python
 - pip
 - imageio
-- natsort
-- numba
-- numpy
-- opencv
-- kumatea::pytorch
 - rasterio
-- scikit-image
-- scipy
-- tifffile
-- tqdm
 - pip:
-  - edt
-  - fastremap
-  - torch_optimizer
+  - cellpose

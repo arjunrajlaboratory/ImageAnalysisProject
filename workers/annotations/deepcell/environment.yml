@@ -11,5 +11,5 @@ dependencies:
 - scikit-learn>=0.20.4
 - jupyter>=1.0.0,<2
 - opencv<5
-#- pip:
-  # -
+- pip:
+    - deepcell
