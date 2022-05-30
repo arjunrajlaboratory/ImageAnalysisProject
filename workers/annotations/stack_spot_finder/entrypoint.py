@@ -135,6 +135,7 @@ def main(datasetId, apiUrl, token, params):
     # Filter
     gaussian = filters.gaussian(stack, sigma=sigma, mode='nearest')
     laplacian = filters.laplace(gaussian)
+    laplacian = laplacian / np.max(laplacian)
 
     # Find local maxima
     coordinates = peak_local_max(laplacian, min_distance=3)
