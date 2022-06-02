@@ -28,12 +28,12 @@ def preview(datasetId, apiUrl, token, params, image):
     sigma = workerInterface['Gaussian Sigma']['value']
 
     # Get the tile
-    pngBuffer = datasetClient.getRawImage(tile['XY'], tile['Z'], tile['Time'], channel)
-    pngImage = imageio.imread(pngBuffer)
+    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
-    (width, height) = np.shape(pngImage)
+    (width, height) = np.shape(image)
 
-    gaussian = filters.gaussian(pngImage, sigma=sigma, mode='nearest')
+    gaussian = filters.gaussian(image, sigma=sigma, mode='nearest')
     laplacian = filters.laplace(gaussian)
     laplacian = laplacian / np.max(laplacian)
 
@@ -127,13 +127,13 @@ def main(datasetId, apiUrl, token, params):
     stack = list()
 
     for z in range(datasetClient.tiles['IndexRange']['IndexZ']):
-        pngBuffer = datasetClient.getRawImage(tile['XY'], z, tile['Time'], channel)
-        stack.append(imageio.imread(pngBuffer))
+        frame = datasetClient.coordinatesToFrameIndex(tile['XY'], z, tile['Time'], channel)
+        stack.append(datasetClient.getRegion(datasetId, frame=frame).squeeze())
 
-    stack = np.stack(stack)
+    image = np.stack(stack)
 
     # Filter
-    gaussian = filters.gaussian(stack, sigma=sigma, mode='nearest')
+    gaussian = filters.gaussian(image, sigma=sigma, mode='nearest')
     laplacian = filters.laplace(gaussian)
     laplacian = laplacian / np.max(laplacian)
 

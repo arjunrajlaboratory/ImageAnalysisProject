@@ -7,8 +7,6 @@ from operator import itemgetter
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 
-import imageio
-
 from skimage import filters
 from skimage.feature import peak_local_max
 
@@ -46,11 +44,11 @@ def main(datasetId, apiUrl, token, params):
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     # TODO: will need to iterate or stitch and handle roi and proper intensities
-    pngBuffer = datasetClient.getRawImage(tile['XY'], tile['Z'], tile['Time'], channel)
-    stack = imageio.imread(pngBuffer)
+    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
     # Filter
-    gaussian = filters.gaussian(stack, sigma=2, mode='nearest')
+    gaussian = filters.gaussian(image, sigma=2, mode='nearest')
     laplacian = filters.laplace(gaussian)
 
     # Find local maxima

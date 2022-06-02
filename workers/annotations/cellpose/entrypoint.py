@@ -8,8 +8,6 @@ import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-import imageio
-
 import numpy as np  # library for array manipulation
 from cellpose import models
 from rasterio.features import shapes
@@ -74,8 +72,8 @@ def main(datasetId, apiUrl, token, params):
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     # TODO: will need to iterate or stitch and handle roi and proper intensities
-    pngBuffer = datasetClient.getRawImage(tile['XY'], tile['Z'], tile['Time'], channel)
-    stack = imageio.imread(pngBuffer)
+    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
     # model_type='cyto' or model_type='nuclei'
     model = models.Cellpose(model_type=model)
@@ -94,7 +92,7 @@ def main(datasetId, apiUrl, token, params):
     # you can set the average cell `diameter` in pixels yourself (recommended)
     # diameter can be a list or a single number for all images
 
-    masks, _, _, _ = model.eval(stack, diameter=diameter, channels=channels)
+    masks, _, _, _ = model.eval(image, diameter=diameter, channels=channels)
     polygons = shapes(masks.astype(np.int32), masks > 0)
 
     # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?

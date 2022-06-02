@@ -7,8 +7,6 @@ from operator import itemgetter
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 
-import imageio
-
 import numpy as np  # library for array manipulation
 from cellori import Cellori
 from rasterio.features import shapes
@@ -44,10 +42,10 @@ def main(datasetId, apiUrl, token, params):
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     # TODO: will need to iterate or stitch and handle roi and proper intensities
-    pngBuffer = datasetClient.getRawImage(tile['XY'], tile['Z'], tile['Time'], channel)
-    stack = imageio.imread(pngBuffer)
+    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
-    masks, _, _ = Cellori(stack).segment()
+    masks, _, _ = Cellori(image).segment()
     polygons = shapes(masks.astype(np.int32), masks > 0)
 
     # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?

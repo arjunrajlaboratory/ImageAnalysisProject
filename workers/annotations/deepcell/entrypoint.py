@@ -7,8 +7,6 @@ from operator import itemgetter
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 
-import imageio
-
 import numpy as np  # library for array manipulation
 from deepcell.applications import Mesmer
 from rasterio.features import shapes
@@ -44,18 +42,18 @@ def main(datasetId, apiUrl, token, params):
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     # TODO: will need to iterate or stitch and handle roi and proper intensities
-    pngBuffer = datasetClient.getRawImage(tile['XY'], tile['Z'], tile['Time'], channel)
-    stack = imageio.imread(pngBuffer)
+    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
     # Expand image dimensions to rank 4
-    stack = np.stack((stack, stack), axis=-1)
-    stack = np.expand_dims(stack, axis=0)
+    image = np.stack((image, image), axis=-1)
+    image = np.expand_dims(image, axis=0)
 
     # Create the application
     app = Mesmer()
 
     # create the lab
-    masks = app.predict(stack)[0, :, :, 0]
+    masks = app.predict(image)[0, :, :, 0]
 
     polygons = shapes(masks.astype(np.int32), masks > 0)
 
