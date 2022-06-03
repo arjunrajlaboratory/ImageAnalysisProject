@@ -16,7 +16,7 @@ from skimage import filters
 from skimage.feature import peak_local_max
 
 
-def preview(datasetId, apiUrl, token, params, image):
+def preview(datasetId, apiUrl, token, params, bimage):
     # Setup helper classes with url and credentials
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
     datasetClient = tiles.UPennContrastDataset(
@@ -55,7 +55,7 @@ def preview(datasetId, apiUrl, token, params, image):
     preview = {
         'image': dataUri
     }
-    client.setWorkerImagePreview(image, preview)
+    client.setWorkerImagePreview(bimage, preview)
 
 
 def interface(image, apiUrl, token):
