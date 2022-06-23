@@ -2,6 +2,7 @@ name: worker
 dependencies:
 - python
 - pip
+- numpy
 #- networkx
 # - pip:
 #   - 
