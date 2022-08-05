@@ -24,8 +24,8 @@ def preview(datasetId, apiUrl, token, params, bimage):
 
     keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
-    thresholdValue = workerInterface['Threshold']['value']
-    sigma = workerInterface['Gaussian Sigma']['value']
+    thresholdValue = float(workerInterface['Threshold']['value'])
+    sigma = float(workerInterface['Gaussian Sigma']['value'])
 
     # Get the tile
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
@@ -35,7 +35,6 @@ def preview(datasetId, apiUrl, token, params, bimage):
 
     gaussian = filters.gaussian(image, sigma=sigma, mode='nearest')
     laplacian = filters.laplace(gaussian)
-    laplacian = laplacian / np.max(laplacian)
 
     # Compute the threshold indexes
     index = laplacian > thresholdValue
@@ -72,8 +71,8 @@ def interface(image, apiUrl, token):
         'Threshold': {
             'type': 'number',
             'min': 0,
-            'max': 1,
-            'default': 0.25
+            'max': 0.1,
+            'default': 0.01
         },
     }
     # Send the interface object to the server
@@ -112,8 +111,8 @@ def main(datasetId, apiUrl, token, params):
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
 
     # Get the Gaussian sigma and threshold from interface values
-    threshold = workerInterface['Threshold']['value']
-    sigma = workerInterface['Gaussian Sigma']['value']
+    threshold = float(workerInterface['Threshold']['value'])
+    sigma = float(workerInterface['Gaussian Sigma']['value'])
 
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
@@ -128,10 +127,9 @@ def main(datasetId, apiUrl, token, params):
     # Filter
     gaussian = filters.gaussian(image, sigma=sigma, mode='nearest')
     laplacian = filters.laplace(gaussian)
-    laplacian = laplacian / np.max(laplacian)
 
     # Find local maxima
-    coordinates = peak_local_max(laplacian, min_distance=3)
+    coordinates = peak_local_max(laplacian, min_distance=1)
     values = laplacian[coordinates[:, 0], coordinates[:, 1]]
 
     # Threshold maxima
@@ -156,7 +154,7 @@ def main(datasetId, apiUrl, token, params):
         }
         annotationClient.createAnnotation(annotation)
         print("uploading annotation ", x, y)
-        if count > 1000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
+        if count > 10000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
             break
         count = count + 1
 

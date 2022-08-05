@@ -25,7 +25,7 @@ def interface(image, apiUrl, token):
         'Diameter': {
             'type': 'number',
             'min': 0,
-            'max': 50,
+            'max': 200,
             'default': 10
         },
     }
@@ -63,7 +63,7 @@ def main(datasetId, apiUrl, token, params):
 
     # Get the model and diameter from interface values
     model = workerInterface['Model']['value']
-    diameter = workerInterface['Diameter']['value']
+    diameter = float(workerInterface['Diameter']['value'])
 
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(

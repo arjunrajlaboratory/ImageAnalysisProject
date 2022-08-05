@@ -1,4 +1,4 @@
-FROM ubuntu:focal as base
+FROM ubuntu:22.04 as base
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \
