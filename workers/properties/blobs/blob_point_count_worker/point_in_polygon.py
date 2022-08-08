@@ -1,42 +1,31 @@
+from numba import jit, njit
 import numba
 import numpy as np
-from numba import njit
 
 
-@njit(cache=True)
-def is_inside(polygon, point):
-    length = len(polygon)
-    intersections = 0
+@jit(nopython=True)
+def check_is_inside(x, y, poly):
+    n = len(poly)
+    inside = False
+    xints = 0.0
+    p1x, p1y = poly[0]
+    for i in numba.prange(n + 1):
+        p2x, p2y = poly[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xints = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    if p1x == p2x or x <= xints:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
 
-    dx2 = point[0] - polygon[0][0]
-    dy2 = point[1] - polygon[0][1]
-    jj = 1
-
-    while jj < length:
-        dx = dx2
-        dy = dy2
-        dx2 = point[0] - polygon[jj][0]
-        dy2 = point[1] - polygon[jj][1]
-
-        F = (dx - dx2) * dy - dx * (dy - dy2)
-        if 0.0 == F and dx * dx2 <= 0 and dy * dy2 <= 0:
-            return 2
-
-        if (dy >= 0 and dy2 < 0) or (dy2 >= 0 and dy < 0):
-            if F > 0:
-                intersections += 1
-            elif F < 0:
-                intersections -= 1
-
-        jj += 1
-
-    return intersections != 0
+    return inside
 
 
-@njit(cache=True, parallel=True)
+@njit(parallel=True)
 def point_in_polygon(points, polygon):
-    ln = len(points)
-    D = np.empty(ln, dtype=numba.boolean)
-    for i in numba.prange(ln):
-        D[i] = is_inside(polygon, points[i])
-    return D
+    is_inside = np.empty(len(points), dtype=numba.boolean)
+    for i in numba.prange(0, len(is_inside)):
+        is_inside[i] = check_is_inside(points[i, 0], points[i, 1], polygon)
+    return is_inside

@@ -25,7 +25,7 @@ def main(datasetId, apiUrl, token, params):
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('polygon')
     pointList = workerClient.get_annotation_list_by_shape('point')
-    points = np.array([list(point['coordinates'][0].values())[1::-1] for point in pointList])
+    points = np.array([list(point['location'].values()) + list(point['coordinates'][0].values())[::-1] for point in pointList])
 
     # We need at least one annotation
     if len(annotationList) == 0:
@@ -38,8 +38,9 @@ def main(datasetId, apiUrl, token, params):
         if image is None:
             continue
 
-        polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
-        point_count = np.sum(point_in_polygon(points, polygon))
+        polygon = np.array([list(coordinate.values())[::-1] for coordinate in annotation['coordinates']])
+        filtered_points = points[np.all(points[:, :4] == np.concatenate((list(annotation['location'].values()), polygon[0, :1])), axis=1)]
+        point_count = np.sum(point_in_polygon(filtered_points[:, -2:], polygon[:, -2:]))
 
         workerClient.add_annotation_property_values(annotation, int(point_count))
 
