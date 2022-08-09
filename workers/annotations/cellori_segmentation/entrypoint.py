@@ -6,10 +6,31 @@ from operator import itemgetter
 
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
+import annotation_client.workers as workers
 
 import numpy as np  # library for array manipulation
-from cellori import Cellori
+from cellori import CelloriSegmentation
 from rasterio.features import shapes
+
+
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Model': {
+            'type': 'text',
+            'default': 'cyto'
+        },
+        'Diameter': {
+            'type': 'number',
+            'min': 0,
+            'max': 200,
+            'default': 30
+        },
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
 
 
 def main(datasetId, apiUrl, token, params):
@@ -28,12 +49,21 @@ def main(datasetId, apiUrl, token, params):
         tile: tile position (TODO: roi) ({XY, Z, Time}),
         connectTo: how new annotations should be connected
     """
+    # Check whether we need to preview, send the interface, or compute
+    request = params.get('request', 'compute')
+    if request == 'interface':
+        return interface(params['image'], apiUrl, token)
+
     # roughly validate params
-    keys = ["assignment", "channel", "connectTo", "tags", "tile"]
+    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
     if not all(key in params for key in keys):
-        print("Invalid worker parameters", params)
+        print ("Invalid worker parameters", params)
         return
-    assignment, channel, connectTo, tags, tile = itemgetter(*keys)(params)
+    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+
+    # Get the model and diameter from interface values
+    model = workerInterface['Model']['value']
+    diameter = float(workerInterface['Diameter']['value'])
 
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
@@ -44,8 +74,11 @@ def main(datasetId, apiUrl, token, params):
     # TODO: will need to iterate or stitch and handle roi and proper intensities
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
     image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
+    image = np.stack((np.zeros_like(image), image))
 
-    masks, _, _ = Cellori(image).segment()
+    model = CelloriSegmentation(model=model)
+
+    masks, y = model.predict(image, diameter=diameter)
     polygons = shapes(masks.astype(np.int32), masks > 0)
 
     # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
@@ -75,7 +108,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=True, action='store')
+    parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--parameters', type=str,

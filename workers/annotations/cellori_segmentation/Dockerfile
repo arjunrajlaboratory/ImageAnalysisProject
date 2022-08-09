@@ -32,15 +32,15 @@ RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN git clone https://github.com/Kitware/UPennContrast/
-WORKDIR /UPennContrast
 # RUN git config --global user.email "wniu721@gmail.com"
 # RUN git config --global user.name "William Niu"
 # RUN git pull origin add-annotation-worker
 
-RUN pip install -r devops/girder/annotation_client/requirements.txt
-RUN pip install -e devops/girder/annotation_client/
-RUN pip install --pre SimpleITK --find-links https://github.com/SimpleITK/SimpleITK/releases/tag/v2.2rc1
-RUN pip install cellori --no-deps
+RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /UPennContrast/devops/girder/annotation_client/
+
+RUN git clone https://github.com/zjniu/Cellori
+RUN pip install -e /Cellori
 
 COPY ./entrypoint.py /
 
