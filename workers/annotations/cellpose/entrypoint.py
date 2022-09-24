@@ -9,7 +9,9 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
 import numpy as np  # library for array manipulation
-from cellpose import models
+import deeptile
+from deeptile.extensions.segmentation import cellpose_segmentation
+from deeptile.extensions.stitch import stitch_masks
 from rasterio.features import shapes
 
 
@@ -75,24 +77,12 @@ def main(datasetId, apiUrl, token, params):
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
     image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
-    # model_type='cyto' or model_type='nuclei'
-    model = models.Cellpose(model_type=model)
+    cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': [[0, 0]]})
+    dt = deeptile.load(image)
+    image = dt.get_tiles(tile_size=(560, 560))
 
-    # define CHANNELS to run segementation on
-    # grayscale=0, R=1, G=2, B=3
-    # channels = [cytoplasm, nucleus]
-    # if NUCLEUS channel does not exist, set the second channel to 0
-    channels = [[0, 0]]
-    # IF ALL YOUR IMAGES ARE THE SAME TYPE, you can give a list with 2 elements
-    # channels = [0,0] # IF YOU HAVE GRAYSCALE
-    # channels = [2,3] # IF YOU HAVE G=cytoplasm and B=nucleus
-    # channels = [2,1] # IF YOU HAVE G=cytoplasm and R=nucleus
-
-    # if diameter is set to None, the size of the cells is estimated on a per image basis
-    # you can set the average cell `diameter` in pixels yourself (recommended)
-    # diameter can be a list or a single number for all images
-
-    masks, _, _, _ = model.eval(image, diameter=diameter, channels=channels)
+    masks = cellpose(image)
+    masks = stitch_masks(masks)
     polygons = shapes(masks.astype(np.int32), masks > 0)
 
     # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
@@ -112,8 +102,8 @@ def main(datasetId, apiUrl, token, params):
             "coordinates": [{"x": float(x), "y": float(y), "z": 0} for x, y in polygon['coordinates'][0]]
         }
         annotationClient.createAnnotation(annotation)
-        if count > 1000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
-            break
+        # if count > 1000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
+        #     break
         count = count + 1
 
 

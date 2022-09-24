@@ -1,4 +1,9 @@
-FROM ubuntu:22.04 as base
+FROM nvidia/cuda:11.7.1-cudnn8-devel-ubuntu22.04 as base
+LABEL isUPennContrastWorker=True
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \
@@ -31,15 +36,13 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/Kitware/UPennContrast/
+RUN git clone https://github.com/zjniu/UPennContrast/
 WORKDIR /UPennContrast
-# RUN git config --global user.email "wniu721@gmail.com"
-# RUN git config --global user.name "William Niu"
-# RUN git pull origin add-annotation-worker
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
-# RUN pip install cellpose --no-deps
+RUN pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+RUN pip install cellpose
 
 COPY ./download_models.py /
 RUN python /download_models.py
