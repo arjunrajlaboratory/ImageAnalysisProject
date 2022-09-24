@@ -8,7 +8,9 @@ import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 
 import numpy as np  # library for array manipulation
-from deepcell.applications import Mesmer
+import deeptile
+from deeptile.extensions.segmentation import deepcell_mesmer_segmentation
+from deeptile.extensions.stitch import stitch_masks
 from rasterio.features import shapes
 
 
@@ -45,16 +47,13 @@ def main(datasetId, apiUrl, token, params):
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
     image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
-    # Expand image dimensions to rank 4
-    image = np.stack((image, image), axis=-1)
-    image = np.expand_dims(image, axis=0)
+    mesmer = deepcell_mesmer_segmentation({}, {})
+    dt = deeptile.load(image)
+    image = dt.get_tiles(tile_size=(640, 640)).pad()
+    image = np.stack((image, image))
 
-    # Create the application
-    app = Mesmer()
-
-    # create the lab
-    masks = app.predict(image)[0, :, :, 0]
-
+    masks = mesmer(image)[0]
+    masks = stitch_masks(masks)
     polygons = shapes(masks.astype(np.int32), masks > 0)
 
     # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
