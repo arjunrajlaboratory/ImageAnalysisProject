@@ -1,4 +1,3 @@
-import base64
 import argparse
 import json
 import sys
@@ -12,8 +11,6 @@ import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-import imageio
-import numpy as np
 from cellori import CelloriSpots
 
 
@@ -104,8 +101,6 @@ def main(datasetId, apiUrl, token, params):
         }
         annotationClient.createAnnotation(annotation)
         print("uploading annotation ", x, y)
-        import jax
-        print(jax.devices())
         if count > 10000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
             break
         count = count + 1

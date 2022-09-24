@@ -2,8 +2,6 @@ name: worker
 dependencies:
 - python
 - pip
-- imageio
-- rasterio
 - pip:
   - einops
   - deeptile
