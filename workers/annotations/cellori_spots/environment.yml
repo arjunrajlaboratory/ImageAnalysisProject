@@ -1,0 +1,20 @@
+name: worker
+dependencies:
+- python
+- pip
+- imageio
+- rasterio
+- pip:
+  - einops
+  - deeptile
+  - fastremap
+  - flax
+  - numba
+  - numpy
+  - opencv-python
+  - scipy
+  - scikit-image
+  - tifffile
+  - tensorflow
+  - torch
+  - tqdm
