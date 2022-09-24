@@ -31,11 +31,8 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/Kitware/UPennContrast/
+RUN git clone https://github.com/zjniu/UPennContrast/
 WORKDIR /UPennContrast
-# RUN git config --global user.email "wniu721@gmail.com"
-# RUN git config --global user.name "William Niu"
-# RUN git pull origin add-annotation-worker
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
