@@ -34,6 +34,7 @@ SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN git clone https://github.com/zjniu/UPennContrast/
 WORKDIR /UPennContrast
+RUN git checkout d9b0ef323cacef132d1ac7bd843bbff267764396
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
