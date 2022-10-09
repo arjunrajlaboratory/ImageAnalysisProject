@@ -76,7 +76,7 @@ def main(datasetId, apiUrl, token, params):
     image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
     image = np.stack((np.zeros_like(image), image))
 
-    model = CelloriSegmentation(model=model)
+    model = CelloriSegmentation(model=model, batch_size=1)
 
     masks, y = model.predict(image, diameter=diameter)
     polygons = shapes(masks.astype(np.int32), masks > 0)

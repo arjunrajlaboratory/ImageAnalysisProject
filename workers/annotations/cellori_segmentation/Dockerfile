@@ -1,5 +1,9 @@
-FROM ubuntu:focal as base
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 as base
 LABEL isUPennContrastWorker=True
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \
@@ -32,17 +36,14 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/Kitware/UPennContrast/
-# RUN git config --global user.email "wniu721@gmail.com"
-# RUN git config --global user.name "William Niu"
-# RUN git pull origin add-annotation-worker
+RUN git clone https://github.com/zjniu/UPennContrast/
 
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
+RUN pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 RUN git clone https://github.com/zjniu/Cellori
 RUN pip install -e /Cellori
-
 COPY ./entrypoint.py /
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
