@@ -1,5 +1,9 @@
-FROM ubuntu:focal as base
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 as base
 LABEL isUPennContrastWorker=True
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \

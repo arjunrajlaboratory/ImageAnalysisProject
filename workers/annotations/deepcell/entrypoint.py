@@ -50,9 +50,9 @@ def main(datasetId, apiUrl, token, params):
     mesmer = deepcell_mesmer_segmentation({}, {})
     dt = deeptile.load(image)
     image = dt.get_tiles(tile_size=(640, 640)).pad()
-    image = np.stack((image, image))
+    image = np.stack((image, image)).s[None]
 
-    masks = mesmer(image)[0]
+    masks = mesmer(image).s[0]
     masks = stitch_masks(masks)
     polygons = shapes(masks.astype(np.int32), masks > 0)
 
