@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.7.1-cudnn8-devel-ubuntu22.04 as base
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 as base
 LABEL isUPennContrastWorker=True
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 
