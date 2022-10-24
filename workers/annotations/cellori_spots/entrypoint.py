@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import sys
 
@@ -8,8 +9,42 @@ import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
+import imageio
 import numpy as np
 from cellori import CelloriSpots
+
+def preview(datasetId, apiUrl, token, params, bimage):
+    # Setup helper classes with url and credentials
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    datasetClient = tiles.UPennContrastDataset(
+        apiUrl=apiUrl, token=token, datasetId=datasetId)
+
+    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
+    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+    threshold = float(workerInterface['Threshold']['value'])
+
+    # Get the tile
+    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
+
+    model = CelloriSpots(model='spots')
+    y, _, _ = model._predict(image, stack=False, scale=1)
+    counts = y[3].astype(np.uint8)
+    thresholded_counts = 255 * (counts > threshold).astype(np.uint8)
+
+    # Convert image to RGB
+    rgba = np.ones((*counts.shape, 4), np.uint8) * thresholded_counts[:, :, None]
+
+    # Generate an output data-uri from the threshold image
+    outputPng = imageio.imwrite('<bytes>', rgba, format='png')
+    data64 = base64.b64encode(outputPng)
+    dataUri = 'data:image/png;base64,' + data64.decode('ascii')
+
+    # Send the preview object to the server
+    preview = {
+        'image': dataUri
+    }
+    client.setWorkerImagePreview(bimage, preview)
 
 
 def interface(image, apiUrl, token):
@@ -60,6 +95,8 @@ def main(datasetId, apiUrl, token, params):
     request = params.get('request', 'compute')
     if request == 'interface':
         return interface(params['image'], apiUrl, token)
+    if request == 'preview':
+        return preview(datasetId, apiUrl, token, params, params['image'])
 
     # roughly validate params
     keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
