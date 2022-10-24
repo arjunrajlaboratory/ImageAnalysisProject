@@ -8,6 +8,7 @@ import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
+import numpy as np
 from cellori import CelloriSpots
 
 
@@ -16,6 +17,11 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Mode': {
+            'type': 'select',
+            'items': ['Current Z', 'Z-Stack'],
+            'default': 'Current Z'
+        },
         'Scale': {
             'type': 'number',
             'min': 0,
@@ -26,7 +32,7 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 9,
-            'default': 2
+            'default': 2.5
         },
     }
     # Send the interface object to the server
@@ -63,6 +69,7 @@ def main(datasetId, apiUrl, token, params):
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
 
     # Get the Gaussian sigma and threshold from interface values
+    stack = workerInterface['Mode']['value'] == 'Z-Stack'
     scale = float(workerInterface['Scale']['value'])
     threshold = float(workerInterface['Threshold']['value'])
 
@@ -72,35 +79,63 @@ def main(datasetId, apiUrl, token, params):
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-    # TODO: will need to iterate or stitch and handle roi and proper intensities
-    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
-    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
-
     model = CelloriSpots(model='spots')
 
-    thresholdCoordinates, y = model.predict(image, scale=scale, threshold=threshold)
+    if stack:
 
-    # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
-    print("Uploading {} annotations".format(len(thresholdCoordinates)))
-    count = 0
-    for [y, x] in thresholdCoordinates:
-        annotation = {
-            "tags": tags,
-            "shape": "point",
-            "channel": channel,
-            "location": {
-                "XY": assignment['XY'],
-                "Z": assignment['Z'],
-                "Time": assignment['Time']
-            },
-            "datasetId": datasetId,
-            "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
-        }
-        annotationClient.createAnnotation(annotation)
-        print("uploading annotation ", x, y)
-        if count > 10000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
-            break
-        count = count + 1
+        frames = []
+
+        for z in range(datasetClient.tiles['IndexRange']['IndexZ']):
+            frame = datasetClient.coordinatesToFrameIndex(tile['XY'], z, tile['Time'], channel)
+            frames.append(datasetClient.getRegion(datasetId, frame=frame).squeeze())
+
+        image = np.stack(frames)
+
+        thresholdCoordinates, _ = model.predict(image, stack=stack, scale=scale, threshold=threshold)
+
+        # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
+        print("Uploading {} annotations".format(len(thresholdCoordinates)))
+        for [z, y, x] in thresholdCoordinates:
+            annotation = {
+                "tags": tags,
+                "shape": "point",
+                "channel": channel,
+                "location": {
+                    "XY": assignment['XY'],
+                    "Z": int(z),
+                    "Time": assignment['Time']
+                },
+                "datasetId": datasetId,
+                "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
+            }
+            annotationClient.createAnnotation(annotation)
+            print("uploading annotation ", z, x, y)
+
+    else:
+
+        # TODO: will need to iterate or stitch and handle roi and proper intensities
+        frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+        image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
+
+        thresholdCoordinates, _ = model.predict(image, stack=stack, scale=scale, threshold=threshold)
+
+        # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
+        print("Uploading {} annotations".format(len(thresholdCoordinates)))
+        for [y, x] in thresholdCoordinates:
+            annotation = {
+                "tags": tags,
+                "shape": "point",
+                "channel": channel,
+                "location": {
+                    "XY": assignment['XY'],
+                    "Z": assignment['Z'],
+                    "Time": assignment['Time']
+                },
+                "datasetId": datasetId,
+                "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
+            }
+            annotationClient.createAnnotation(annotation)
+            print("uploading annotation ", x, y)
 
 
 if __name__ == '__main__':
