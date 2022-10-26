@@ -21,14 +21,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libpython3-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/root/miniforge3/bin:$PATH"
-ARG PATH="/root/miniforge3/bin:$PATH"
+ENV PATH="/root/miniconda3/bin:$PATH"
+ARG PATH="/root/miniconda3/bin:$PATH"
 
 RUN wget \
-    https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+    https://repo.anaconda.com/miniconda/Miniconda3-py39_4.12.0-Linux-x86_64.sh \
     && mkdir /root/.conda \
-    && bash Miniforge3-Linux-x86_64.sh -b \
-    && rm -f Miniforge3-Linux-x86_64.sh
+    && bash Miniconda3-py39_4.12.0-Linux-x86_64.sh -b \
+    && rm -f Miniconda3-py39_4.12.0-Linux-x86_64.sh
 
 FROM base as build
 
