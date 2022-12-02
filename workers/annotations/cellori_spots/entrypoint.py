@@ -118,6 +118,8 @@ def main(datasetId, apiUrl, token, params):
 
     model = CelloriSpots(model='spots')
 
+    annotationsIds = []
+
     if stack:
 
         frames = []
@@ -145,7 +147,7 @@ def main(datasetId, apiUrl, token, params):
                 "datasetId": datasetId,
                 "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
             }
-            annotationClient.createAnnotation(annotation)
+            annotationsIds.append(annotationClient.createAnnotation(annotation)['_id'])
             print("uploading annotation ", z, x, y)
 
     else:
@@ -171,9 +173,9 @@ def main(datasetId, apiUrl, token, params):
                 "datasetId": datasetId,
                 "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
             }
-            annotationClient.createAnnotation(annotation)
-            print("uploading annotation ", x, y)
+            annotationsIds.append(annotationClient.createAnnotation(annotation)['_id'])
 
+    annotationClient.connectToNearest(connectTo, annotationsIds)
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
