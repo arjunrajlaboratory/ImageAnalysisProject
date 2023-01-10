@@ -36,7 +36,7 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/zjniu/UPennContrast/
+RUN git clone https://github.com/Kitware/UPennContrast/
 WORKDIR /UPennContrast
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
