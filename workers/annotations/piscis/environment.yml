@@ -1,0 +1,6 @@
+name: worker
+dependencies:
+- python
+- pip
+- pip:
+  - tensorflow

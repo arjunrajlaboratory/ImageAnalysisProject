@@ -36,14 +36,14 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/zjniu/UPennContrast/
+RUN git clone https://github.com/Kitware/UPennContrast/
 
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
-RUN pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
-RUN git clone https://github.com/zjniu/Cellori
-RUN pip install -e /Cellori
+RUN git clone https://github.com/zjniu/Piscis
+RUN pip install -e /Piscis
 COPY ./entrypoint.py /
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
