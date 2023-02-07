@@ -23,8 +23,8 @@ def main(datasetId, apiUrl, token, params):
     """
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('polygon')
-    pointList = workerClient.get_annotation_list_by_shape('point')
+    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    pointList = workerClient.get_annotation_list_by_shape('point', limit=0)
     points = np.array([[point['location'][i] for i in ['Time', 'XY', 'Z']] + list(point['coordinates'][0].values())[1::-1] for point in pointList])
 
     # We need at least one annotation

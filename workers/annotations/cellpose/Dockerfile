@@ -38,11 +38,10 @@ SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN git clone https://github.com/Kitware/UPennContrast/
 WORKDIR /UPennContrast
+RUN git switch enh/property-computation/328
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
-RUN pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
-RUN pip install cellpose
 
 COPY ./download_models.py /
 RUN python /download_models.py

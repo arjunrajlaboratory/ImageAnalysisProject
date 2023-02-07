@@ -21,7 +21,8 @@ def interface(image, apiUrl, token):
     # Available types: number, text, tags, layer
     interface = {
         'Model': {
-            'type': 'text',
+            'type': 'select',
+            'items': ['cyto', 'nuclei'],
             'default': 'cyto'
         },
         'Diameter': {

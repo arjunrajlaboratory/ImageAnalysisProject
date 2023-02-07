@@ -26,7 +26,7 @@ def main(datasetId, apiUrl, token, params):
     radius = 5
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('point')
+    annotationList = workerClient.get_annotation_list_by_shape('point', limit=0)
 
     # We need at least one annotation
     if len(annotationList) == 0:

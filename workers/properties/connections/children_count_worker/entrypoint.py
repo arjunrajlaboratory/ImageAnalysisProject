@@ -21,9 +21,7 @@ def main(datasetId, apiUrl, token, params):
         layer: Which specific layer should be used for intensity calculations
         tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
     """
-    propertyName = params.get('customName', None)
-    if not propertyName:
-        propertyName = params.get('name', 'unknown_property')
+    propertyId = params.get('id', 'unknown_property')
 
     connectionIds = params.get('connectionIds', None)
 
@@ -38,7 +36,7 @@ def main(datasetId, apiUrl, token, params):
             connectionList.append(annotationClient.getAnnotationConnectionById(id))
     else:
         # Get all point annotations from the dataset
-        connectionList = annotationClient.getAnnotationConnections(datasetId)
+        connectionList = annotationClient.getAnnotationConnections(datasetId, limit=100000)
 
     # We need at least one annotation
     if len(connectionList) == 0:
@@ -62,7 +60,7 @@ def main(datasetId, apiUrl, token, params):
     for node in nodes:
         n_children = np.sum(edges[:, 0] == node)
         annotationClient.addAnnotationPropertyValues(datasetId, node, {
-            propertyName: int(n_children)})
+            propertyId: int(n_children)})
 
 
 if __name__ == '__main__':

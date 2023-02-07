@@ -23,7 +23,7 @@ def main(datasetId, apiUrl, token, params):
     """
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('polygon')
+    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
 
     # We need at least one annotation
     if len(annotationList) == 0:
