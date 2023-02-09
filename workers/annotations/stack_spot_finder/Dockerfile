@@ -34,7 +34,6 @@ SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN git clone https://github.com/Kitware/UPennContrast/
 WORKDIR /UPennContrast
-RUN git switch enh/property-computation/328
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
