@@ -24,7 +24,7 @@ def compute(datasetId, apiUrl, token, params):
     print(params['workerInterface'])
 
 
-def interface(image):
+def interface(image, apiUrl, token):
     """
     Send parameters required by compute() to the frontend
     See WorkerInterfaceValues.vue and the type IWorkerInterface in model.ts to be updated on what can be requested
@@ -101,6 +101,6 @@ if __name__ == '__main__':
         case 'compute':
             compute(datasetId, apiUrl, token, params)
         case 'interface':
-            interface(params['image'])
+            interface(params['image'], apiUrl, token)
         case 'preview':
             preview()
