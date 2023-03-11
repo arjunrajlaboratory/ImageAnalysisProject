@@ -45,6 +45,7 @@ RUN pip install -e devops/girder/annotation_client/
 COPY ./download_models.py /
 RUN python /download_models.py
 
+COPY ./utils.py /
 COPY ./entrypoint.py /
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
