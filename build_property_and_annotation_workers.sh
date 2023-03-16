@@ -13,3 +13,5 @@ docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:late
 docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
 docker build ./workers/annotations/spot_finder/ -t annotations/spot_finder_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Spot Finder" --label "interfaceCategory=Spot"
 docker build ./workers/annotations/stack_spot_finder/ -t annotations/stack_spot_finder_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stack Spot Finder" --label "interfaceCategory=Spot"
+
+docker build ./workers/test_worker/ -t both/test_worker:latest  --label isUPennContrastWorker --label isAnnotationWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Test worker" --label "interfaceCategory=Test"
