@@ -24,8 +24,8 @@ def preview(datasetId, apiUrl, token, params, bimage):
 
     keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
-    thresholdValue = workerInterface['Threshold']['value']
-    sigma = workerInterface['Gaussian Sigma']['value']
+    thresholdValue = workerInterface['Threshold']
+    sigma = workerInterface['Gaussian Sigma']
 
     # Get the tile
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
@@ -80,7 +80,7 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 
-def main(datasetId, apiUrl, token, params):
+def compute(datasetId, apiUrl, token, params):
     """
     params (could change):
         configurationId,
@@ -99,13 +99,6 @@ def main(datasetId, apiUrl, token, params):
         interface: dictionary containing parameters associated to their ids
     """
 
-    # Check whether we need to preview, send the interface, or compute
-    request = params.get('request', 'compute')
-    if request == 'preview':
-        return preview(datasetId, apiUrl, token, params, params['image'])
-    if request == 'interface':
-        return interface(params['image'], apiUrl, token)
-
     # roughly validate params
     keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
     if not all(key in params for key in keys):
@@ -114,8 +107,8 @@ def main(datasetId, apiUrl, token, params):
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
 
     # Get the Gaussian sigma and threshold from interface values
-    threshold = workerInterface['Threshold']['value']
-    sigma = workerInterface['Gaussian Sigma']['value']
+    threshold = workerInterface['Threshold']
+    sigma = workerInterface['Gaussian Sigma']
 
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
@@ -169,7 +162,6 @@ def main(datasetId, apiUrl, token, params):
 
 
 if __name__ == '__main__':
-
     # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
@@ -177,9 +169,21 @@ if __name__ == '__main__':
     parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
+    parser.add_argument('--request', type=str, required=True, action='store')
     parser.add_argument('--parameters', type=str,
                         required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 
-    main(args.datasetId, args.apiUrl, args.token, json.loads(args.parameters))
+    params = json.loads(args.parameters)
+    datasetId = args.datasetId
+    apiUrl = args.apiUrl
+    token = args.token
+
+    match args.request:
+        case 'compute':
+            compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)
+        case 'preview':
+            preview(datasetId, apiUrl, token, params, params['image'])
