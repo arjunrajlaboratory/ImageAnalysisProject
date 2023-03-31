@@ -3,9 +3,28 @@ import json
 import sys
 
 import annotation_client.annotations as annotations
+import annotation_client.workers as workers
 
 # import networkx as nx
 import numpy as np
+
+
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Tags': {
+            'type': 'tags'
+        },
+        'Exclusive': {
+            'type': 'select',
+            'items': ['Yes', 'No'],
+            'default': 'Yes'
+        },
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -25,6 +44,10 @@ def compute(datasetId, apiUrl, token, params):
 
     connectionIds = params.get('connectionIds', None)
 
+    workerInterface = params['workerInterface']
+    tags = set(workerInterface.get('Tags', None))
+    exclusive = workerInterface['Exclusive'] == 'Yes'
+
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
         apiUrl=apiUrl, token=token)
@@ -36,13 +59,19 @@ def compute(datasetId, apiUrl, token, params):
             connectionList.append(annotationClient.getAnnotationConnectionById(id))
     else:
         # Get all point annotations from the dataset
-        connectionList = annotationClient.getAnnotationConnections(datasetId, limit=100000)
+        connectionList = annotationClient.getAnnotationConnections(datasetId, limit=0)
+
+    filteredConnectionList = []
+    for connection in connectionList:
+        child_tags = set(annotationClient.getAnnotationById(connection['childId'])['tags'])
+        if (exclusive and (child_tags == tags)) or ((not exclusive) and (len(child_tags & tags) > 0)):
+            filteredConnectionList.append(connection)
 
     # We need at least one annotation
     if len(connectionList) == 0:
         return
 
-    edges = np.array([[connection['parentId'], connection['childId']] for connection in connectionList])
+    edges = np.array([[connection['parentId'], connection['childId']] for connection in filteredConnectionList])
     nodes = np.unique(edges[:, 0])  # Currently grabs children that have no children themselves, could optimize further
     # node_attributes = [(node, annotationClient.getAnnotationById(node)) for node in nodes]
     #
@@ -85,3 +114,5 @@ if __name__ == '__main__':
     match args.request:
         case 'compute':
             compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)
