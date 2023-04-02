@@ -8,6 +8,24 @@ import numpy as np
 from point_in_polygon import point_in_polygon
 
 
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Tags': {
+            'type': 'tags'
+        },
+        'Exclusive': {
+            'type': 'select',
+            'items': ['Yes', 'No'],
+            'default': 'Yes'
+        },
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
+
+
 def compute(datasetId, apiUrl, token, params):
     """
     Params is a dict containing the following parameters:
@@ -22,10 +40,23 @@ def compute(datasetId, apiUrl, token, params):
         tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
     """
 
+    workerInterface = params['workerInterface']
+    tags = set(workerInterface.get('Tags', None))
+    exclusive = workerInterface['Exclusive'] == 'Yes'
+
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
     pointList = workerClient.get_annotation_list_by_shape('point', limit=0)
-    points = np.array([[point['location'][i] for i in ['Time', 'XY', 'Z']] + list(point['coordinates'][0].values())[1::-1] for point in pointList])
+
+    filteredPointList = []
+    for point in pointList:
+        point_tags = set(point['tags'])
+        if (exclusive and (point_tags == tags)) or ((not exclusive) and (len(point_tags & tags) > 0)):
+            filteredPointList.append(point)
+
+    points = np.array([[point['location'][i]
+                        for i in ['Time', 'XY', 'Z']] + list(point['coordinates'][0].values())[1::-1]
+                       for point in filteredPointList])
 
     # We need at least one annotation
     if len(annotationList) == 0:
@@ -67,3 +98,5 @@ if __name__ == '__main__':
     match args.request:
         case 'compute':
             compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)
