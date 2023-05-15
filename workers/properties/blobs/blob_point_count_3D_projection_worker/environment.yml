@@ -1,0 +1,10 @@
+name: worker
+dependencies:
+- python
+- pip
+- imageio
+- numba
+- rtree
+- shapely
+# - pip:
+#   - 
