@@ -21,4 +21,5 @@ docker build ./workers/annotations/spot_finder/ -t annotations/spot_finder_worke
 docker build ./workers/annotations/stack_spot_finder/ -t annotations/stack_spot_finder_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stack Spot Finder" --label "interfaceCategory=Spot"
 
 docker build ./workers/annotations/annulus_generator_M1/ -t annotations/annulus_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Annulus" --label "interfaceCategory=Annulus"
+docker build ./workers/annotations/test_multiple_annotation_M1/ -t annotations/test_multiple_annotation:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Random square" --label "interfaceCategory=random"
 
