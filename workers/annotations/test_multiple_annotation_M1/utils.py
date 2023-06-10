@@ -1,10 +1,19 @@
 from itertools import chain
 
+def process_range_list(rl, convert_one_to_zero_index=False, convert_zero_to_one_index=False):
 
-def process_range_list(rl):
-
+    if convert_one_to_zero_index and convert_zero_to_one_index:
+        raise ValueError("Both 'convert_one_to_zero_index' and 'convert_zero_to_one_index' cannot be set to True at the same time.")
+    
     g = parse_range_list(rl)
     first, g = peek_generator(g)
+
+    if convert_zero_to_one_index:
+        g = (x + 1 for x in g)
+
+    if convert_one_to_zero_index:
+        g = (x - 1 for x in g)
+
     if first is None:
         g = None
 
@@ -22,6 +31,24 @@ def peek_generator(g):
     g = chain([first], g)
 
     return first, g
+
+def get_batch_information(tile, workerInterface, batchXYstring, batchZstring, batchTimestring):
+    batch_xy = workerInterface.get('Batch XY', None)
+    batch_z = workerInterface.get('Batch Z', None)
+    batch_time = workerInterface.get('Batch Time', None)
+
+    batch_xy = process_range_list(batch_xy)
+    batch_z = process_range_list(batch_z)
+    batch_time = process_range_list(batch_time)
+
+    if batch_xy is None:
+        batch_xy = [tile['XY']]
+    if batch_z is None:
+        batch_z = [tile['Z']]
+    if batch_time is None:
+        batch_time = [tile['Time']]
+
+    return batch_xy, batch_z, batch_time
 
 
 def _parse_range(r):
@@ -46,3 +73,5 @@ def _split_range(value):
             if prev == '':
                 val *= -1
             yield val
+
+
