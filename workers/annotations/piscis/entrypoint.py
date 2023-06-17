@@ -1,5 +1,4 @@
 import argparse
-import base64
 import json
 import sys
 
@@ -14,7 +13,6 @@ import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-import imageio
 import numpy as np
 from piscis import Piscis
 
@@ -41,7 +39,7 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 9,
-            'default': 2
+            'default': 1.1
         },
         'Assign to Nearest Z': {
             'type': 'select',
@@ -112,9 +110,7 @@ def compute(datasetId, apiUrl, token, params):
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-    model = Piscis(model='spots', batch_size=1)
-
-    annotationsIds = []
+    model = Piscis(batch_size=2)
 
     if stack:
 
@@ -136,6 +132,7 @@ def compute(datasetId, apiUrl, token, params):
 
             # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
             print("Uploading {} annotations".format(len(thresholdCoordinates)))
+            annotation_list = []
             for [z, y, x] in thresholdCoordinates:
                 annotation = {
                     "tags": tags,
@@ -149,8 +146,10 @@ def compute(datasetId, apiUrl, token, params):
                     "datasetId": datasetId,
                     "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
                 }
-                annotationsIds.append(annotationClient.createAnnotation(annotation)['_id'])
-                print("uploading annotation ", z, x, y)
+                annotation_list.append(annotation)
+            annotationsIds = [a['_id'] for a in annotationClient.createMultipleAnnotations(annotation_list)]
+            if len(connectTo['tags']) > 0:
+                annotationClient.connectToNearest(connectTo, annotationsIds)
 
     else:
 
@@ -169,6 +168,7 @@ def compute(datasetId, apiUrl, token, params):
 
             # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
             print("Uploading {} annotations".format(len(thresholdCoordinates)))
+            annotation_list = []
             for [y, x] in thresholdCoordinates:
                 annotation = {
                     "tags": tags,
@@ -182,10 +182,10 @@ def compute(datasetId, apiUrl, token, params):
                     "datasetId": datasetId,
                     "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
                 }
-                annotationsIds.append(annotationClient.createAnnotation(annotation)['_id'])
-
-    if len(connectTo['tags']) > 0:
-        annotationClient.connectToNearest(connectTo, annotationsIds)
+                annotation_list.append(annotation)
+            annotationsIds = [a['_id'] for a in annotationClient.createMultipleAnnotations(annotation_list)]
+            if len(connectTo['tags']) > 0:
+                annotationClient.connectToNearest(connectTo, annotationsIds)
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
