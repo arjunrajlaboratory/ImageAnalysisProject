@@ -25,7 +25,7 @@ def interface(image, apiUrl, token):
     interface = {
         'Model': {
             'type': 'select',
-            'items': ['cyto', 'nuclei'],
+            'items': ['cyto', 'cyto2', 'nuclei'],
             'default': 'cyto'
         },
         'Nuclei Channel': {
