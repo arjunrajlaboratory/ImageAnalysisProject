@@ -44,18 +44,23 @@ def interface(image, apiUrl, token):
             'type': 'tags',
             'default': ['cell', 'nuclei'],
         },
+        # 'required' defaults to False
+        # When 'required' is False, the interface value corresponding to "nothing" is: None
         'My layer property': {
-            'type': 'layers',
+            'type': 'layer',
             'default': 0,
+            'required': True,
         },
         'My select property': {
             'type': 'select',
             'default': 'blue',
             'items': ['orange', 'blue', 'green'],
+            'required': False,
         },
         'My channel property': {
             'type': 'channel',
             'default': 3,
+            'required': False,
         },
     }
     # Send the interface object to the server
