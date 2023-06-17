@@ -25,7 +25,7 @@ def interface(image, apiUrl, token):
     interface = {
         'Model': {
             'type': 'select',
-            'items': ['cyto', 'nuclei'],
+            'items': ['cyto', 'cyto2', 'nuclei'],
             'default': 'cyto'
         },
         'Nuclei Channel': {
@@ -139,7 +139,7 @@ def compute(datasetId, apiUrl, token, params):
 
         cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels})
         dt = deeptile.load(image)
-        image = dt.get_tiles(tile_size=(560, 560))
+        image = dt.get_tiles(tile_size=(544, 544))
 
         masks = cellpose(image)
         masks = stitch_masks(masks)

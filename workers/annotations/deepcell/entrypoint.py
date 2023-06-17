@@ -14,7 +14,7 @@ from deeptile.extensions.stitch import stitch_masks
 from rasterio.features import shapes
 
 
-def main(datasetId, apiUrl, token, params):
+def compute(datasetId, apiUrl, token, params):
     """
     params (could change):
         configurationId,
@@ -30,6 +30,7 @@ def main(datasetId, apiUrl, token, params):
         tile: tile position (TODO: roi) ({XY, Z, Time}),
         connectTo: how new annotations should be connected
     """
+
     # roughly validate params
     keys = ["assignment", "channel", "connectTo", "tags", "tile"]
     if not all(key in params for key in keys):
@@ -83,12 +84,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=True, action='store')
+    parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
+    parser.add_argument('--request', type=str, required=True, action='store')
     parser.add_argument('--parameters', type=str,
                         required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 
-    main(args.datasetId, args.apiUrl, args.token, json.loads(args.parameters))
+    params = json.loads(args.parameters)
+    datasetId = args.datasetId
+    apiUrl = args.apiUrl
+    token = args.token
+
+    match args.request:
+        case 'compute':
+            compute(datasetId, apiUrl, token, params)

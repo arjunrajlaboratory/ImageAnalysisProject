@@ -8,7 +8,20 @@ import numpy as np
 from skimage import draw
 
 
-def main(datasetId, apiUrl, token, params):
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Channel': {
+            'type': 'layer'
+        }
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
+
+
+def compute(datasetId, apiUrl, token, params):
     """
     Params is a dict containing the following parameters:
     required:
@@ -58,9 +71,19 @@ if __name__ == '__main__':
     parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
+    parser.add_argument('--request', type=str, required=True, action='store')
     parser.add_argument('--parameters', type=str,
                         required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 
-    main(args.datasetId, args.apiUrl, args.token, json.loads(args.parameters))
+    params = json.loads(args.parameters)
+    datasetId = args.datasetId
+    apiUrl = args.apiUrl
+    token = args.token
+
+    match args.request:
+        case 'compute':
+            compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)
