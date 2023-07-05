@@ -29,10 +29,10 @@ def interface(image, apiUrl, token):
             'default': 'cyto'
         },
         'Nuclei Channel': {
-            'type': 'layer'
+            'type': 'channel'
         },
         'Cytoplasm Channel': {
-            'type': 'layer'
+            'type': 'channel'
         },
         'Diameter': {
             'type': 'number',
