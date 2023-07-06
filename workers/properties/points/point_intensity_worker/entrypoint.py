@@ -13,7 +13,7 @@ def interface(image, apiUrl, token):
     # Available types: number, text, tags, layer
     interface = {
         'Channel': {
-            'type': 'layer'
+            'type': 'channel'
         }
     }
     # Send the interface object to the server
