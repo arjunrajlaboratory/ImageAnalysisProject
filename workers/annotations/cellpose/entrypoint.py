@@ -29,10 +29,14 @@ def interface(image, apiUrl, token):
             'default': 'cyto'
         },
         'Nuclei Channel': {
-            'type': 'channel'
+            'type': 'channel',
+            'default': -1,
+            'required': False
         },
         'Cytoplasm Channel': {
-            'type': 'channel'
+            'type': 'channel',
+            'default': -1,
+            'required': False
         },
         'Diameter': {
             'type': 'number',
