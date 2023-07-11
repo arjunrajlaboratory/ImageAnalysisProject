@@ -93,6 +93,7 @@ def compute(datasetId, apiUrl, token, params):
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
 
     # Get the Gaussian sigma and threshold from interface values
+    model_name = workerInterface['Model']
     stack = workerInterface['Mode'] == 'Z-Stack'
     scale = float(workerInterface['Scale'])
     threshold = float(workerInterface['Threshold'])
@@ -118,7 +119,7 @@ def compute(datasetId, apiUrl, token, params):
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-    model = Piscis(batch_size=2)
+    model = Piscis(model_name=model_name, batch_size=2)
 
     if stack:
 
