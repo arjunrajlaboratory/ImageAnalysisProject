@@ -1,4 +1,6 @@
-export CR_PAT=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
+# This script builds the base docker image (test)
+# Run the following commented out command with your personal access token.
+#export CR_PAT=[your personal access token]
 
 echo $CR_PAT | docker login ghcr.io -u arjunrajlab --password-stdin
 
