@@ -15,6 +15,7 @@ import annotation_client.workers as workers
 
 import numpy as np
 from piscis import Piscis
+from piscis.paths import MODELS_DIR
 
 import utils
 
@@ -22,8 +23,15 @@ import utils
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
+    models = sorted(path.stem for path in MODELS_DIR.glob('*'))
+
     # Available types: number, text, tags, layer
     interface = {
+        'Model': {
+            'type': 'select',
+            'items': models,
+            'default': models[-1]
+        },
         'Mode': {
             'type': 'select',
             'items': ['Current Z', 'Z-Stack'],

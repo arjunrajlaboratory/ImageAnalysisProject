@@ -44,6 +44,10 @@ RUN pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-rele
 
 RUN git clone https://github.com/zjniu/Piscis
 RUN pip install -e /Piscis
+
+COPY ./download_models.py /
+RUN python /download_models.py
+
 COPY ./utils.py /
 COPY ./entrypoint.py /
 
