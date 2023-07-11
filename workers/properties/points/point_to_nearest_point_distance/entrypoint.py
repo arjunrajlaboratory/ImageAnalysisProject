@@ -4,8 +4,6 @@ import sys
 
 import annotation_client.workers as workers
 
-import annotation_tools
-
 import cv2 as cv
 import numpy as np
 import math
@@ -16,6 +14,25 @@ def calculate_distance(p1, p2):
 def total_length(line):
     coordinates = line['coordinates']
     return sum(calculate_distance(coordinates[i], coordinates[i+1]) for i in range(len(coordinates)-1))
+
+### UPDATE ME
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Tags of points to count': {
+            'type': 'tags'
+        },
+        'Exact tag match?': {
+            'type': 'select',
+            'items': ['Yes', 'No'],
+            'default': 'Yes'
+        },
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
+
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -34,16 +51,12 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('line', limit=0)
-    print(params['tags']['tags'])
-
-    filteredLineList = annotation_tools.get_annotations_with_tags(annotationList,params['tags']['tags'],exclusive=params['tags']['exclusive'])
-
 
     # We need at least one annotation
-    if len(filteredLineList) == 0:
+    if len(annotationList) == 0:
         return
 
-    for annotation in filteredLineList:
+    for annotation in annotationList:
         workerClient.add_annotation_property_values(annotation, total_length(annotation))
         #print(f"Added property value for annotation {annotation['_id']} with value {total_length(annotation)}")
 

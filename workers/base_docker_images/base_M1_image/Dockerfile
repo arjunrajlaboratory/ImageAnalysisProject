@@ -17,6 +17,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libpython3-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# The below is for the M1 Macs and should be changed for other architectures
 ENV PATH="/root/miniconda3/bin:$PATH"
 ARG PATH="/root/miniconda3/bin:$PATH"
 
@@ -25,6 +26,7 @@ RUN wget \
     && mkdir /root/.conda \
     && bash Miniconda3-latest-Linux-aarch64.sh -b \
     && rm -f Miniconda3-latest-Linux-aarch64.sh
+# END M1 Mac specific
 
 FROM base as build
 
