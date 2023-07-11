@@ -1,1 +1,4 @@
-docker build --build-arg BASE_IMAGE=ghcr.io/arjunrajlaboratory/base_m1_image:latest ./workers/annotations/random_square/ -t annotations/random_square:latest
+docker build ./workers/annotations/random_square/ -t annotations/random_square:latest --build-arg BASE_IMAGE=ghcr.io/arjunrajlaboratory/base_m1_image:latest
+
+
+docker build ./workers/properties/lines/line_length_worker/ -t annotations/random_square:latest --build-arg BASE_IMAGE=ghcr.io/arjunrajlaboratory/base_m1_image:latest

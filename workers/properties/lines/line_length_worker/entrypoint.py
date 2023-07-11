@@ -6,6 +6,14 @@ import annotation_client.workers as workers
 
 import cv2 as cv
 import numpy as np
+import math
+
+def calculate_distance(p1, p2):
+    return math.sqrt((p2['x'] - p1['x'])**2 + (p2['y'] - p1['y'])**2 + (p2['z'] - p1['z'])**2)
+
+def total_length(line):
+    coordinates = line['coordinates']
+    return sum(calculate_distance(coordinates[i], coordinates[i+1]) for i in range(len(coordinates)-1))
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -23,23 +31,15 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    annotationList = workerClient.get_annotation_list_by_shape('line', limit=0)
 
     # We need at least one annotation
     if len(annotationList) == 0:
         return
 
-    from shapely.geometry import Polygon
-
     for annotation in annotationList:
-
-        #polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']], dtype=int)
-        polygon = np.array([list(coordinate.values())[0:2] for coordinate in annotation['coordinates']], dtype=int)
-        poly = Polygon(polygon)
-
-        #area = cv.contourArea(polygon)
-
-        workerClient.add_annotation_property_values(annotation, float(poly.centroid.x))
+        workerClient.add_annotation_property_values(annotation, total_length(annotation))
+        #print(f"Added property value for annotation {annotation['_id']} with value {total_length(annotation)}")
 
 
 if __name__ == '__main__':
