@@ -1,5 +1,7 @@
 
-FROM ghcr.io/arjunrajlaboratory/base_m1_image:latest
+# BASE_IMAGE default is x86
+ARG BASE_IMAGE=ghcr.io/arjunrajlaboratory/base_x86_image:latest
+FROM $BASE_IMAGE
 
 # Here, the idea is to derive from the base image, and then install the dependencies. We use update instead of create.
 COPY ./environment.yml /
