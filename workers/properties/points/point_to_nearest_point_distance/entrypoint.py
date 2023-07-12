@@ -15,18 +15,17 @@ def total_length(line):
     coordinates = line['coordinates']
     return sum(calculate_distance(coordinates[i], coordinates[i+1]) for i in range(len(coordinates)-1))
 
-### UPDATE ME
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     # Available types: number, text, tags, layer
     interface = {
-        'Tags of points to count': {
+        'Tags of points to measure distance to': {
             'type': 'tags'
         },
-        'Exact tag match?': {
+        'Target tag match': {
             'type': 'select',
-            'items': ['Yes', 'No'],
+            'items': ['Any', 'Exact'],
             'default': 'Yes'
         },
     }
@@ -50,15 +49,24 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('line', limit=0)
+    # First, let's get a list of all point annotations
+    annotationList = workerClient.get_annotation_list_by_shape('point', limit=0)
+    
+    # Source points here, filtered by main instantiating interface
+    filteredPointList = annotation_tools.get_annotations_with_tags(annotationList,params['tags']['tags'],exclusive=params['tags']['exclusive'])
+
+    # Target points here, filtered by worker interface
+    workerInterface = params['workerInterface']
+    tags = set(workerInterface.get('Tags of points to count', None))
+    exclusive = workerInterface['Target tag match'] == 'Exact'
+    targetPointList = annotation_tools.get_annotations_with_tags(annotationList,tags,exclusive=exclusive)
 
     # We need at least one annotation
-    if len(annotationList) == 0:
+    if len(filteredPointList) == 0:
         return
 
-    for annotation in annotationList:
+    for annotation in filteredPointList:
         workerClient.add_annotation_property_values(annotation, total_length(annotation))
-        #print(f"Added property value for annotation {annotation['_id']} with value {total_length(annotation)}")
 
 
 if __name__ == '__main__':

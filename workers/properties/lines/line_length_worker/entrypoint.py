@@ -34,7 +34,6 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('line', limit=0)
-    print(params['tags']['tags'])
 
     filteredLineList = annotation_tools.get_annotations_with_tags(annotationList,params['tags']['tags'],exclusive=params['tags']['exclusive'])
 
