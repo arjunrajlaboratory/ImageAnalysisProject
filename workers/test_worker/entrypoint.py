@@ -62,6 +62,11 @@ def interface(image, apiUrl, token):
             'default': 3,
             'required': False,
         },
+        'My checkbox property': {
+            'type': 'checkbox',
+            'default': True,
+            'required': False,
+        },
     }
     # Send the interface object to the server
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)

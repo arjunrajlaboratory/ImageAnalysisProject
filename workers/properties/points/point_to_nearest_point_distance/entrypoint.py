@@ -28,6 +28,11 @@ def interface(image, apiUrl, token):
             'items': ['Any', 'Exact'],
             'default': 'Yes'
         },
+        'Connect across': {
+            'type': 'checkbox',
+            'items': ['Any', 'Exact'],
+            'default': 'Yes'
+        },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
