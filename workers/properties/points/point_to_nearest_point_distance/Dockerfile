@@ -12,8 +12,8 @@ COPY ./entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
-      annotationShape="line" \
-      interfaceName="length" \
-      interfaceCategory="Morphology"
+      annotationShape="point" \
+      interfaceName="Distance from point to nearest other point" \
+      interfaceCategory="Distance"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

@@ -47,3 +47,34 @@ def get_annotations_with_tag(elements, tag, exclusive=False):
             if tag in element.get('tags'):
                 result.append(element)
     return result
+
+
+def find_matching_annotations_by_location(source, target_list, Time=True, XY=True, Z=True):
+    """
+    This function filters the target_list based on the 'location' of the source point.
+    The function parameters 'Time', 'XY', and 'Z' can be set to True or False to specify whether these 'location' attributes need to be matched.
+    By default, all of these parameters are set to True, meaning all 'location' attributes need to match.
+
+    Parameters:
+    source (dict): The source point annotation object
+    target_list (list): The list of target point annotation objects
+    Time (bool): Specifies whether the 'Time' attribute of 'location' needs to be matched. Default is True.
+    XY (bool): Specifies whether the 'XY' attribute of 'location' needs to be matched. Default is True.
+    Z (bool): Specifies whether the 'Z' attribute of 'location' needs to be matched. Default is True.
+
+    Returns:
+    list: The filtered list of target point annotation objects that match the specified 'location' attributes
+
+    Example of usage:
+    1) Matching all 'location' attributes:
+    source = {...}  # source point annotation object
+    target_list = [...]  # target point annotation list
+    matching_annotations = find_matching_annotations_by_location(source, target_list)
+
+    2) Matching specified 'location' attributes (in this case, 'Time' and 'XY'):
+    source = {...}  # source point annotation object
+    target_list = [...]  # target point annotation list
+    matching_annotations = find_matching_annotations_by_location(source, target_list, Time=True, XY=True, Z=False)
+    """
+    params = {'Time': Time, 'XY': XY, 'Z': Z}
+    return [target for target in target_list if all(source['location'].get(attr) == target['location'].get(attr) for attr, value in params.items() if value)]

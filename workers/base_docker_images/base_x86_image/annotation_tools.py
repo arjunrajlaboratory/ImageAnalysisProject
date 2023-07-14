@@ -47,3 +47,37 @@ def get_annotations_with_tag(elements, tag, exclusive=False):
             if tag in element.get('tags'):
                 result.append(element)
     return result
+
+
+def find_matching_annotations_by_location(source, target_list, **kwargs):
+    """
+    This function filters the target_list based on the 'location' of the source point.
+    If no arguments are provided, it will match all 'location' attributes.
+    If keyword arguments are specified (for example, Time=True, XY=True), 
+    it will match only the specified 'location' attributes.
+
+    Parameters:
+    source (dict): The source annotation object
+    target_list (list): The list of target annotation objects
+    kwargs: Optional keyword arguments specifying the 'location' attributes to match
+
+    Returns:
+    list: The filtered list of target point annotation objects that match the specified 'location' attributes
+
+    Example of usage:
+    1) Matching all 'location' attributes:
+    source = {...}  # source point annotation object
+    target_list = [...]  # target point annotation list
+    matching_annotations = find_matching_annotations_by_location(source, target_list)
+
+    2) Matching specified 'location' attributes (in this case, 'Time' and 'XY'):
+    source = {...}  # source point annotation object
+    target_list = [...]  # target point annotation list
+    matching_annotations = find_matching_annotations_by_location(source, target_list, Time=True, XY=True)
+    """
+    if not kwargs:
+        # If no kwargs provided, all 'location' attributes need to match
+        return [target for target in target_list if source['location'] == target['location']]
+    else:
+        # Only specified 'location' attributes need to match
+        return [target for target in target_list if all(source['location'].get(attr) == target['location'].get(attr) for attr in kwargs.keys())]
