@@ -116,12 +116,12 @@ def compute(datasetId, apiUrl, token, params):
 
         # TODO: will need to iterate or stitch and handle roi and proper intensities
 
-        if nuclei_channel is not None:
+        if (nuclei_channel is not None) and (nuclei_channel > -1):
             nuclei_frame = datasetClient.coordinatesToFrameIndex(xy, z, time, nuclei_channel)
             nuclei_image = datasetClient.getRegion(datasetId, frame=nuclei_frame).squeeze()
         else:
             nuclei_image = None
-        if cytoplasm_channel is not None:
+        if (cytoplasm_channel is not None) and (cytoplasm_channel > -1):
             cytoplasm_frame = datasetClient.coordinatesToFrameIndex(xy, z, time, cytoplasm_channel)
             cytoplasm_image = datasetClient.getRegion(datasetId, frame=cytoplasm_frame).squeeze()
         else:
