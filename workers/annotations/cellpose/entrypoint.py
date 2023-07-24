@@ -44,6 +44,18 @@ def interface(image, apiUrl, token):
             'max': 200,
             'default': 10
         },
+        'Tile Size': {
+            'type': 'number',
+            'min': 0,
+            'max': 1000,
+            'default': 256
+        },
+        'Tile Overlap': {
+            'type': 'number',
+            'min': 0,
+            'max': 1,
+            'default': 0.1
+        },
         'Batch XY': {
             'type': 'text'
         },
@@ -87,6 +99,8 @@ def compute(datasetId, apiUrl, token, params):
     nuclei_channel = workerInterface.get('Nuclei Channel', None)
     cytoplasm_channel = workerInterface.get('Cytoplasm Channel', None)
     diameter = float(workerInterface['Diameter'])
+    tile_size = int(workerInterface['Tile Size'])
+    tile_overlap = float(workerInterface['Tile Overlap'])
     batch_xy = workerInterface.get('Batch XY', None)
     batch_z = workerInterface.get('Batch Z', None)
     batch_time = workerInterface.get('Batch Time', None)
@@ -143,7 +157,7 @@ def compute(datasetId, apiUrl, token, params):
 
         cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels})
         dt = deeptile.load(image)
-        image = dt.get_tiles(tile_size=(544, 544))
+        image = dt.get_tiles(tile_size=(tile_size, tile_size), overlap=(tile_overlap, tile_overlap))
 
         masks = cellpose(image)
         masks = stitch_masks(masks)
