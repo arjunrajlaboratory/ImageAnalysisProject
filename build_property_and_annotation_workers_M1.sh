@@ -5,6 +5,9 @@ docker build ./workers/properties/blobs/blob_perimeter_worker_M1/ -t properties/
 docker build ./workers/properties/blobs/blob_point_count_3D_projection_worker_M1/ -t properties/blob_point_count_3d_projection_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count" --label "interfaceCategory=Count"
 
 
+docker build ./workers/properties/blobs/blob_metrics_worker_M1/ -t properties/blob_metrics_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Blob metrics" --label "interfaceCategory=Metrics"
+
+
 docker build ./workers/properties/blobs/blob_intensity_mean_worker/ -t properties/blob_intensity_mean_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Intensity Mean" --label "interfaceCategory=Intensity"
 docker build ./workers/properties/blobs/blob_intensity_sum_worker/ -t properties/blob_intensity_sum_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Intensity Sum" --label "interfaceCategory=Intensity"
 docker build ./workers/properties/blobs/blob_point_count_worker/ -t properties/blob_point_count_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count" --label "interfaceCategory=Count"
