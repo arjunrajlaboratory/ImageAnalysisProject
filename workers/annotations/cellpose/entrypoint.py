@@ -12,8 +12,7 @@ import annotation_client.workers as workers
 import numpy as np  # library for array manipulation
 import deeptile
 from deeptile.extensions.segmentation import cellpose_segmentation
-from deeptile.extensions.stitch import stitch_masks
-from rasterio.features import shapes
+from deeptile.extensions.stitch import stitch_polygons
 
 import utils
 
@@ -155,18 +154,17 @@ def compute(datasetId, apiUrl, token, params):
                 image = nuclei_image
                 channels = (0, 0)
 
-        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels})
+        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
         dt = deeptile.load(image)
         image = dt.get_tiles(tile_size=(tile_size, tile_size), overlap=(tile_overlap, tile_overlap))
 
-        masks = cellpose(image)
-        masks = stitch_masks(masks)
-        polygons = shapes(masks.astype(np.int32), masks > 0)
+        polygons = cellpose(image)
+        polygons = stitch_polygons(polygons)
 
         # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
-        print(f"Uploading {masks.max()} annotations")
+        print(f"Uploading {len(polygons)} annotations")
         count = 0
-        for polygon, _ in polygons:
+        for polygon in polygons:
             annotation = {
                 "tags": tags,
                 "shape": "polygon",
@@ -177,7 +175,7 @@ def compute(datasetId, apiUrl, token, params):
                     "Time": time
                 },
                 "datasetId": datasetId,
-                "coordinates": [{"x": float(x), "y": float(y), "z": 0} for x, y in polygon['coordinates'][0]]
+                "coordinates": [{"x": float(x), "y": float(y), "z": 0} for x, y in polygon]
             }
             annotationClient.createAnnotation(annotation)
             # if count > 1000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
