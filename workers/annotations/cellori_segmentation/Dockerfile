@@ -40,10 +40,15 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
-RUN pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN pip install --upgrade "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 RUN git clone https://github.com/zjniu/Cellori
 RUN pip install -e /Cellori
+
+RUN conda install -c conda-forge cudatoolkit=11.8.0
+RUN pip install nvidia-cudnn-cu11==8.6.0.163
+
+COPY ./utils.py /
 COPY ./entrypoint.py /
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
