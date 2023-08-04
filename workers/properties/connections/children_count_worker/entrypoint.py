@@ -59,7 +59,7 @@ def compute(datasetId, apiUrl, token, params):
             connectionList.append(annotationClient.getAnnotationConnectionById(id))
     else:
         # Get all point annotations from the dataset
-        connectionList = annotationClient.getAnnotationConnections(datasetId, limit=0)
+        connectionList = annotationClient.getAnnotationConnections(datasetId, limit=1e6)
 
     filteredConnectionList = []
     for connection in connectionList:
