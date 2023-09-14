@@ -53,8 +53,17 @@ def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', '
     # Empty DataFrame to store results
     child_to_parent = pd.DataFrame(columns=['child_id', 'nearest_parent_id'])
 
+    # Get all the groups (this operation does not actually compute the groups yet, but prepares the grouping)
+    grouped = child_df.groupby(groupby_cols)
+    
+    # Determine the total number of groups
+    total_groups = len(grouped)
+    
+    # Start the counter for processed groups
+    processed_groups = 0
+
     # Group by unique location combinations
-    for values, group in child_df.groupby(groupby_cols):
+    for values, group in grouped:
         
         # Build a dynamic query string
         query_str = ' & '.join([f"{col} == {val}" for col, val in zip(groupby_cols, values)])
@@ -87,6 +96,15 @@ def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', '
         
         # Append the results to the main DataFrame
         child_to_parent = pd.concat([child_to_parent, temp_df], ignore_index=True)
+
+        # Increment the counter of processed groups
+        processed_groups += 1
+
+        # Compute the fraction of work done
+        fraction_done = processed_groups / total_groups
+
+        # Send the progress update
+        sendProgress(fraction_done, "Computing connections", f"{processed_groups} of {total_groups} groups processed")
 
     return child_to_parent
 
