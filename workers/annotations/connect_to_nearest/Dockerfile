@@ -1,8 +1,5 @@
 FROM ubuntu:jammy as base
 LABEL isUPennContrastWorker=True
-ARG CHIP_TYPE=default # Default to x86
-ARG INSTALLER_PATH="/root/miniforge3/bin"
-ARG INSTALLER_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \
@@ -20,21 +17,16 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libpython3-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Set values for AppleSilicon
-RUN if [ "$CHIP_TYPE" = "AppleSilicon" ]; then \
-      export INSTALLER_PATH="/root/miniconda3/bin"; \
-      export INSTALLER_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh"; \
-    fi
+# The below is for the x86 and should be changed for other architectures
+ENV PATH="/root/miniforge3/bin:$PATH"
+ARG PATH="/root/miniforge3/bin:$PATH"
 
-# Set the PATH ENV
-ENV PATH="${INSTALLER_PATH}:$PATH"
-ARG PATH="${INSTALLER_PATH}:$PATH"
-
-# Install the required package
-RUN wget $INSTALLER_URL \
+RUN wget \
+    https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
     && mkdir /root/.conda \
-    && bash $(basename $INSTALLER_URL) -b \
-    && rm -f $(basename $INSTALLER_URL)
+    && bash Miniforge3-Linux-x86_64.sh -b \
+    && rm -f Miniforge3-Linux-x86_64.sh
+# END x86 specific
 
 FROM base as build
 
