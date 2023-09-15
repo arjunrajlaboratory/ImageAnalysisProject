@@ -35,7 +35,7 @@ SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 # Install the annotation utilities
 RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 WORKDIR /ImageAnalysisProject
-RUN pip install annotation_utilities
+RUN pip install ./annotation_utilities
 
 WORKDIR /
 RUN git clone https://github.com/Kitware/UPennContrast/
