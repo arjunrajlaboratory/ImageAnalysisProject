@@ -17,6 +17,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libpython3-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# The below is for the M1 Macs and should be changed for other architectures
 ENV PATH="/root/miniconda3/bin:$PATH"
 ARG PATH="/root/miniconda3/bin:$PATH"
 
@@ -25,6 +26,7 @@ RUN wget \
     && mkdir /root/.conda \
     && bash Miniconda3-latest-Linux-aarch64.sh -b \
     && rm -f Miniconda3-latest-Linux-aarch64.sh
+# END M1 Mac specific
 
 FROM base as build
 
@@ -32,27 +34,18 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-# Install the annotation utilities
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-WORKDIR /ImageAnalysisProject/annotation_utilities
-RUN pip install .
-
 RUN git clone https://github.com/Kitware/UPennContrast/
 WORKDIR /UPennContrast
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
 
+# The below should really be compiled into an API of some sort, but for now, I'll just copy the files
+COPY ./batch_argument_parser.py /
+COPY ./point_in_polygon.py /
+COPY ./annotation_tools.py /
 
-#COPY ./annotation_tools.py /
-#COPY ./batch_argument_parser.py /
-COPY ./entrypoint.py /
+# COPY ./entrypoint.py /
 
-LABEL isUPennContrastWorker="" \
-      isAnnotationWorker="" \
-      interfaceName="Connect to Nearest" \
-      interfaceCategory="Connections" \
-      description="Connects objects to each other based on distance"
-
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
-
+# I suppose I could just keep this statement and let entrypoint.py be the default entrypoint, and it could be overridden
+# ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]

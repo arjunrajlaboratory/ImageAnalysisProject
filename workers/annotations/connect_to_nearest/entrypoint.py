@@ -13,7 +13,8 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 
-import annotation_tools
+#import annotation_tools
+import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
 import pandas as pd
