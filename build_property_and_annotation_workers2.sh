@@ -7,10 +7,10 @@ echo "Architecture: $ARCH"
 
 # Set Dockerfile based on architecture
 if [ "$ARCH" == "arm64" ]; then
-    ECHO "Compiling for M1 architecture"
+    echo "Compiling for M1 architecture"
     DOCKERFILE="Dockerfile_M1"
 else
-    ECHO "Compiling for Intel architecture"
+    echo "Compiling for Intel architecture"
     DOCKERFILE="Dockerfile"
 fi
 
