@@ -46,6 +46,9 @@ def compute(datasetId, apiUrl, token, params):
     number_annotations = len(annotationList)
     for i, annotation in enumerate(annotationList):
 
+        # This part is horrendously inefficient, but works for now. It is literally reloading the entire image for every annotation.
+        # A better way to do it would be to group annotations by the "location" field, then load the image once for each location
+        # and process all annotations in that group at once.
         image = workerClient.get_image_for_annotation(annotation)
 
         if image is None:
