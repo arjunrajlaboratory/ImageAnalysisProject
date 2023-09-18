@@ -3,6 +3,7 @@ import json
 import sys
 
 import annotation_client.workers as workers
+from annotation_client.utils import sendProgress
 
 from shapely.geometry import Polygon
 
@@ -27,7 +28,10 @@ def compute(datasetId, apiUrl, token, params):
     if len(annotationList) == 0:
         return
 
-    for annotation in annotationList:
+
+    number_annotations = len(annotationList)
+    for i, annotation in enumerate(annotationList):
+    #for annotation in annotationList:
 
         polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
         poly = Polygon(polygon_coords)
@@ -37,7 +41,7 @@ def compute(datasetId, apiUrl, token, params):
             'Perimeter': float(poly.length),
             'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)}
         }
-
+        sendProgress((i+1)/number_annotations, 'Computing blob metrics', f"Processing annotation {i+1}/{number_annotations}")
         workerClient.add_annotation_property_values(annotation, prop)
 
 if __name__ == '__main__':

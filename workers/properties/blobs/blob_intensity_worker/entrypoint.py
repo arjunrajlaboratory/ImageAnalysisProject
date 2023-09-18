@@ -3,6 +3,7 @@ import json
 import sys
 
 import annotation_client.workers as workers
+from annotation_client.utils import sendProgress
 
 import numpy as np
 from skimage import draw
