@@ -1,0 +1,10 @@
+name: worker
+dependencies:
+- python
+- pip
+- imageio
+- opencv
+- shapely
+- scikit-image
+# - pip:
+#   - 
