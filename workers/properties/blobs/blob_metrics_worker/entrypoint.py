@@ -31,7 +31,6 @@ def compute(datasetId, apiUrl, token, params):
 
     number_annotations = len(annotationList)
     for i, annotation in enumerate(annotationList):
-    #for annotation in annotationList:
 
         polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
         poly = Polygon(polygon_coords)

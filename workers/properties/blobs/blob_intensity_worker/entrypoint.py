@@ -43,7 +43,8 @@ def compute(datasetId, apiUrl, token, params):
     if len(annotationList) == 0:
         return
 
-    for annotation in annotationList:
+    number_annotations = len(annotationList)
+    for i, annotation in enumerate(annotationList):
 
         image = workerClient.get_image_for_annotation(annotation)
 
@@ -54,6 +55,7 @@ def compute(datasetId, apiUrl, token, params):
         mask = draw.polygon2mask(image.shape, polygon)
         intensity = np.mean(image[mask])
 
+        sendProgress((i+1)/number_annotations, 'Computing blob intensity', f"Processing annotation {i+1}/{number_annotations}")
         workerClient.add_annotation_property_values(annotation, float(intensity))
 
 
