@@ -4,7 +4,22 @@ import sys
 
 import annotation_client.workers as workers
 
-from shapely.geometry import Polygon
+import numpy as np
+from skimage import draw
+
+
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Channel': {
+            'type': 'channel'
+        }
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
+
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -29,16 +44,17 @@ def compute(datasetId, apiUrl, token, params):
 
     for annotation in annotationList:
 
-        polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
-        poly = Polygon(polygon_coords)
+        image = workerClient.get_image_for_annotation(annotation)
 
-        prop = {
-            'Area': float(poly.area),
-            'Perimeter': float(poly.length),
-            'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)}
-        }
+        if image is None:
+            continue
 
-        workerClient.add_annotation_property_values(annotation, prop)
+        polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
+        mask = draw.polygon2mask(image.shape, polygon)
+        intensity = np.mean(image[mask])
+
+        workerClient.add_annotation_property_values(annotation, float(intensity))
+
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
@@ -62,3 +78,5 @@ if __name__ == '__main__':
     match args.request:
         case 'compute':
             compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)
