@@ -157,7 +157,7 @@ def compute(datasetId, apiUrl, token, params):
     max_distance = float(workerInterface['Max distance (pixels)'])
     connect_across = workerInterface['Connect sequentially across']
 
-    print(parent_tag, child_tag, max_distance, connect_across_z, connect_across_t)
+    print(f"Connecting {object_tag} objects across {connect_across} with a max distance of {max_distance} pixels")
     
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
@@ -174,51 +174,15 @@ def compute(datasetId, apiUrl, token, params):
     #allAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 1000000)
     allAnnotationList = pointAnnotationList + blobAnnotationList# + lineAnnotationList
     
-    parentList = annotation_tools.get_annotations_with_tags(allAnnotationList,parent_tag,exclusive=False)
-    childList = annotation_tools.get_annotations_with_tags(allAnnotationList,child_tag,exclusive=False)
-    child_data = extract_spatial_annotation_data(childList)
-    parent_data = extract_spatial_annotation_data(parentList)
+    objectList = annotation_tools.get_annotations_with_tags(allAnnotationList,object_tag,exclusive=False)
+    object_data = extract_spatial_annotation_data(objectList)
 
-    child_df = pd.DataFrame(child_data)
-    parent_df = pd.DataFrame(parent_data)
+    object_df = pd.DataFrame(object_data)
 
-    gdf_child = gpd.GeoDataFrame(child_df, geometry=gpd.points_from_xy(child_df.x, child_df.y))
-    gdf_parent = gpd.GeoDataFrame(parent_df, geometry=gpd.points_from_xy(parent_df.x, parent_df.y))
+    gdf_object = gpd.GeoDataFrame(object_df, geometry=gpd.points_from_xy(object_df.x, object_df.y))
 
     # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
     groupby_cols = ['XY']
-
-    # Add the 'Time' and 'Z' columns based on the boolean flags
-    if not connect_across_t:
-        groupby_cols.append('Time')
-    if not connect_across_z:
-        groupby_cols.append('Z')
-
-    # Compute the child to parent mapping
-    child_to_parent = compute_nearest_child_to_parent(gdf_child, gdf_parent, groupby_cols=groupby_cols, max_distance=max_distance)
-    
-    myNewConnections = []
-    combined_tags = list(set(parent_tag + child_tag))
-
-    for index, row in child_to_parent.iterrows():
-        child_id = row['child_id']
-        parent_id = row['nearest_parent_id']
-        
-        myNewConnections.append({
-            'datasetId': datasetId,  # assuming you've already set this variable elsewhere in your code
-            'parentId': parent_id,
-            'childId': child_id,
-            'tags': combined_tags
-        })
-
-    annotationClient.createMultipleConnections(myNewConnections)
-
-    
-    # Make a loop from 1 to 1000 and send progress updates
-    # n = 1000
-    # for i in range(1, n+1):
-    #     sendProgress((i+1)/n, "Computing connections", f"{i+1} of {n}")
-    #     time.sleep(0.003)
 
     start_time = timeit.default_timer()
     end_time = timeit.default_timer()
