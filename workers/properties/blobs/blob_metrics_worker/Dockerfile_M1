@@ -50,7 +50,7 @@ COPY ./entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
-      annotationShape="blob" \
+      annotationShape="polygon" \
       interfaceName="Blob metrics" \
       interfaceCategory="Morphology"
 
