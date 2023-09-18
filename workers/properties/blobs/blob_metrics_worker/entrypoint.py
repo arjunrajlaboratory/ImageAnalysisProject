@@ -32,19 +32,16 @@ def compute(datasetId, apiUrl, token, params):
 
     for annotation in annotationList:
 
-        polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']], dtype=int)
-        area = cv.contourArea(polygon)
+        polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
+        poly = Polygon(polygon_coords)
 
-        polygon = np.array([list(coordinate.values())[0:2] for coordinate in annotation['coordinates']], dtype=int)
-        poly = Polygon(polygon)
-
-        prop = {'Area': float(area), 'Perimeter': float(poly.length),'Centroid':{'x':float(poly.centroid.x),'y':float(poly.centroid.y)}}
-
-        #workerClient.add_annotation_property_values(annotation, float(poly.length))
-
+        prop = {
+            'Area': float(poly.area),
+            'Perimeter': float(poly.length),
+            'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)}
+        }
 
         workerClient.add_annotation_property_values(annotation, prop)
-
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
