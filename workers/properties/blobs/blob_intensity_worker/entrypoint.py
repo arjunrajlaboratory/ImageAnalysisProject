@@ -45,10 +45,6 @@ def compute(datasetId, apiUrl, token, params):
 
     number_annotations = len(annotationList)
     for i, annotation in enumerate(annotationList):
-
-        # This part is horrendously inefficient, but works for now. It is literally reloading the entire image for every annotation.
-        # A better way to do it would be to group annotations by the "location" field, then load the image once for each location
-        # and process all annotations in that group at once.
         image = workerClient.get_image_for_annotation(annotation)
 
         if image is None:
@@ -56,10 +52,28 @@ def compute(datasetId, apiUrl, token, params):
 
         polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
         mask = draw.polygon2mask(image.shape, polygon)
-        intensity = np.mean(image[mask])
+        intensities = image[mask]
 
+        # Calculating the desired metrics
+        mean_intensity = np.mean(intensities)
+        max_intensity = np.max(intensities)
+        min_intensity = np.min(intensities)
+        median_intensity = np.median(intensities)
+        q25_intensity = np.percentile(intensities, 25)
+        q75_intensity = np.percentile(intensities, 75)
+        total_intensity = np.sum(intensities)
+
+        prop = {
+            'MeanIntensity': float(mean_intensity),
+            'MaxIntensity': float(max_intensity),
+            'MinIntensity': float(min_intensity),
+            'MedianIntensity': float(median_intensity),
+            '25thPercentileIntensity': float(q25_intensity),
+            '75thPercentileIntensity': float(q75_intensity),
+            'TotalIntensity': float(total_intensity),
+        }
         sendProgress((i+1)/number_annotations, 'Computing blob intensity', f"Processing annotation {i+1}/{number_annotations}")
-        workerClient.add_annotation_property_values(annotation, float(intensity))
+        workerClient.add_annotation_property_values(annotation, prop)
 
 
 if __name__ == '__main__':

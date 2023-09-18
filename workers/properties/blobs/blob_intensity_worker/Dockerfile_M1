@@ -51,7 +51,7 @@ COPY ./entrypoint.py /
 LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="polygon" \
-      interfaceName="Blob intensity measurements" \
+      interfaceName="Blob int measurements" \
       interfaceCategory="Intensity"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]
