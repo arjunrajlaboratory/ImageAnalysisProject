@@ -106,6 +106,12 @@ def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', '
 
     return child_to_parent
 
+def get_previous_objects(current_object, dataframe, connect_across):
+    if connect_across == 'Time':
+        return dataframe[dataframe['Time'] == current_object['Time'] - 1]
+    elif connect_across == 'Z':
+        return dataframe[dataframe['Z'] == current_object['Z'] - 1]
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -116,8 +122,8 @@ def interface(image, apiUrl, token):
         },
         'Connect sequentially across': {
             'type': 'select',
-            'items': ['T', 'Z'],
-            'default': 'T'
+            'items': ['Time', 'Z'],
+            'default': 'Time'
         },
         'Max distance (pixels)': {
             'type': 'number',
@@ -184,10 +190,37 @@ def compute(datasetId, apiUrl, token, params):
     # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
     groupby_cols = ['XY']
 
-    start_time = timeit.default_timer()
-    end_time = timeit.default_timer()
-    execution_time = end_time - start_time
-    print(f"Executed the code in: {execution_time} seconds")
+    # Add the 'Time' and 'Z' columns based on the boolean flags
+    if connect_across == 'Time':
+        groupby_cols.append('Z')
+    elif connect_across == 'Z':
+        groupby_cols.append('Time')
+
+    # Sort the gdf_object based on the connect_across column in descending order
+    gdf_object = gdf_object.sort_values(by=connect_across, ascending=False)
+
+    myNewConnections = []
+    combined_tags = list(set(object_tag))
+
+    for index, current_object in gdf_object.iterrows():
+        previous_objects = get_previous_objects(current_object, gdf_object, connect_across)
+        if not previous_objects.empty:
+            # Use the compute_nearest_child_to_parent function to find the nearest previous object
+            nearest_object_df = compute_nearest_child_to_parent(gdf_object.loc[[index]], previous_objects, groupby_cols=groupby_cols, max_distance=max_distance)
+            
+            for _, row in nearest_object_df.iterrows():
+                child_id = row['child_id']  # the current object is the child (in later time)
+                parent_id = row['nearest_parent_id']  # the nearest previous object is the parent (in earlier time)
+
+                myNewConnections.append({
+                    'datasetId': datasetId,  # assuming you've already set this variable elsewhere in your code
+                    'parentId': parent_id,
+                    'childId': child_id,
+                    'tags': combined_tags
+                })
+
+    annotationClient.createMultipleConnections(myNewConnections)
+
 
 
 if __name__ == '__main__':
