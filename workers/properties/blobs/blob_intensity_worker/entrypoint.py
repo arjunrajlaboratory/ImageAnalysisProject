@@ -41,7 +41,6 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     channel = params['workerInterface']['Channel']
-    print(channel)
     datasetClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     # Following line should be updated to get just the annotations with specified tags
