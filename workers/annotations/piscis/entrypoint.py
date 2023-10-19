@@ -47,7 +47,7 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 9,
-            'default': 1.1
+            'default': 1.0
         },
         'Assign to Nearest Z': {
             'type': 'select',
