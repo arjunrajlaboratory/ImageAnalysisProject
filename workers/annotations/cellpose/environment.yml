@@ -4,6 +4,7 @@ dependencies:
 - pip
 - imageio
 - rasterio
+- shapely
 - pip:
   - cellpose
   - deeptile

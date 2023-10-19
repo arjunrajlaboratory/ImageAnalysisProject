@@ -14,6 +14,8 @@ import deeptile
 from deeptile.extensions.segmentation import cellpose_segmentation
 from deeptile.extensions.stitch import stitch_polygons
 
+from shapely.geometry import Polygon
+
 import utils
 
 
@@ -63,7 +65,13 @@ def interface(image, apiUrl, token):
         },
         'Batch Time': {
             'type': 'text'
-        }
+        },
+        'Padding': {
+            'type': 'number',
+            'min': -20,
+            'max': 20,
+            'default': 0,
+        },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
@@ -103,6 +111,7 @@ def compute(datasetId, apiUrl, token, params):
     batch_xy = workerInterface.get('Batch XY', None)
     batch_z = workerInterface.get('Batch Z', None)
     batch_time = workerInterface.get('Batch Time', None)
+    padding = int(workerInterface['Padding'])
 
     batch_xy = utils.process_range_list(batch_xy)
     batch_z = utils.process_range_list(batch_z)
@@ -165,6 +174,9 @@ def compute(datasetId, apiUrl, token, params):
         print(f"Uploading {len(polygons)} annotations")
         count = 0
         for polygon in polygons:
+            shapely_polygon = Polygon(polygon)
+            dilated_polygon = shapely_polygon.buffer(padding)
+            dilated_polygon_coords = list(dilated_polygon.exterior.coords)
             annotation = {
                 "tags": tags,
                 "shape": "polygon",
@@ -175,7 +187,7 @@ def compute(datasetId, apiUrl, token, params):
                     "Time": time
                 },
                 "datasetId": datasetId,
-                "coordinates": [{"x": float(x), "y": float(y), "z": 0} for x, y in polygon]
+                "coordinates": [{"x": float(x), "y": float(y), "z": 0} for x, y in dilated_polygon_coords]
             }
             annotationClient.createAnnotation(annotation)
             # if count > 1000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
