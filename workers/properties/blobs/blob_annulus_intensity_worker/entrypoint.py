@@ -1,13 +1,18 @@
 import argparse
 import json
 import sys
+import timeit
+
 
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
+import annotation_client.tiles as tiles
 
 import numpy as np
 from skimage import draw
 from skimage import morphology
+from collections import defaultdict
+
 
 
 def interface(image, apiUrl, token):
@@ -45,50 +50,77 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
-
+    
+    channel = params['workerInterface']['Channel']
+    datasetClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
     annulus_radius = float(params['workerInterface']['Radius'])
 
     # We need at least one annotation
     if len(annotationList) == 0:
         return
+    
+    start_time = timeit.default_timer()
 
+    grouped_annotations = defaultdict(list)
+    for annotation in annotationList:
+        location_key = (annotation['location']['Time'], annotation['location']['Z'], annotation['location']['XY'])
+        grouped_annotations[location_key].append(annotation)
+    
     number_annotations = len(annotationList)
-    for i, annotation in enumerate(annotationList):
-        image = workerClient.get_image_for_annotation(annotation)
+    
+    # For reporting progress
+    processed_annotations = 0
+
+    
+
+    for location_key, annotations in grouped_annotations.items():
+        time, z, xy = location_key
+        frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
+        image = datasetClient.getRegion(datasetId, frame=frame)
+        image = image.squeeze()
 
         if image is None:
             continue
 
-        polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
-        mask = draw.polygon2mask(image.shape, polygon)
+        # Compute properties for all annotations at that location
+        for annotation in annotations:
+            polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
+            mask = draw.polygon2mask(image.shape, polygon)
 
-        # Generate annulus
-        selem = morphology.disk(annulus_radius)
-        dilated_mask = morphology.binary_dilation(mask, selem)
-        annulus_mask = dilated_mask & ~mask  # Subtracting the original mask from dilated mask
+            # Generate annulus
+            selem = morphology.disk(annulus_radius)
+            dilated_mask = morphology.binary_dilation(mask, selem)
+            annulus_mask = dilated_mask & ~mask  # Subtracting the original mask from dilated mask
 
-        intensities = image[annulus_mask]
+            intensities = image[annulus_mask]
 
-        # Calculating the desired metrics
-        mean_intensity = np.mean(intensities)
-        max_intensity = np.max(intensities)
-        min_intensity = np.min(intensities)
-        median_intensity = np.median(intensities)
-        q25_intensity = np.percentile(intensities, 25)
-        q75_intensity = np.percentile(intensities, 75)
-        total_intensity = np.sum(intensities)
 
-        prop = {
-            'MeanIntensity': float(mean_intensity),
-            'MaxIntensity': float(max_intensity),
-            'MinIntensity': float(min_intensity),
-            'MedianIntensity': float(median_intensity),
-            '25thPercentileIntensity': float(q25_intensity),
-            '75thPercentileIntensity': float(q75_intensity),
-            'TotalIntensity': float(total_intensity),
-        }
-        sendProgress((i+1)/number_annotations, 'Computing annulus intensity', f"Processing annotation {i+1}/{number_annotations}")
-        workerClient.add_annotation_property_values(annotation, prop)
+            # Calculating the desired metrics
+            mean_intensity = np.mean(intensities)
+            max_intensity = np.max(intensities)
+            min_intensity = np.min(intensities)
+            median_intensity = np.median(intensities)
+            q25_intensity = np.percentile(intensities, 25)
+            q75_intensity = np.percentile(intensities, 75)
+            total_intensity = np.sum(intensities)
+
+            prop = {
+                'MeanIntensity': float(mean_intensity),
+                'MaxIntensity': float(max_intensity),
+                'MinIntensity': float(min_intensity),
+                'MedianIntensity': float(median_intensity),
+                '25thPercentileIntensity': float(q25_intensity),
+                '75thPercentileIntensity': float(q75_intensity),
+                'TotalIntensity': float(total_intensity),
+            }
+
+            processed_annotations += 1
+            sendProgress(processed_annotations / number_annotations, 'Computing blob intensity', f"Processing annotation {processed_annotations}/{number_annotations}")
+            workerClient.add_annotation_property_values(annotation, prop)
+    
+    end_time = timeit.default_timer()
+    execution_time = end_time - start_time
+    print(f"Executed the code in: {execution_time} seconds")
 
 
 if __name__ == '__main__':
