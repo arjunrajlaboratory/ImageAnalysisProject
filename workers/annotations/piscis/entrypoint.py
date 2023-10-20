@@ -52,7 +52,7 @@ def interface(image, apiUrl, token):
         'Assign to Nearest Z': {
             'type': 'select',
             'items': ['Yes', 'No'],
-            'default': 'No'
+            'default': 'Yes'
         },
         'Batch XY': {
             'type': 'text'
