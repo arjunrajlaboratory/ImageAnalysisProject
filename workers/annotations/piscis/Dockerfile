@@ -42,9 +42,6 @@ RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.t
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 RUN pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
-RUN git clone https://github.com/zjniu/Piscis
-RUN pip install -e /Piscis
-
 COPY ./download_models.py /
 RUN python /download_models.py
 
