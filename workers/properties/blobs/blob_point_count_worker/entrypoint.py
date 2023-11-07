@@ -14,10 +14,10 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
-        'Tags': {
+        'Tags of points to count': {
             'type': 'tags'
         },
-        'Exclusive': {
+        'Exact tag match?': {
             'type': 'select',
             'items': ['Yes', 'No'],
             'default': 'Yes'
@@ -42,8 +42,8 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     workerInterface = params['workerInterface']
-    tags = set(workerInterface.get('Tags', None))
-    exclusive = workerInterface['Exclusive'] == 'Yes'
+    tags = set(workerInterface.get('Tags of points to count', None))
+    exclusive = workerInterface['Exact tag match?'] == 'Yes'
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)

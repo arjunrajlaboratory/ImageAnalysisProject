@@ -39,3 +39,7 @@ docker build -f ./workers/properties/blobs/blob_annulus_intensity_worker/$DOCKER
 echo "Building property worker: blob_point_count_worker"
 docker build -f ./workers/properties/blobs/blob_point_count_worker/$DOCKERFILE -t properties/blob_point_count:latest ./workers/properties/blobs/blob_point_count_worker/
 # docker build -f ./workers/properties/blobs/blob_point_count_worker/Dockerfile_M1 -t properties/blob_point_count:latest ./workers/properties/blobs/blob_point_count_worker/
+
+echo "Building property worker: blob_point_count_3D_projection_worker"
+docker build -f ./workers/properties/blobs/blob_point_count_3D_projection_worker/$DOCKERFILE -t properties/blob_point_count_3d_projection:latest ./workers/properties/blobs/blob_point_count_3D_projection_worker/
+# docker build -f ./workers/properties/blobs/blob_point_count_3D_projection_worker/Dockerfile_M1 -t properties/blob_point_count_3d_projection:latest ./workers/properties/blobs/blob_point_count_3D_projection_worker/
