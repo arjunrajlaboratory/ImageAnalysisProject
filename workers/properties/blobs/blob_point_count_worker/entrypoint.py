@@ -5,7 +5,8 @@ import sys
 import annotation_client.workers as workers
 
 import numpy as np
-from point_in_polygon import point_in_polygon
+# from point_in_polygon import point_in_polygon
+from annotation_utilities.point_in_polygon import point_in_polygon
 
 
 def interface(image, apiUrl, token):

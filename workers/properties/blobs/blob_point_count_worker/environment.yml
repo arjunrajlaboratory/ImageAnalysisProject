@@ -1,6 +1,6 @@
 name: worker
 dependencies:
-- python
+- python=3.10
 - pip
 - imageio
 - numba
