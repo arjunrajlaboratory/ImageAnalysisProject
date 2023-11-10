@@ -4,10 +4,13 @@ import sys
 
 import annotation_client.workers as workers
 
-from point_in_polygon import point_in_polygon
+#from point_in_polygon import point_in_polygon
 from shapely.geometry import Point, Polygon
 
-import annotation_tools
+from annotation_utilities.point_in_polygon import point_in_polygon
+from annotation_utilities import annotation_tools
+
+#import annotation_tools
 from rtree import index
 
 import numpy as np
@@ -52,9 +55,6 @@ def compute(datasetId, apiUrl, token, params):
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     blobAnnotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
     pointList = workerClient.get_annotation_list_by_shape('point', limit=0)
-
-    print('Using new list')
-
 
     # We need at least one annotation
     if len(blobAnnotationList) == 0:
@@ -105,20 +105,6 @@ def compute(datasetId, apiUrl, token, params):
 
         print(f"Number of points within polygon {i}: {counts[i]}")
         workerClient.add_annotation_property_values(blob, int(counts[i]))
-
-
-    # for annotation in annotationList:
-
-    #     image = workerClient.get_image_for_annotation(annotation)
-
-    #     if image is None:
-    #         continue
-
-    #     polygon = np.array([[coordinate[i] for i in ['y', 'x']] for coordinate in annotation['coordinates']])
-    #     filtered_points = points[np.all(points[:, :3] == np.array([annotation['location'][i] for i in ['Time', 'XY', 'Z']]), axis=1)][:, -2:]
-    #     point_count = np.sum(point_in_polygon(filtered_points, polygon))
-
-    #     workerClient.add_annotation_property_values(annotation, int(point_count))
 
 
 if __name__ == '__main__':

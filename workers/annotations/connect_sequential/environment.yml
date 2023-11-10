@@ -1,6 +1,6 @@
 name: worker
 dependencies:
-- python=3
+- python=3.9
 - pip
 - numpy
 - pandas
