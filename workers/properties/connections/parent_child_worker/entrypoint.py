@@ -60,9 +60,9 @@ def compute(datasetId, apiUrl, token, params):
     annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     
-    connectionList = annotationClient.getAnnotationConnections(datasetId)
+    # connectionList = annotationClient.getAnnotationConnections(datasetId)
     # Not setting a limit on number of connections, but if you wanted to, you could do something like this:
-    # connectionList = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
+    connectionList = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
 
     # We need at least one connection
     if len(connectionList) == 0:
