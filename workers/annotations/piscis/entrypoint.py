@@ -62,6 +62,9 @@ def interface(image, apiUrl, token):
         },
         'Batch Time': {
             'type': 'text'
+        },
+        'Skip Frames Without': {
+        	'type': 'tags'
         }
     }
     # Send the interface object to the server
@@ -101,6 +104,7 @@ def compute(datasetId, apiUrl, token, params):
     batch_xy = workerInterface.get('Batch XY', None)
     batch_z = workerInterface.get('Batch Z', None)
     batch_time = workerInterface.get('Batch Time', None)
+    skip_frames_without = workerInterface.get('Skip Frames Without', None)
 
     batch_xy = utils.process_range_list(batch_xy)
     batch_z = utils.process_range_list(batch_z)
@@ -119,6 +123,17 @@ def compute(datasetId, apiUrl, token, params):
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
+    if skip_frames_without is not None:
+        workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+        annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+        frames_containing_tags = set()
+        for annotation in annotationList:
+            location = annotation['location']
+            frames_containing_tags.add((location['XY'], location['Time']))
+    else:
+        frames_containing_tags = None
+
+
     model = Piscis(model_name=model_name, batch_size=2)
 
     if stack:
@@ -127,6 +142,9 @@ def compute(datasetId, apiUrl, token, params):
 
             xy -= 1
             time -= 1
+
+            if (frames_containing_tags is not None) and ((xy, time) not in frames_containing_tags):
+                continue
 
             frames = []
 
@@ -167,6 +185,9 @@ def compute(datasetId, apiUrl, token, params):
             xy -= 1
             z -= 1
             time -= 1
+
+            if (frames_containing_tags is not None) and ((xy, time) not in frames_containing_tags):
+                continue
 
             # TODO: will need to iterate or stitch and handle roi and proper intensities
             frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
