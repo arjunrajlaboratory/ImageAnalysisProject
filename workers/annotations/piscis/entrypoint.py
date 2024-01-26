@@ -123,7 +123,7 @@ def compute(datasetId, apiUrl, token, params):
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-    if skip_frames_without is not None:
+    if len(skip_frames_without):
         workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
         annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
         frames_containing_tags = set()
@@ -132,7 +132,6 @@ def compute(datasetId, apiUrl, token, params):
             frames_containing_tags.add((location['XY'], location['Time']))
     else:
         frames_containing_tags = None
-
 
     model = Piscis(model_name=model_name, batch_size=2)
 
