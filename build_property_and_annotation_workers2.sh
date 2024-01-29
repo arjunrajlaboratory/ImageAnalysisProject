@@ -47,3 +47,8 @@ docker build -f ./workers/properties/blobs/blob_point_count_3D_projection_worker
 echo "Building property worker: parent_child_worker"
 docker build -f ./workers/properties/connections/parent_child_worker/$DOCKERFILE -t properties/parent_child:latest ./workers/properties/connections/parent_child_worker/
 # docker build -f ./workers/properties/connections/parent_child_worker/Dockerfile_M1 -t properties/parent_child:latest ./workers/properties/connections/parent_child_worker/
+
+
+echo "Building property worker: point_metrics_worker"
+docker build -f ./workers/properties/points/point_metrics_worker/$DOCKERFILE -t properties/point_metrics:latest ./workers/properties/points/point_metrics_worker/
+# docker build -f ./workers/properties/points/point_metrics_worker/Dockerfile_M1 -t properties/point_metrics:latest ./workers/properties/points/point_metrics_worker/
