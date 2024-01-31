@@ -41,15 +41,18 @@ RUN pip install -e /DeepTile
 RUN pip install rtree shapely
 
 RUN git clone https://github.com/Kitware/UPennContrast/
-WORKDIR /UPennContrast
 
-RUN pip install -r devops/girder/annotation_client/requirements.txt
-RUN pip install -e devops/girder/annotation_client/
+RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
 COPY ./download_models.py /
 RUN python /download_models.py
 
 COPY ./utils.py /
 COPY ./entrypoint.py /
+
+RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
+RUN pip install /ImageAnalysisProject/annotation_utilities
+RUN pip install /ImageAnalysisProject/worker_client
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

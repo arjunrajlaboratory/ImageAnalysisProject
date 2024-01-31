@@ -48,4 +48,8 @@ RUN python /download_models.py
 COPY ./utils.py /
 COPY ./entrypoint.py /
 
+RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
+RUN pip install /ImageAnalysisProject/annotation_utilities
+RUN pip install /ImageAnalysisProject/worker_client
+
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

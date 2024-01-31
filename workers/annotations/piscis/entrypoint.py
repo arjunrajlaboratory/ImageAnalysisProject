@@ -6,18 +6,14 @@ import os
 os.environ['XLA_FLAGS'] = '--xla_gpu_deterministic_ops'
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'False'
 
-from itertools import product
-from operator import itemgetter
+from functools import partial
 
-import annotation_client.annotations as annotations
-import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-import numpy as np
 from piscis import Piscis
 from piscis.paths import MODELS_DIR
 
-import utils
+from worker_client import WorkerClient
 
 
 def interface(image, apiUrl, token):
@@ -49,11 +45,6 @@ def interface(image, apiUrl, token):
             'max': 9,
             'default': 1.0
         },
-        'Assign to Nearest Z': {
-            'type': 'select',
-            'items': ['Yes', 'No'],
-            'default': 'Yes'
-        },
         'Batch XY': {
             'type': 'text'
         },
@@ -69,6 +60,14 @@ def interface(image, apiUrl, token):
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
+
+
+def run_model(image, model, stack, scale, threshold):
+
+    coords = model.predict(image, stack=stack, scale=scale, threshold=threshold, intermediates=False)
+    coords[:, -2:] += 0.5
+
+    return coords
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -88,133 +87,19 @@ def compute(datasetId, apiUrl, token, params):
         connectTo: how new annotations should be connected
     """
 
-    # roughly validate params
-    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
-    if not all(key in params for key in keys):
-        print ("Invalid worker parameters", params)
-        return
-    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+    worker = WorkerClient(datasetId, apiUrl, token, params)
 
     # Get the Gaussian sigma and threshold from interface values
-    model_name = workerInterface['Model']
-    stack = workerInterface['Mode'] == 'Z-Stack'
-    scale = float(workerInterface['Scale'])
-    threshold = float(workerInterface['Threshold'])
-    nearest_z = workerInterface['Assign to Nearest Z'] == 'Yes'
-    batch_xy = workerInterface.get('Batch XY', None)
-    batch_z = workerInterface.get('Batch Z', None)
-    batch_time = workerInterface.get('Batch Time', None)
-    skip_frames_without = workerInterface.get('Skip Frames Without', None)
+    model_name = worker.workerInterface['Model']
+    stack = worker.workerInterface['Mode'] == 'Z-Stack'
+    scale = float(worker.workerInterface['Scale'])
+    threshold = float(worker.workerInterface['Threshold'])
 
-    batch_xy = utils.process_range_list(batch_xy)
-    batch_z = utils.process_range_list(batch_z)
-    batch_time = utils.process_range_list(batch_time)
+    model = Piscis(model_name=model_name, batch_size=1)
+    f_process = partial(run_model, model=model, stack=stack, scale=scale, threshold=threshold)
 
-    if batch_xy is None:
-        batch_xy = [tile['XY'] + 1]
-    if batch_z is None:
-        batch_z = [tile['Z'] + 1]
-    if batch_time is None:
-        batch_time = [tile['Time'] + 1]
+    worker.process(f_process, f_annotation='point', stack_z=stack, progress_text='Running Piscis')
 
-    # Setup helper classes with url and credentials
-    annotationClient = annotations.UPennContrastAnnotationClient(
-        apiUrl=apiUrl, token=token)
-    datasetClient = tiles.UPennContrastDataset(
-        apiUrl=apiUrl, token=token, datasetId=datasetId)
-
-    if len(skip_frames_without):
-        workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-        annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
-        frames_containing_tags = set()
-        for annotation in annotationList:
-            location = annotation['location']
-            frames_containing_tags.add((location['XY'], location['Time']))
-    else:
-        frames_containing_tags = None
-
-    model = Piscis(model_name=model_name, batch_size=2)
-
-    if stack:
-
-        for xy, time in product(batch_xy, batch_time):
-
-            xy -= 1
-            time -= 1
-
-            if (frames_containing_tags is not None) and ((xy, time) not in frames_containing_tags):
-                continue
-
-            frames = []
-
-            for z in range(datasetClient.tiles['IndexRange']['IndexZ']):
-                frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
-                frames.append(datasetClient.getRegion(datasetId, frame=frame).squeeze())
-
-            image = np.stack(frames)
-
-            thresholdCoordinates = model.predict(image, stack=stack, scale=scale, threshold=threshold, intermediates=False)
-            thresholdCoordinates[:, -2:] += 0.5
-
-            # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
-            print("Uploading {} annotations".format(len(thresholdCoordinates)))
-            annotation_list = []
-            for [z, y, x] in thresholdCoordinates:
-                annotation = {
-                    "tags": tags,
-                    "shape": "point",
-                    "channel": channel,
-                    "location": {
-                        "XY": xy,
-                        "Z": int(z) if nearest_z else assignment['Z'],
-                        "Time": time
-                    },
-                    "datasetId": datasetId,
-                    "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
-                }
-                annotation_list.append(annotation)
-            annotationsIds = [a['_id'] for a in annotationClient.createMultipleAnnotations(annotation_list)]
-            if len(connectTo['tags']) > 0:
-                annotationClient.connectToNearest(connectTo, annotationsIds)
-
-    else:
-
-        for xy, z, time in product(batch_xy, batch_z, batch_time):
-
-            xy -= 1
-            z -= 1
-            time -= 1
-
-            if (frames_containing_tags is not None) and ((xy, time) not in frames_containing_tags):
-                continue
-
-            # TODO: will need to iterate or stitch and handle roi and proper intensities
-            frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
-            image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
-
-            thresholdCoordinates = model.predict(image, stack=stack, scale=scale, threshold=threshold, intermediates=False)
-            thresholdCoordinates += 0.5
-
-            # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
-            print("Uploading {} annotations".format(len(thresholdCoordinates)))
-            annotation_list = []
-            for [y, x] in thresholdCoordinates:
-                annotation = {
-                    "tags": tags,
-                    "shape": "point",
-                    "channel": channel,
-                    "location": {
-                        "XY": xy,
-                        "Z": z,
-                        "Time": time
-                    },
-                    "datasetId": datasetId,
-                    "coordinates": [{"x": float(x), "y": float(y), "z": 0}]
-                }
-                annotation_list.append(annotation)
-            annotationsIds = [a['_id'] for a in annotationClient.createMultipleAnnotations(annotation_list)]
-            if len(connectTo['tags']) > 0:
-                annotationClient.connectToNearest(connectTo, annotationsIds)
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point

@@ -1,0 +1,16 @@
+[build-system]
+requires = ['setuptools']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'worker_client'
+version = '0.0.1'
+requires-python = '>=3.7, <4'
+authors = [
+    {email = 'wniu721@gmail.com'},
+    {name = 'William Niu'}
+]
+dependencies = [
+    'numpy',
+    'shapely'
+]

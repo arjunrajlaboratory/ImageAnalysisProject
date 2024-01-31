@@ -2,11 +2,9 @@ import argparse
 import json
 import sys
 
+from functools import partial
 from itertools import product
-from operator import itemgetter
 
-import annotation_client.annotations as annotations
-import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
 import numpy as np  # library for array manipulation
@@ -16,7 +14,7 @@ from deeptile.extensions.stitch import stitch_polygons
 
 from shapely.geometry import Polygon
 
-import utils
+from worker_client import WorkerClient
 
 
 def interface(image, apiUrl, token):
@@ -77,6 +75,26 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 
+def run_model(image, cellpose, tile_size, tile_overlap, padding):
+
+    dt = deeptile.load(image)
+    image = dt.get_tiles(tile_size=(tile_size, tile_size), overlap=(tile_overlap, tile_overlap))
+
+    polygons = cellpose(image)
+    polygons = stitch_polygons(polygons)
+
+    if padding > 0:
+        dilated_polygons = []
+        for polygon in polygons:
+            polygon = Polygon(polygon)
+            dilated_polygon = polygon.buffer(padding)
+            dilated_polygons.append(list(dilated_polygon.exterior.coords))
+    else:
+        dilated_polygons = polygons
+
+    return dilated_polygons
+
+
 def compute(datasetId, apiUrl, token, params):
     """
     params (could change):
@@ -94,105 +112,34 @@ def compute(datasetId, apiUrl, token, params):
         connectTo: how new annotations should be connected
     """
 
-    # roughly validate params
-    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
-    if not all(key in params for key in keys):
-        print ("Invalid worker parameters", params)
-        return
-    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+    worker = WorkerClient(datasetId, apiUrl, token, params)
 
     # Get the model and diameter from interface values
-    model = workerInterface['Model']
-    nuclei_channel = workerInterface.get('Nuclei Channel', None)
-    cytoplasm_channel = workerInterface.get('Cytoplasm Channel', None)
-    diameter = float(workerInterface['Diameter'])
-    tile_size = int(workerInterface['Tile Size'])
-    tile_overlap = float(workerInterface['Tile Overlap'])
-    batch_xy = workerInterface.get('Batch XY', None)
-    batch_z = workerInterface.get('Batch Z', None)
-    batch_time = workerInterface.get('Batch Time', None)
-    padding = int(workerInterface['Padding'])
+    model = worker.workerInterface['Model']
+    nuclei_channel = worker.workerInterface.get('Nuclei Channel', None)
+    cytoplasm_channel = worker.workerInterface.get('Cytoplasm Channel', None)
+    diameter = float(worker.workerInterface['Diameter'])
+    tile_size = int(worker.workerInterface['Tile Size'])
+    tile_overlap = float(worker.workerInterface['Tile Overlap'])
+    padding = int(worker.workerInterface['Padding'])
 
-    batch_xy = utils.process_range_list(batch_xy)
-    batch_z = utils.process_range_list(batch_z)
-    batch_time = utils.process_range_list(batch_time)
-
-    if batch_xy is None:
-        batch_xy = [tile['XY'] + 1]
-    if batch_z is None:
-        batch_z = [tile['Z'] + 1]
-    if batch_time is None:
-        batch_time = [tile['Time'] + 1]
-
-    # Setup helper classes with url and credentials
-    annotationClient = annotations.UPennContrastAnnotationClient(
-        apiUrl=apiUrl, token=token)
-    datasetClient = tiles.UPennContrastDataset(
-        apiUrl=apiUrl, token=token, datasetId=datasetId)
-
-    for xy, z, time in product(batch_xy, batch_z, batch_time):
-
-        xy -= 1
-        z -= 1
-        time -= 1
-
-        # TODO: will need to iterate or stitch and handle roi and proper intensities
-
-        if (nuclei_channel is not None) and (nuclei_channel > -1):
-            nuclei_frame = datasetClient.coordinatesToFrameIndex(xy, z, time, nuclei_channel)
-            nuclei_image = datasetClient.getRegion(datasetId, frame=nuclei_frame).squeeze()
-        else:
-            nuclei_image = None
+    stack_channels = []
+    if model in ['cyto', 'cyto2']:
         if (cytoplasm_channel is not None) and (cytoplasm_channel > -1):
-            cytoplasm_frame = datasetClient.coordinatesToFrameIndex(xy, z, time, cytoplasm_channel)
-            cytoplasm_image = datasetClient.getRegion(datasetId, frame=cytoplasm_frame).squeeze()
-        else:
-            cytoplasm_image = None
+            stack_channels.append(cytoplasm_channel)
+    if (nuclei_channel is not None) and (nuclei_channel > -1):
+        stack_channels.append(nuclei_channel)
+    if len(stack_channels) == 2:
+        channels = (0, 1)
+    elif len(stack_channels) == 1:
+        channels = (0, 0)
+    else:
+        raise ValueError("No cytoplasmic or nuclei channels selected.")
 
-        image = None
-        channels = None
-        if model == 'cyto':
-            if (cytoplasm_image is not None) & (nuclei_image is not None):
-                image = np.stack((cytoplasm_image, nuclei_image))
-                channels = (0, 1)
-            elif cytoplasm_image is not None:
-                image = cytoplasm_image
-                channels = (0, 0)
-        elif model == 'nuclei':
-            if nuclei_image is not None:
-                image = nuclei_image
-                channels = (0, 0)
+    cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
+    f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size, tile_overlap=tile_overlap, padding=padding)
 
-        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
-        dt = deeptile.load(image)
-        image = dt.get_tiles(tile_size=(tile_size, tile_size), overlap=(tile_overlap, tile_overlap))
-
-        polygons = cellpose(image)
-        polygons = stitch_polygons(polygons)
-
-        # Upload annotations TODO: handle connectTo. could be done server-side via special api flag ?
-        print(f"Uploading {len(polygons)} annotations")
-        count = 0
-        for polygon in polygons:
-            shapely_polygon = Polygon(polygon)
-            dilated_polygon = shapely_polygon.buffer(padding)
-            dilated_polygon_coords = list(dilated_polygon.exterior.coords)
-            annotation = {
-                "tags": tags,
-                "shape": "polygon",
-                "channel": channel,
-                "location": {
-                    "XY": xy,
-                    "Z": z,
-                    "Time": time
-                },
-                "datasetId": datasetId,
-                "coordinates": [{"x": float(x), "y": float(y), "z": 0} for x, y in dilated_polygon_coords]
-            }
-            annotationClient.createAnnotation(annotation)
-            # if count > 1000:  # TODO: arbitrary limit to avoid flooding the server if threshold is too big
-            #     break
-            count = count + 1
+    worker.process(f_process, f_annotation='polygon', stack_channels=stack_channels, progress_text='Running Cellpose')
 
 
 if __name__ == '__main__':
