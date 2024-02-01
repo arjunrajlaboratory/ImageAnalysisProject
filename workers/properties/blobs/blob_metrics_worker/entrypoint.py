@@ -5,6 +5,8 @@ import sys
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 from shapely.geometry import Polygon
 
 def compute(datasetId, apiUrl, token, params):
@@ -22,7 +24,14 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+    # Here's an example of what the "params" dict might look like:
+    # {'id': '65bc10b3e62fc888551f168d', 'name': 'metrics2', 'image': 'properties/blob_metrics:latest', 'tags': {'exclusive': False, 'tags': ['nucleus']}, 'shape': 'polygon', 'workerInterface': {}, 'scales': {'pixelSize': {'unit': 'mm', 'value': 0.000219080212825376}, 'tStep': {'unit': 's', 'value': 1}, 'zStep': {'unit': 'm', 'value': 1}}}
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    print(f"Found {len(annotationList)} annotations with shape 'polygon'")
+    print(f"The tags are: {params.get('tags', {}).get('tags', [])}")
+    print(f"The exclusive flag is: {params.get('tags', {}).get('exclusive', False)}")
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
+    print(f"Found {len(annotationList)} annotations with the specified tags")
 
     # We need at least one annotation
     if len(annotationList) == 0:
