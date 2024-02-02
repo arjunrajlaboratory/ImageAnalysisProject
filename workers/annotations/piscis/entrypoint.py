@@ -98,7 +98,7 @@ def compute(datasetId, apiUrl, token, params):
     model = Piscis(model_name=model_name, batch_size=1)
     f_process = partial(run_model, model=model, stack=stack, scale=scale, threshold=threshold)
 
-    worker.process(f_process, f_annotation='point', stack_z=stack, progress_text='Running Piscis')
+    worker.process(f_process, f_annotation='point', stack_zs=stack, progress_text='Running Piscis')
 
 
 if __name__ == '__main__':
