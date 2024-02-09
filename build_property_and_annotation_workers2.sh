@@ -52,3 +52,7 @@ docker build -f ./workers/properties/connections/parent_child_worker/$DOCKERFILE
 echo "Building property worker: point_metrics_worker"
 docker build -f ./workers/properties/points/point_metrics_worker/$DOCKERFILE -t properties/point_metrics:latest ./workers/properties/points/point_metrics_worker/
 # docker build -f ./workers/properties/points/point_metrics_worker/Dockerfile_M1 -t properties/point_metrics:latest ./workers/properties/points/point_metrics_worker/
+
+echo "Building property worker: point_circle_intensity_worker"
+docker build -f ./workers/properties/points/point_circle_intensity_mean_worker/$DOCKERFILE -t properties/point_circle_intensity:latest ./workers/properties/points/point_circle_intensity_mean_worker/
+# docker build -f ./workers/properties/points/point_circle_intensity_mean_worker/Dockerfile_M1 -t properties/point_circle_intensity:latest ./workers/properties/points/point_circle_intensity_mean_worker/

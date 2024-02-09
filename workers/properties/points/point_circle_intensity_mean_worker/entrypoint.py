@@ -15,7 +15,13 @@ def interface(image, apiUrl, token):
     interface = {
         'Channel': {
             'type': 'channel'
-        }
+        },
+        'Radius': {
+            'type': 'number',
+            'min': 1,
+            'max': 10,
+            'default': 3,
+        },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
@@ -36,8 +42,8 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     # Constants
-    radius = 5
-
+    radius = float(params['workerInterface']['Radius'])
+    
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('point', limit=0)
 
