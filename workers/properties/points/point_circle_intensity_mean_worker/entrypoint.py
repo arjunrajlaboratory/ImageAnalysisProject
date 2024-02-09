@@ -59,7 +59,8 @@ def compute(datasetId, apiUrl, token, params):
             continue
 
         geojsPoint = annotation['coordinates'][0]
-        point = np.array([round(geojsPoint['y']), round(geojsPoint['x'])])
+        point = np.array([round(geojsPoint['y']-0.5), round(geojsPoint['x']-0.5)])
+        # Subtract 0.5 to convert from pixel center to pixel corner
 
         rr, cc = draw.disk(point, radius, shape=image.shape)
         mask = np.zeros(image.shape, dtype=bool)
