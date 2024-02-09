@@ -18,12 +18,6 @@ def interface(image, apiUrl, token):
         },
         'Radius': {
             'type': 'number',
-            'min': 2,
-            'max': 10,
-            'default': 3,
-        },
-        'Radius2': {
-            'type': 'number',
             'min': 0.5,
             'max': 10,
             'default': 1,
@@ -70,7 +64,7 @@ def compute(datasetId, apiUrl, token, params):
 
         rr, cc = draw.disk(point, radius, shape=image.shape)
         # Code below seems very inefficient. Probably could just go straight from rr,cc to the calculation. But whatever.
-        if rr and cc: # If the circle catches at least one pixel
+        if rr.size > 0: # If the circle catches at least one pixel
             mask = np.zeros(image.shape, dtype=bool)
             mask[rr, cc] = 1
             intensity = np.mean(image[mask])
