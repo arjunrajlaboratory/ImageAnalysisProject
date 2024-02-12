@@ -73,8 +73,7 @@ def compute(datasetId, apiUrl, token, params):
             mask = np.zeros(image.shape, dtype=bool)
             mask[rr, cc] = 1
             intensities = image[mask]
-            # intensity = np.mean(image[mask])
-                        # Calculating the desired metrics
+            # Calculating the desired metrics
             mean_intensity = np.mean(intensities)
             max_intensity = np.max(intensities)
             min_intensity = np.min(intensities)
