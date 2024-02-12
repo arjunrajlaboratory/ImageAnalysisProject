@@ -7,6 +7,9 @@ import annotation_client.workers as workers
 import numpy as np
 from skimage import draw
 
+from annotation_client.utils import sendProgress
+import annotation_utilities.annotation_tools as annotation_tools
+
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
@@ -46,12 +49,14 @@ def compute(datasetId, apiUrl, token, params):
     
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('point', limit=0)
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
 
     # We need at least one annotation
     if len(annotationList) == 0:
         return
 
-    for annotation in annotationList:
+    number_annotations = len(annotationList)
+    for i, annotation in enumerate(annotationList):
 
         image = workerClient.get_image_for_annotation(annotation)
 
@@ -67,9 +72,29 @@ def compute(datasetId, apiUrl, token, params):
         if rr.size > 0: # If the circle catches at least one pixel
             mask = np.zeros(image.shape, dtype=bool)
             mask[rr, cc] = 1
-            intensity = np.mean(image[mask])
+            intensities = image[mask]
+            # intensity = np.mean(image[mask])
+                        # Calculating the desired metrics
+            mean_intensity = np.mean(intensities)
+            max_intensity = np.max(intensities)
+            min_intensity = np.min(intensities)
+            median_intensity = np.median(intensities)
+            q25_intensity = np.percentile(intensities, 25)
+            q75_intensity = np.percentile(intensities, 75)
+            total_intensity = np.sum(intensities)
 
-            workerClient.add_annotation_property_values(annotation, float(intensity))
+            prop = {
+                'MeanIntensity': float(mean_intensity),
+                'MaxIntensity': float(max_intensity),
+                'MinIntensity': float(min_intensity),
+                'MedianIntensity': float(median_intensity),
+                '25thPercentileIntensity': float(q25_intensity),
+                '75thPercentileIntensity': float(q75_intensity),
+                'TotalIntensity': float(total_intensity),
+            }
+            workerClient.add_annotation_property_values(annotation, prop)
+
+        sendProgress((i+1)/number_annotations, 'Computing point intensities', f"Processing annotation {i+1}/{number_annotations}")
 
 
 if __name__ == '__main__':

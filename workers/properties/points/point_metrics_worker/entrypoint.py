@@ -4,6 +4,8 @@ import sys
 
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
+import annotation_utilities.annotation_tools as annotation_tools
+
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -21,6 +23,7 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('point', limit=0)
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
 
     # We need at least one annotation
     if len(annotationList) == 0:
