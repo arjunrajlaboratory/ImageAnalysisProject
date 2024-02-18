@@ -46,8 +46,8 @@ def interface(image, apiUrl, token):
         'Tile Size': {
             'type': 'number',
             'min': 0,
-            'max': 1000,
-            'default': 256
+            'max': 2048,
+            'default': 1024
         },
         'Tile Overlap': {
             'type': 'number',
