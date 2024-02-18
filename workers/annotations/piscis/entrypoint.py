@@ -64,6 +64,8 @@ def interface(image, apiUrl, token):
 
 def run_model(image, model, stack, scale, threshold):
 
+    print(image.shape)
+
     coords = model.predict(image, stack=stack, scale=scale, threshold=threshold, intermediates=False)
     coords[:, -2:] += 0.5
 
@@ -98,7 +100,7 @@ def compute(datasetId, apiUrl, token, params):
     model = Piscis(model_name=model_name, batch_size=1)
     f_process = partial(run_model, model=model, stack=stack, scale=scale, threshold=threshold)
 
-    worker.process(f_process, f_annotation='point', stack_zs=stack, progress_text='Running Piscis')
+    worker.process(f_process, f_annotation='point', stack_zs='all' if stack else None, progress_text='Running Piscis')
 
 
 if __name__ == '__main__':
