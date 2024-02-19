@@ -81,7 +81,7 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 
-def run_model(image, cellpose, tile_size, tile_overlap, padding):
+def run_model(image, cellpose, tile_size, tile_overlap, padding, smoothing):
 
     dt = deeptile.load(image)
     image = dt.get_tiles(tile_size=(tile_size, tile_size), overlap=(tile_overlap, tile_overlap))
@@ -98,7 +98,14 @@ def run_model(image, cellpose, tile_size, tile_overlap, padding):
     else:
         dilated_polygons = polygons
 
-    return dilated_polygons
+    if smoothing > 0:
+        smoothed_polygons = []
+        for polygon in dilated_polygons:
+            smoothed_polygon = Polygon(polygon).simplify(smoothing)
+            smoothed_polygons.append(list(smoothed_polygon.exterior.coords))
+        return smoothed_polygons
+    else:
+        return dilated_polygons
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -144,7 +151,7 @@ def compute(datasetId, apiUrl, token, params):
         raise ValueError("No cytoplasmic or nuclei channels selected.")
 
     cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
-    f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size, tile_overlap=tile_overlap, padding=padding)
+    f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size, tile_overlap=tile_overlap, padding=padding, smoothing=smoothing)
 
     worker.process(f_process, f_annotation='polygon', stack_channels=stack_channels, progress_text='Running Cellpose')
 
