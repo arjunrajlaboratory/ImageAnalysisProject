@@ -89,7 +89,7 @@ def run_model(image, cellpose, tile_size, tile_overlap, padding):
     polygons = cellpose(image)
     polygons = stitch_polygons(polygons)
 
-    if padding > 0:
+    if padding != 0:
         dilated_polygons = []
         for polygon in polygons:
             polygon = Polygon(polygon)
