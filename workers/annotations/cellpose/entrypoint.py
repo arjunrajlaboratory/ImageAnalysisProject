@@ -70,6 +70,12 @@ def interface(image, apiUrl, token):
             'max': 20,
             'default': 0,
         },
+        'Smoothing': {
+            'type': 'number',
+            'min': 0,
+            'max': 10,
+            'default': 0,
+        },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
@@ -121,7 +127,8 @@ def compute(datasetId, apiUrl, token, params):
     diameter = float(worker.workerInterface['Diameter'])
     tile_size = int(worker.workerInterface['Tile Size'])
     tile_overlap = float(worker.workerInterface['Tile Overlap'])
-    padding = int(worker.workerInterface['Padding'])
+    padding = float(worker.workerInterface['Padding'])
+    smoothing = float(worker.workerInterface['Smoothing'])
 
     stack_channels = []
     if model in ['cyto', 'cyto2']:
