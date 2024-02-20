@@ -8,6 +8,8 @@ import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 import annotation_client.tiles as tiles
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np
 from skimage import draw
 from skimage import morphology
@@ -50,7 +52,8 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
-    
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
+
     channel = params['workerInterface']['Channel']
     datasetClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
     annulus_radius = float(params['workerInterface']['Radius'])
