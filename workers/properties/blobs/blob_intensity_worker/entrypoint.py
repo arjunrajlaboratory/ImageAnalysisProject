@@ -64,7 +64,7 @@ def compute(datasetId, apiUrl, token, params):
     # For reporting progress
     processed_annotations = 0
 
-    
+    property_value_dict = {}  # Initialize as a dictionary
 
     for location_key, annotations in grouped_annotations.items():
         time, z, xy = location_key
@@ -99,9 +99,13 @@ def compute(datasetId, apiUrl, token, params):
                 'TotalIntensity': float(total_intensity),
             }
 
+            property_value_dict[annotation['_id']] = prop
             processed_annotations += 1
             sendProgress(processed_annotations / number_annotations, 'Computing blob intensity', f"Processing annotation {processed_annotations}/{number_annotations}")
-            workerClient.add_annotation_property_values(annotation, prop)
+    
+    dataset_property_value_dict = {datasetId: property_value_dict}
+
+    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
     
     end_time = timeit.default_timer()
     execution_time = end_time - start_time

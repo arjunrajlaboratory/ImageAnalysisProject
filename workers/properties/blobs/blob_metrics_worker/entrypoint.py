@@ -39,6 +39,7 @@ def compute(datasetId, apiUrl, token, params):
 
 
     number_annotations = len(annotationList)
+    property_value_dict = {}  # Initialize as a dictionary
     for i, annotation in enumerate(annotationList):
 
         polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
@@ -49,8 +50,13 @@ def compute(datasetId, apiUrl, token, params):
             'Perimeter': float(poly.length),
             'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)}
         }
+        # Add prop to the dictionary with annotation['_id'] as the key
+        property_value_dict[annotation['_id']] = prop
         sendProgress((i+1)/number_annotations, 'Computing blob metrics', f"Processing annotation {i+1}/{number_annotations}")
-        workerClient.add_annotation_property_values(annotation, prop)
+
+    dataset_property_value_dict = {datasetId: property_value_dict}
+
+    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
