@@ -32,9 +32,17 @@ echo "Building property worker: blob_intensity_worker"
 docker build -f ./workers/properties/blobs/blob_intensity_worker/$DOCKERFILE -t properties/blob_intensity:latest ./workers/properties/blobs/blob_intensity_worker/
 # docker build -f ./workers/properties/blobs/blob_intensity_worker/Dockerfile_M1 -t properties/blob_intensity:latest ./workers/properties/blobs/blob_intensity_worker/
 
+echo "Building property worker: blob_intensity_percentile_worker"
+docker build -f ./workers/properties/blobs/blob_intensity_percentile_worker/$DOCKERFILE -t properties/blob_intensity_percentile:latest ./workers/properties/blobs/blob_intensity_percentile_worker/
+# docker build -f ./workers/properties/blobs/blob_intensity_percentile_worker/Dockerfile_M1 -t properties/blob_intensity_percentile:latest ./workers/properties/blobs/blob_intensity_percentile_worker/
+
 echo "Building property worker: blob_annulus_intensity_worker"
 docker build -f ./workers/properties/blobs/blob_annulus_intensity_worker/$DOCKERFILE -t properties/blob_annulus_intensity:latest ./workers/properties/blobs/blob_annulus_intensity_worker/
 # docker build -f ./workers/properties/blobs/blob_annulus_intensity_worker/Dockerfile_M1 -t properties/blob_annulus_intensity:latest ./workers/properties/blobs/blob_annulus_intensity_worker/
+
+echo "Building property worker: blob_annulus_intensity_percentile_worker"
+docker build -f ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/$DOCKERFILE -t properties/blob_annulus_intensity_percentile:latest ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/
+# docker build -f ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/Dockerfile_M1 -t properties/blob_annulus_intensity_percentile:latest ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/
 
 echo "Building property worker: blob_point_count_worker"
 docker build -f ./workers/properties/blobs/blob_point_count_worker/$DOCKERFILE -t properties/blob_point_count:latest ./workers/properties/blobs/blob_point_count_worker/

@@ -1,0 +1,135 @@
+import argparse
+import json
+import sys
+import timeit
+
+import annotation_client.workers as workers
+from annotation_client.utils import sendProgress
+import annotation_client.tiles as tiles
+
+import annotation_utilities.annotation_tools as annotation_tools
+
+import numpy as np
+from skimage import draw
+from collections import defaultdict
+
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Channel': {
+            'type': 'channel'
+        },
+        'Percentile': {
+            'type': 'number',
+            'min': 0,
+            'max': 99.99999,
+            'default': 50,
+        },
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
+
+
+def compute(datasetId, apiUrl, token, params):
+    """
+    Params is a dict containing the following parameters:
+    required:
+        name: The name of the property
+        id: The id of the property
+        propertyType: can be "morphology", "relational", or "layer"
+    optional:
+        annotationId: A list of annotation ids for which the property should be computed
+        shape: The shape of annotations that should be used
+        layer: Which specific layer should be used for intensity calculations
+        tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
+    """
+
+    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+    channel = params['workerInterface']['Channel']
+    percentile = float(params['workerInterface']['Percentile'])
+    datasetClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
+
+    # Following line should be updated to get just the annotations with specified tags
+    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
+
+    # We need at least one annotation
+    if len(annotationList) == 0:
+        return
+
+    start_time = timeit.default_timer()
+
+    grouped_annotations = defaultdict(list)
+    for annotation in annotationList:
+        location_key = (annotation['location']['Time'], annotation['location']['Z'], annotation['location']['XY'])
+        grouped_annotations[location_key].append(annotation)
+    
+    number_annotations = len(annotationList)
+    
+    # For reporting progress
+    processed_annotations = 0
+
+    property_value_dict = {}  # Initialize as a dictionary
+
+    for location_key, annotations in grouped_annotations.items():
+        time, z, xy = location_key
+        frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
+        image = datasetClient.getRegion(datasetId, frame=frame)
+
+        if image is None:
+            continue
+
+        # Compute properties for all annotations at that location
+        for annotation in annotations:
+            polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
+            mask = draw.polygon2mask(image.shape, polygon)
+            intensities = image[mask]
+
+            # Calculating the desired metrics
+
+            percentile_intensity = np.percentile(intensities, percentile)
+            prop_name = f'{percentile}thPercentileIntensity'
+
+            prop = {
+                prop_name: float(percentile_intensity),
+            }
+
+            property_value_dict[annotation['_id']] = prop
+            processed_annotations += 1
+            sendProgress(processed_annotations / number_annotations, 'Computing blob intensity', f"Processing annotation {processed_annotations}/{number_annotations}")
+    
+    dataset_property_value_dict = {datasetId: property_value_dict}
+
+    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
+    
+    end_time = timeit.default_timer()
+    execution_time = end_time - start_time
+    print(f"Executed the code in: {execution_time} seconds")
+
+
+if __name__ == '__main__':
+    # Define the command-line interface for the entry point
+    parser = argparse.ArgumentParser(
+        description='Compute average intensity values in a circle around point annotations')
+
+    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--apiUrl', type=str, required=True, action='store')
+    parser.add_argument('--token', type=str, required=True, action='store')
+    parser.add_argument('--request', type=str, required=True, action='store')
+    parser.add_argument('--parameters', type=str,
+                        required=True, action='store')
+
+    args = parser.parse_args(sys.argv[1:])
+
+    params = json.loads(args.parameters)
+    datasetId = args.datasetId
+    apiUrl = args.apiUrl
+    token = args.token
+
+    match args.request:
+        case 'compute':
+            compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)
