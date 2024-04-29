@@ -26,7 +26,7 @@ def interface(image, apiUrl, token):
         'Model': {
             'type': 'select',
             'items': models,
-            'default': models[-1]
+            'default': '20230905'
         },
         'Mode': {
             'type': 'select',
