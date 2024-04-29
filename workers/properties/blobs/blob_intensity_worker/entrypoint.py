@@ -105,6 +105,7 @@ def compute(datasetId, apiUrl, token, params):
     
     dataset_property_value_dict = {datasetId: property_value_dict}
 
+    sendProgress(0.5,'Done computing', 'Sending computed metrics to the server')
     workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
     
     end_time = timeit.default_timer()
