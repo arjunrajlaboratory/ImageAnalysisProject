@@ -56,6 +56,13 @@ def compute(datasetId, apiUrl, token, params):
         return
 
     number_annotations = len(annotationList)
+
+
+    # For reporting progress
+    processed_annotations = 0
+
+    property_value_dict = {}  # Initialize as a dictionary
+
     for i, annotation in enumerate(annotationList):
 
         image = workerClient.get_image_for_annotation(annotation)
@@ -91,9 +98,16 @@ def compute(datasetId, apiUrl, token, params):
                 '75thPercentileIntensity': float(q75_intensity),
                 'TotalIntensity': float(total_intensity),
             }
-            workerClient.add_annotation_property_values(annotation, prop)
 
-        sendProgress((i+1)/number_annotations, 'Computing point intensities', f"Processing annotation {i+1}/{number_annotations}")
+
+            property_value_dict[annotation['_id']] = prop
+            processed_annotations += 1
+            sendProgress(processed_annotations / number_annotations, 'Computing point intensities', f"Processing annotation {processed_annotations}/{number_annotations}")
+
+    dataset_property_value_dict = {datasetId: property_value_dict}
+
+    sendProgress(0.5,'Done computing', 'Sending computed metrics to the server')
+    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
 
 
 if __name__ == '__main__':
