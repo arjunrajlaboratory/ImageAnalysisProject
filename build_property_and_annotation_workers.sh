@@ -7,7 +7,7 @@ docker build ./workers/properties/points/point_intensity_worker/ -t properties/p
 docker build ./workers/properties/points/point_threshold_intensity_mean_worker/ -t properties/point_threshold_intensity_mean_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Threshold Intensity Mean" --label "interfaceCategory=Intensity"
 
 #docker build ./workers/annotations/cellori_segmentation/ -t annotations/cellori_segmentation_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellori" --label "interfaceCategory=Cellori"
-docker build ./workers/annotations/piscis/ -t annotations/piscis_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Piscis" --label "interfaceCategory=Piscis"
+docker compose -f ./workers/annotations/piscis/docker-compose.yaml build
 docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose"
 #docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
 

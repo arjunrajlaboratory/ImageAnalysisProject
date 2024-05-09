@@ -1,0 +1,11 @@
+services:
+  predict:
+    build:
+      context: .
+      dockerfile: ./predict/Dockerfile
+    image: annotations/piscis_predict:latest
+  train:
+    build:
+      context: .
+      dockerfile: ./train/Dockerfile
+    image: annotations/piscis_train:latest

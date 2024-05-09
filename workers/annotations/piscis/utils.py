@@ -1,48 +1,87 @@
-from itertools import chain
+from piscis.paths import CACHE_DIR, MODELS_DIR
 
 
-def process_range_list(rl):
+def mkdir(gc, parent_id, folder_name):
 
-    g = parse_range_list(rl)
-    first, g = peek_generator(g)
-    if first is None:
-        g = None
+    folders = gc.get('folder', parameters={'parentId': parent_id, 'parentType': 'folder', 'name': folder_name})
+    
+    if folders:
+        _id = folders[0]['_id']
+    else:
+        new_folder = gc.post('folder', parameters={
+            'parentId': parent_id,
+            'parentType': 'folder',
+            'name': folder_name
+        })
+        _id = new_folder['_id']
 
-    return g
-
-
-def parse_range_list(rl):
-    ranges = sorted(set(map(_parse_range, rl.split(','))), key=lambda x: (x.start, x.stop))
-    return chain.from_iterable(_collapse_range(ranges))
-
-
-def peek_generator(g):
-
-    first = next(g, None)
-    g = chain([first], g)
-
-    return first, g
+    return _id
 
 
-def _parse_range(r):
-    parts = list(_split_range(r.strip()))
-    if len(parts) == 0:
-        return range(0, 0)
-    elif len(parts) > 2:
-        raise ValueError('Invalid range: {}'.format(r))
-    return range(parts[0], parts[-1] + 1)
+def get_piscis_dir(gc):
 
-def _collapse_range(ranges):
-        end = None
-        for value in ranges:
-            yield range(max(end, value.start), max(value.stop, end)) if end else value
-            end = max(end, value.stop) if end else value.stop
+    user_id = gc.get('user/me')['_id']
+    public_folder_id = gc.get('folder', parameters={'parentId': user_id, 'parentType': 'user', 'name': 'Public'})[0]['_id']
+    piscis_folder_id = mkdir(gc, public_folder_id, '.piscis')
 
-def _split_range(value):
-    value = value.split('-')
-    for val, prev in zip(value, chain((None,), value)):
-        if val != '':
-            val = int(val)
-            if prev == '':
-                val *= -1
-            yield val
+    return piscis_folder_id
+
+
+def list_girder_models(gc):
+
+    piscis_folder_id = get_piscis_dir(gc)
+    models_folder_id = mkdir(gc, piscis_folder_id, 'models')
+    girder_models = list(gc.listItem(models_folder_id))
+
+    return girder_models, models_folder_id
+
+
+def download_girder_model(gc, model_name):
+
+    girder_models, _ = list_girder_models(gc)
+    girder_model = [model for model in girder_models if model['name'] == model_name]
+    if girder_model:
+        gc.downloadItem(girder_model[0]['_id'], MODELS_DIR, girder_model[0]['name'])
+
+
+def upload_girder_model(gc, model_name):
+
+    girder_models, models_folder_id = list_girder_models(gc)
+    girder_model = [model for model in girder_models if model['name'] == model_name]
+    if girder_model:
+        gc.delete(f"{girder_model[0]['_modelType']}/{girder_model[0]['_id']}")
+
+    gc.uploadFileToFolder(models_folder_id, MODELS_DIR / model_name)
+
+
+def list_girder_cache(gc, mode):
+
+    piscis_folder_id = get_piscis_dir(gc)
+    
+    if mode == 'predict':
+        cache_folder_id = mkdir(gc, piscis_folder_id, 'predict_cache')
+    elif mode == 'train':
+        cache_folder_id = mkdir(gc, piscis_folder_id, 'train_cache')
+    else:
+        cache_folder_id = None
+    
+    girder_cache = list(gc.listItem(cache_folder_id))
+
+    return girder_cache, cache_folder_id
+
+
+def download_girder_cache(gc, mode):
+    
+    girder_cache, _ = list_girder_cache(gc, mode)
+    for c in girder_cache:
+        gc.downloadItem(c['_id'], CACHE_DIR, c['name'])
+
+
+def upload_girder_cache(gc, mode):
+    
+    girder_cache, cache_folder_id = list_girder_cache(gc, mode)
+    girder_cache = [c['name'] for c in girder_cache]
+
+    for cache_path in CACHE_DIR.glob('*'):
+        if cache_path.stem not in girder_cache:
+            gc.uploadFileToFolder(cache_folder_id, cache_path)

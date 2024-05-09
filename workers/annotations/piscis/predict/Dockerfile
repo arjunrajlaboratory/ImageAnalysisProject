@@ -1,9 +1,13 @@
 FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 as base
-LABEL isUPennContrastWorker=True
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+
+LABEL isUPennContrastWorker=True
+LABEL isAnnotationWorker=True
+LABEL interfaceName="Piscis (Predict)"
+LABEL interfaceCategory="Piscis"
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \
@@ -43,14 +47,14 @@ RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 RUN pip install -U "jax[cuda12_pip]==0.4.26" "jaxlib==0.4.26+cuda12.cudnn89" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip install piscis
 
+RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
+RUN pip install /ImageAnalysisProject/annotation_utilities
+RUN pip install /ImageAnalysisProject/worker_client
+
 COPY ./download_models.py /
 RUN python /download_models.py
 
 COPY ./utils.py /
-COPY ./entrypoint.py /
-
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-RUN pip install /ImageAnalysisProject/annotation_utilities
-RUN pip install /ImageAnalysisProject/worker_client
+COPY ./predict/entrypoint.py /
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

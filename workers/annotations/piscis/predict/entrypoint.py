@@ -3,7 +3,6 @@ import json
 import sys
 
 import os
-os.environ['XLA_FLAGS'] = '--xla_gpu_deterministic_ops'
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'False'
 
 from functools import partial
@@ -15,11 +14,15 @@ from piscis.paths import MODELS_DIR
 
 from worker_client import WorkerClient
 
+import utils
+
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     models = sorted(path.stem for path in MODELS_DIR.glob('*'))
+    girder_models = [model['name'] for model in utils.list_girder_models(client.client)[0]]
+    models = sorted(list(set(models + girder_models)))
 
     # Available types: number, text, tags, layer
     interface = {
@@ -64,8 +67,6 @@ def interface(image, apiUrl, token):
 
 def run_model(image, model, stack, scale, threshold):
 
-    print(image.shape)
-
     coords = model.predict(image, stack=stack, scale=scale, threshold=threshold, intermediates=False)
     coords[:, -2:] += 0.5
 
@@ -97,10 +98,15 @@ def compute(datasetId, apiUrl, token, params):
     scale = float(worker.workerInterface['Scale'])
     threshold = float(worker.workerInterface['Threshold'])
 
+    gc = worker.annotationClient.client
+    utils.download_girder_model(gc, model_name)
+    utils.download_girder_cache(gc, mode='predict')
+
     model = Piscis(model_name=model_name, batch_size=1)
     f_process = partial(run_model, model=model, stack=stack, scale=scale, threshold=threshold)
-
     worker.process(f_process, f_annotation='point', stack_zs='all' if stack else None, progress_text='Running Piscis')
+
+    utils.upload_girder_cache(gc, mode='predict')
 
 
 if __name__ == '__main__':
