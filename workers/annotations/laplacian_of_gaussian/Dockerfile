@@ -33,10 +33,12 @@ RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN git clone https://github.com/Kitware/UPennContrast/
-WORKDIR /UPennContrast
+RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
-RUN pip install -r devops/girder/annotation_client/requirements.txt
-RUN pip install -e devops/girder/annotation_client/
+RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
+RUN pip install /ImageAnalysisProject/annotation_utilities
+RUN pip install /ImageAnalysisProject/worker_client
 
 COPY ./entrypoint.py /
 
