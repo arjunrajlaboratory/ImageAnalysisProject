@@ -99,12 +99,12 @@ def compute(datasetId, apiUrl, token, params):
     annotation_tag = workerInterface['Annotation Tag']
     region_tag = workerInterface['Region Tag']
 
-    annotationList = annotationClient.getAnnotationsByDatasetId(datasetId)
+    annotationList = annotationClient.getAnnotationsByDatasetId(datasetId, shape='point', tags=json.dumps(annotation_tag))
     points = np.array([[point['location'][i]
                         for i in ['Time', 'XY', 'Z']] + list(point['coordinates'][0].values())[1::-1]
-                        for point in annotationList if set(point['tags']).issubset(annotation_tag)])
+                        for point in annotationList])
     points[:, -2:] -= np.array((0.5, 0.5))
-    regionList = [region for region in annotationList if set(region['tags']).issubset(region_tag)]
+    regionList = annotationClient.getAnnotationsByDatasetId(datasetId, shape='polygon', tags=json.dumps(region_tag))
 
     images = []
     coords = []
