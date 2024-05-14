@@ -47,7 +47,7 @@ def interface(image, apiUrl, token):
         },
         'Epochs': {
             'type': 'text',
-            'default': 100
+            'default': 40
         },
         'Random Seed': {
             'type': 'text',
@@ -148,6 +148,7 @@ def compute(datasetId, apiUrl, token, params):
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         epochs=epochs,
+        warmup_fraction=0.1,
         save_checkpoints=False
     )
 
