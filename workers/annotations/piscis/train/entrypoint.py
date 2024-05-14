@@ -116,6 +116,7 @@ def compute(datasetId, apiUrl, token, params):
         polygon = np.array([[coordinate[i] for i in ['y', 'x']] for coordinate in region['coordinates']]) - np.array((0.5, 0.5))
         polygony, polygonx = polygon.T
         minx, miny, maxx, maxy = np.min(polygonx), np.min(polygony), np.max(polygonx), np.max(polygony)
+        minx, miny, maxx, maxy = np.maximum(minx, -0.5), np.maximum(miny, -0.5), np.minimum(maxx, image.shape[1] - 0.5), np.minimum(maxy, image.shape[0] - 0.5)
         mini, minj, maxi, maxj = round(miny), round(minx), round(maxy), round(maxx)
         shapely_polygon = Polygon(np.stack([polygonx - minj, polygony - mini]).T)
         image = image[mini:maxi + 1, minj:maxj + 1]
