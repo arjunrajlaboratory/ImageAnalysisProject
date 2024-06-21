@@ -5,6 +5,8 @@ import sys
 import annotation_client.annotations as annotations
 import annotation_client.workers as workers
 
+from annotation_client.utils import sendProgress
+
 # import networkx as nx
 import numpy as np
 
@@ -73,18 +75,6 @@ def compute(datasetId, apiUrl, token, params):
 
     edges = np.array([[connection['parentId'], connection['childId']] for connection in filteredConnectionList])
     nodes = np.unique(edges[:, 0])  # Currently grabs children that have no children themselves, could optimize further
-    # node_attributes = [(node, annotationClient.getAnnotationById(node)) for node in nodes]
-    #
-    # graph = nx.DiGraph()
-    #
-    # graph.add_nodes_from(node_attributes)
-    # graph.add_edges_from(edges)
-    #
-    # for node in nodes:
-    #
-    #     children = list(graph.successors(node))
-    #     annotationClient.addAnnotationPropertyValues(datasetId, node, {
-    #         propertyName: len(children)})
 
     for node in nodes:
         n_children = np.sum(edges[:, 0] == node)

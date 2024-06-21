@@ -1,7 +1,9 @@
 docker build ./workers/properties/blobs/blob_point_count_worker/ -t properties/blob_point_count_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count" --label "interfaceCategory=Count"
 docker build ./workers/properties/blobs/blob_point_count_3D_projection_worker/ -t properties/blob_point_count_3d_projection_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count 3D projection" --label "interfaceCategory=Count"
 
-docker build ./workers/properties/connections/children_count_worker/ -t properties/connection_children_count_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Children Count" --label "interfaceCategory=Count"
+# This one has been moved to build_annotation_workers2.sh
+# docker build ./workers/properties/connections/children_count_worker/ -t properties/connection_children_count_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Children Count" --label "interfaceCategory=Count"
+
 docker build ./workers/properties/points/point_circle_intensity_mean_worker/ -t properties/point_circle_intensity_mean_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Circle Intensity Mean" --label "interfaceCategory=Intensity"
 docker build ./workers/properties/points/point_intensity_worker/ -t properties/point_intensity_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Intensity" --label "interfaceCategory=Intensity"
 docker build ./workers/properties/points/point_threshold_intensity_mean_worker/ -t properties/point_threshold_intensity_mean_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Threshold Intensity Mean" --label "interfaceCategory=Intensity"
