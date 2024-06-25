@@ -8,6 +8,7 @@ from annotation_client.utils import sendProgress
 import annotation_utilities.annotation_tools as annotation_tools
 
 from shapely.geometry import Polygon
+import numpy as np
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -44,11 +45,36 @@ def compute(datasetId, apiUrl, token, params):
 
         polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
         poly = Polygon(polygon_coords)
+        convex_hull = poly.convex_hull
+        min_rect = poly.minimum_rotated_rectangle
+        
+        # Calculate elongation
+        min_rect_coords = np.array(min_rect.exterior.coords)
+        edges = np.diff(min_rect_coords, axis=0)
+        length = max(np.linalg.norm(edges, axis=1))
+        width = min(np.linalg.norm(edges, axis=1))
+        elongation = 1 - (width / length)
+
+        # Calculate eccentricity
+        coords = np.array(poly.exterior.coords)
+        cent = poly.centroid
+        centered_coords = coords - [cent.x, cent.y]
+        inertia_tensor = np.dot(centered_coords.T, centered_coords)
+        eigenvalues = np.linalg.eigvals(inertia_tensor)
+        eccentricity = np.sqrt(1 - (min(eigenvalues) / max(eigenvalues)))
 
         prop = {
             'Area': float(poly.area),
             'Perimeter': float(poly.length),
-            'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)}
+            'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)},
+            'Compactness': 4 * np.pi * poly.area / (poly.length ** 2),
+            'Elongation': elongation,
+            'Convexity': poly.area / convex_hull.area,
+            'Solidity': poly.length / convex_hull.length,
+            'Rectangularity': poly.area / (length * width),
+            'Circularity': 4 * np.pi * poly.area / (poly.length ** 2),
+            'Fractal_Dimension': 2 * np.log(poly.length) / np.log(poly.area),
+            'Eccentricity': eccentricity
         }
         # Add prop to the dictionary with annotation['_id'] as the key
         property_value_dict[annotation['_id']] = prop
