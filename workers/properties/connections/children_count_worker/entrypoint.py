@@ -5,6 +5,8 @@ import sys
 import annotation_client.annotations as annotations
 import annotation_client.workers as workers
 
+from annotation_client.utils import sendProgress
+
 # import networkx as nx
 import numpy as np
 
@@ -51,6 +53,9 @@ def compute(datasetId, apiUrl, token, params):
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
         apiUrl=apiUrl, token=token)
+    
+    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+
 
     connectionList = []
     if connectionIds:
@@ -62,10 +67,13 @@ def compute(datasetId, apiUrl, token, params):
         connectionList = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
 
     filteredConnectionList = []
-    for connection in connectionList:
+    number_connections = len(connectionList)
+    #for connection in connectionList:
+    for i, connection in enumerate(connectionList):
         child_tags = set(annotationClient.getAnnotationById(connection['childId'])['tags'])
         if (exclusive and (child_tags == tags)) or ((not exclusive) and (len(child_tags & tags) > 0)):
             filteredConnectionList.append(connection)
+        sendProgress((i+1)/number_connections, 'Filtering connections', f"Processing connection {i+1}/{number_connections}")
 
     # We need at least one annotation
     if len(connectionList) == 0:
@@ -73,23 +81,17 @@ def compute(datasetId, apiUrl, token, params):
 
     edges = np.array([[connection['parentId'], connection['childId']] for connection in filteredConnectionList])
     nodes = np.unique(edges[:, 0])  # Currently grabs children that have no children themselves, could optimize further
-    # node_attributes = [(node, annotationClient.getAnnotationById(node)) for node in nodes]
-    #
-    # graph = nx.DiGraph()
-    #
-    # graph.add_nodes_from(node_attributes)
-    # graph.add_edges_from(edges)
-    #
-    # for node in nodes:
-    #
-    #     children = list(graph.successors(node))
-    #     annotationClient.addAnnotationPropertyValues(datasetId, node, {
-    #         propertyName: len(children)})
 
-    for node in nodes:
+    number_nodes = len(nodes)
+    property_value_dict = {}  # Initialize as a dictionary
+    for i, node in enumerate(nodes):
         n_children = np.sum(edges[:, 0] == node)
-        annotationClient.addAnnotationPropertyValues(datasetId, node, {
-            propertyId: int(n_children)})
+        property_value_dict[node] = int(n_children)
+        sendProgress((i+1)/number_nodes, 'Computing children count', f"Processing node {i+1}/{number_nodes}")
+    
+    dataset_property_value_dict = {datasetId: property_value_dict}
+    sendProgress(0.5,'Done computing', 'Sending computed counts to the server')
+    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
 
 
 if __name__ == '__main__':
