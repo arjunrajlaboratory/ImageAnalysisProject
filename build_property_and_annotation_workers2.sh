@@ -76,3 +76,8 @@ docker build -f ./workers/properties/points/point_circle_intensity_worker/$DOCKE
 echo "Building property worker: point_to_nearest_blob_distance"
 docker build -f ./workers/properties/points/point_to_nearest_blob_distance/$DOCKERFILE -t properties/point_to_nearest_blob_distance:latest ./workers/properties/points/point_to_nearest_blob_distance/
 # docker build -f ./workers/properties/points/point_to_nearest_blob_distance/Dockerfile_M1 -t properties/point_to_nearest_blob_distance:latest ./workers/properties/points/point_to_nearest_blob_distance/
+
+# TEST WORKERS
+# echo "Building property worker: test_file_creation_worker"
+# docker build -f ./workers/properties/lines/test_file_creation_worker/$DOCKERFILE -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
+# docker build -f ./workers/properties/lines/test_file_creation_worker/Dockerfile_M1 -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
