@@ -77,6 +77,11 @@ echo "Building property worker: point_to_nearest_blob_distance"
 docker build -f ./workers/properties/points/point_to_nearest_blob_distance/$DOCKERFILE -t properties/point_to_nearest_blob_distance:latest ./workers/properties/points/point_to_nearest_blob_distance/
 # docker build -f ./workers/properties/points/point_to_nearest_blob_distance/Dockerfile_M1 -t properties/point_to_nearest_blob_distance:latest ./workers/properties/points/point_to_nearest_blob_distance/
 
+echo "Building property worker: line_scan_worker"
+docker build -f ./workers/properties/lines/line_scan_worker/$DOCKERFILE -t properties/line_scan_worker:latest ./workers/properties/lines/line_scan_worker/
+# docker build -f ./workers/properties/lines/line_scan_worker/Dockerfile_M1 -t properties/line_scan_worker:latest ./workers/properties/lines/line_scan_worker/
+
+
 # TEST WORKERS
 # echo "Building property worker: test_file_creation_worker"
 # docker build -f ./workers/properties/lines/test_file_creation_worker/$DOCKERFILE -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
