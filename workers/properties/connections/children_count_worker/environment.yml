@@ -3,6 +3,4 @@ dependencies:
 - python
 - pip
 - numpy
-#- networkx
-# - pip:
-#   - 
+- pandas

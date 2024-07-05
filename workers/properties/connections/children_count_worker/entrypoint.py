@@ -4,107 +4,92 @@ import sys
 
 import annotation_client.annotations as annotations
 import annotation_client.workers as workers
-
 from annotation_client.utils import sendProgress
 
-# import networkx as nx
+import pandas as pd
 import numpy as np
-
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
-    # Available types: number, text, tags, layer
     interface = {
-        'Tags': {
+        'Child Tags': {
             'type': 'tags'
         },
-        'Exclusive': {
+        'Child Tags Exclusive': {
             'type': 'select',
             'items': ['Yes', 'No'],
-            'default': 'Yes'
+            'default': 'No'
         },
     }
-    # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
 
-
 def compute(datasetId, apiUrl, token, params):
-    """
-    Params is a dict containing the following parameters:
-    required:
-        name: The name of the property
-        id: The id of the property
-        propertyType: can be "morphology", "relational", or "layer"
-    optional:
-        annotationId: A list of annotation ids for which the property should be computed
-        shape: The shape of annotations that should be used
-        layer: Which specific layer should be used for intensity calculations
-        tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
-    """
     propertyId = params.get('id', 'unknown_property')
-
-    connectionIds = params.get('connectionIds', None)
-
     workerInterface = params['workerInterface']
-    tags = set(workerInterface.get('Tags', None))
-    exclusive = workerInterface['Exclusive'] == 'Yes'
-
-    # Setup helper classes with url and credentials
-    annotationClient = annotations.UPennContrastAnnotationClient(
-        apiUrl=apiUrl, token=token)
     
+    parent_tags = set(params.get('tags', {}).get('tags', []))
+    parent_exclusive = params.get('tags', {}).get('exclusive', False)
+    
+    child_tags = set(workerInterface.get('Child Tags', []))
+    print(workerInterface)
+    child_exclusive = workerInterface['Child Tags Exclusive'] == 'Yes'
+
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+    annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
 
-
-    connectionList = []
-    if connectionIds:
-        # Get the annotations specified by id in the parameters
-        for id in connectionIds:
-            connectionList.append(annotationClient.getAnnotationConnectionById(id))
-    else:
-        # Get all point annotations from the dataset
-        connectionList = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
-
-    filteredConnectionList = []
-    number_connections = len(connectionList)
-    #for connection in connectionList:
-    for i, connection in enumerate(connectionList):
-        child_tags = set(annotationClient.getAnnotationById(connection['childId'])['tags'])
-        if (exclusive and (child_tags == tags)) or ((not exclusive) and (len(child_tags & tags) > 0)):
-            filteredConnectionList.append(connection)
-        sendProgress((i+1)/number_connections, 'Filtering connections', f"Processing connection {i+1}/{number_connections}")
-
-    # We need at least one annotation
-    if len(connectionList) == 0:
-        return
-
-    edges = np.array([[connection['parentId'], connection['childId']] for connection in filteredConnectionList])
-    nodes = np.unique(edges[:, 0])  # Currently grabs children that have no children themselves, could optimize further
-
-    number_nodes = len(nodes)
-    property_value_dict = {}  # Initialize as a dictionary
-    for i, node in enumerate(nodes):
-        n_children = np.sum(edges[:, 0] == node)
-        property_value_dict[node] = int(n_children)
-        sendProgress((i+1)/number_nodes, 'Computing children count', f"Processing node {i+1}/{number_nodes}")
+    sendProgress(0.1, 'Fetching data', 'Getting all annotations')
+    all_annotations = workerClient.get_annotation_list_by_shape(None, limit=0)
     
+    sendProgress(0.3, 'Fetching data', 'Getting all connections')
+    all_connections = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
+
+    sendProgress(0.5, 'Processing data', 'Filtering annotations and connections')
+    
+    def filter_annotations(annotations, tags, exclusive):
+        if exclusive:
+            return [ann for ann in annotations if set(ann['tags']) == tags]
+        else:
+            return [ann for ann in annotations if set(ann['tags']) & tags]
+
+    parent_annotations = filter_annotations(all_annotations, parent_tags, parent_exclusive)
+    child_annotations = filter_annotations(all_annotations, child_tags, child_exclusive)
+
+    parent_ids = set(ann['_id'] for ann in parent_annotations)
+    child_ids = set(ann['_id'] for ann in child_annotations)
+
+    filtered_connections = [
+        conn for conn in all_connections 
+        if conn['parentId'] in parent_ids and conn['childId'] in child_ids
+    ]
+
+    sendProgress(0.7, 'Computing', 'Counting children')
+
+    df = pd.DataFrame(filtered_connections)
+    children_count = df.groupby('parentId').size().reset_index(name='count')
+    children_count_dict = dict(zip(children_count['parentId'], children_count['count']))
+
+    property_value_dict = {
+        parent_id: children_count_dict.get(parent_id, 0) 
+        for parent_id in parent_ids
+    }
+
     dataset_property_value_dict = {datasetId: property_value_dict}
-    sendProgress(0.5,'Done computing', 'Sending computed counts to the server')
+
+    sendProgress(0.9, 'Finishing', 'Sending computed counts to the server')
     workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
 
+    sendProgress(1.0, 'Complete', 'Property worker finished successfully')
 
 if __name__ == '__main__':
-    # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
-        description='Compute average intensity values in a circle around point annotations')
+        description='Compute children count for annotations')
 
     parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
-    parser.add_argument('--parameters', type=str,
-                        required=True, action='store')
+    parser.add_argument('--parameters', type=str, required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 
