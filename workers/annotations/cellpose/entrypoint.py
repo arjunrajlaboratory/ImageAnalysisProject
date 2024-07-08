@@ -24,57 +24,68 @@ def interface(image, apiUrl, token):
     interface = {
         'Model': {
             'type': 'select',
-            'items': ['cyto', 'cyto2', 'nuclei'],
-            'default': 'cyto'
+            'items': ['cyto', 'cyto2', 'cyto3', 'nuclei'],
+            'default': 'cyto3',
+            'displayOrder': 3
         },
         'Nuclei Channel': {
             'type': 'channel',
             'default': -1,
-            'required': False
+            'required': False,
+            'displayOrder': 4
         },
         'Cytoplasm Channel': {
             'type': 'channel',
             'default': -1,
-            'required': False
+            'required': False,
+            'displayOrder': 5
         },
         'Diameter': {
             'type': 'number',
             'min': 0,
             'max': 200,
-            'default': 10
+            'default': 10,
+            'displayOrder': 6
         },
         'Tile Size': {
             'type': 'number',
             'min': 0,
             'max': 2048,
-            'default': 1024
+            'default': 1024,
+            'displayOrder': 9
         },
         'Tile Overlap': {
             'type': 'number',
             'min': 0,
             'max': 1,
-            'default': 0.1
+            'default': 0.1,
+            'displayOrder': 10
         },
         'Batch XY': {
-            'type': 'text'
+            'type': 'text',
+            'displayOrder': 0
         },
         'Batch Z': {
-            'type': 'text'
+            'type': 'text',
+            'displayOrder': 1
         },
         'Batch Time': {
-            'type': 'text'
+            'type': 'text',
+            'displayOrder': 2
         },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
+            'displayOrder': 8,
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 10,
             'default': 0,
+            'displayOrder': 7,
         },
     }
     # Send the interface object to the server
@@ -138,7 +149,7 @@ def compute(datasetId, apiUrl, token, params):
     smoothing = float(worker.workerInterface['Smoothing'])
 
     stack_channels = []
-    if model in ['cyto', 'cyto2']:
+    if model in ['cyto', 'cyto2', 'cyto3']:
         if (cytoplasm_channel is not None) and (cytoplasm_channel > -1):
             stack_channels.append(cytoplasm_channel)
     if (nuclei_channel is not None) and (nuclei_channel > -1):
