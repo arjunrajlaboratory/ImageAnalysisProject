@@ -84,7 +84,7 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 10,
-            'default': 0,
+            'default': 1,
             'displayOrder': 7,
         },
     }
