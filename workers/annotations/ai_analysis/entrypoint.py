@@ -119,31 +119,24 @@ def compute(datasetId, apiUrl, token, params):
     )
 
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    doc_filename = f"Claude output {current_time}.txt"
+    input_json_filename = f"Claude input {current_time}.json"
 
-    documentation = f"""User Message:
-    {user_message}
+    # Save input JSON data
+    input_json_string = json.dumps(json_data, indent=2)
+    input_json_stream = io.StringIO(input_json_string)
+    input_size = len(input_json_string)
+    input_json_stream.seek(0)
 
-    Claude Output:
-    {message.content[0].text}
-    """
+    sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
 
-    # Convert documentation string to a stream
-    doc_stream = io.StringIO(documentation)
-    doc_size = len(documentation)
-    doc_stream.seek(0)
-
-    sendProgress(0.90, 'Creating documentation', 'Saving documentation file to dataset folder')
-
-    # Upload documentation content to the file
     # Get the dataset folder
     folder = annotationClient.client.getFolder(datasetId)
-    annotationClient.client.uploadStreamToFolder(folder['_id'], doc_stream, doc_filename, doc_size, mimeType="text/plain")
+
+    # Upload input JSON content to the file
+    annotationClient.client.uploadStreamToFolder(folder['_id'], input_json_stream, input_json_filename, input_size, mimeType="application/json")
 
     # Extract the Python code from the message and run it
-
     code = extract_python_code_from_string(message.content[0].text)
-
     sendProgress(0.75, 'Executing code', 'Executing the AI model code')
 
     # Create a dictionary to hold our variables
@@ -155,17 +148,46 @@ def compute(datasetId, apiUrl, token, params):
     # Retrieve the modified data
     output_json_data = local_vars.get('output_json_data', {})
 
-    # Convert the JSON data to a string
+    # This would be the putative end of a loop that would iteratively run the code if errors arose.
+
+
+    # Document the process
+    doc_filename = f"Claude output {current_time}.txt"
+
+    documentation = f"""Input JSON Filename: {input_json_filename}
+    Output JSON Filename: {output_json_filename}
+
+    User Message:
+    {user_message}
+
+    Claude Output:
+    {message.content[0].text}
+    """
+
+    # Convert documentation string to a stream
+    doc_stream = io.StringIO(documentation)
+    doc_size = len(documentation)
+    doc_stream.seek(0)
+
+    sendProgress(0.90, 'Creating documentation', f"Saving {doc_filename} to dataset folder")
+
+    # Upload documentation content to the file
+    # Get the dataset folder
+    folder = annotationClient.client.getFolder(datasetId)
+    annotationClient.client.uploadStreamToFolder(folder['_id'], doc_stream, doc_filename, doc_size, mimeType="text/plain")
+
+
+    # Convert the output JSON data to a string
     output_json_string = json.dumps(output_json_data, indent=2)
 
-    # Convert JSON string to a stream
+    # Convert output JSON string to a stream
     json_stream = io.StringIO(output_json_string)
     size = len(output_json_string) # Get the length of the string as required by Girder
     json_stream.seek(0) # Reset the stream to the beginning
 
-    sendProgress(0.95, 'Uploading file', 'Saving JSON file to dataset folder')
+    sendProgress(0.95, 'Uploading file', f"Saving {output_json_filename} to dataset folder")
 
-    # Upload JSON content to the file
+    # Upload output JSON content to the file
     annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
     
 import json
