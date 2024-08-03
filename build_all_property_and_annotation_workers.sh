@@ -15,6 +15,7 @@ else
 fi
 
 # Build Docker image
+
 # Annotation workers
 echo "Building annotation worker: connect_to_nearest"
 docker build -f ./workers/annotations/connect_to_nearest/$DOCKERFILE -t annotations/connect_to_nearest:latest ./workers/annotations/connect_to_nearest/
@@ -86,3 +87,9 @@ docker build -f ./workers/properties/lines/line_scan_worker/$DOCKERFILE -t prope
 # echo "Building property worker: test_file_creation_worker"
 # docker build -f ./workers/properties/lines/test_file_creation_worker/$DOCKERFILE -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
 # docker build -f ./workers/properties/lines/test_file_creation_worker/Dockerfile_M1 -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
+
+
+# AI workers
+echo "Building AI worker: ai_worker"
+docker build -f ./workers/annotations/ai_worker/$DOCKERFILE -t annotations/ai_worker:latest ./workers/annotations/ai_worker/
+# docker build -f ./workers/annotations/ai_worker/Dockerfile_M1 -t annotations/ai_worker:latest ./workers/annotations/ai_worker/
