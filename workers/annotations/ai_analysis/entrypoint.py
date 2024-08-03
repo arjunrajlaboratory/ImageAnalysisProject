@@ -131,19 +131,15 @@ def compute(datasetId, apiUrl, token, params):
     # Retrieve the modified data
     output_json_data = local_vars.get('output_json_data', {})
 
-    #output_json = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyList)
-    #output_json_string = json.dumps(output_json, indent=2)
-
+    # Convert the JSON data to a string
     output_json_string = json.dumps(output_json_data, indent=2)
-
-    # print("Output JSON string: ", output_json_string)
 
     # Convert JSON string to a stream
     json_stream = io.StringIO(output_json_string)
     size = len(output_json_string) # Get the length of the string as required by Girder
     json_stream.seek(0) # Reset the stream to the beginning
 
-    sendProgress(0.95, 'Uploading file', 'Saving JSON file to dataset')
+    sendProgress(0.95, 'Uploading file', 'Saving JSON file to dataset folder')
 
     # Get the dataset folder
     folder = annotationClient.client.getFolder(datasetId)
