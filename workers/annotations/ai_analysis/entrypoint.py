@@ -5,6 +5,7 @@ import sys
 import random
 import time
 import timeit
+from datetime import datetime
 from typing import List, Dict, Optional
 import io
 from anthropic import Anthropic
@@ -117,8 +118,31 @@ def compute(datasetId, apiUrl, token, params):
         ]
     )
 
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    doc_filename = f"Claude output {current_time}.txt"
+
+    documentation = f"""User Message:
+    {user_message}
+
+    Claude Output:
+    {message.content[0].text}
+    """
+
+    # Convert documentation string to a stream
+    doc_stream = io.StringIO(documentation)
+    doc_size = len(documentation)
+    doc_stream.seek(0)
+
+    sendProgress(0.90, 'Creating documentation', 'Saving documentation file to dataset folder')
+
+    # Upload documentation content to the file
+    # Get the dataset folder
+    folder = annotationClient.client.getFolder(datasetId)
+    annotationClient.client.uploadStreamToFolder(folder['_id'], doc_stream, doc_filename, doc_size, mimeType="text/plain")
+
+    # Extract the Python code from the message and run it
+
     code = extract_python_code_from_string(message.content[0].text)
-    print(code)
 
     sendProgress(0.75, 'Executing code', 'Executing the AI model code')
 
@@ -140,9 +164,6 @@ def compute(datasetId, apiUrl, token, params):
     json_stream.seek(0) # Reset the stream to the beginning
 
     sendProgress(0.95, 'Uploading file', 'Saving JSON file to dataset folder')
-
-    # Get the dataset folder
-    folder = annotationClient.client.getFolder(datasetId)
 
     # Upload JSON content to the file
     annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
