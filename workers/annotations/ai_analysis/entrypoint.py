@@ -5,6 +5,8 @@ import sys
 import random
 import time
 import timeit
+from typing import List, Dict, Optional
+import io
 
 from operator import itemgetter
 
@@ -33,6 +35,7 @@ def interface(image, apiUrl, token):
         },
         'Output JSON filename': {
             'type': 'text',
+            'default': 'output.json'
         },
         'Query': {
             'type': 'text',
@@ -77,8 +80,125 @@ def compute(datasetId, apiUrl, token, params):
     
 
     print("Input parameters: ", api_key, output_json_filename, query)
-    
 
+    annotationList = annotationClient.getAnnotationsByDatasetId(datasetId)
+    connectionList = annotationClient.getAnnotationConnections(datasetId)
+    propertyList = annotationClient.getPropertyValuesForDataset(datasetId) # Not sure how to get property names out, unfortunately.
+
+    output_json_string = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyList)
+
+    print("Output JSON string: ", output_json_string)
+
+    # Convert JSON string to a stream
+    json_stream = io.StringIO(output_json_string)
+    size = len(output_json_string) # Get the length of the string as required by Girder
+    json_stream.seek(0) # Reset the stream to the beginning
+
+    sendProgress(0.95, 'Uploading file', 'Saving CSV file to dataset')
+
+    # Get the dataset folder
+    folder = annotationClient.client.getFolder(datasetId)
+
+    # Upload JSON content to the file
+    annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
+    
+import json
+from typing import List, Dict, Optional
+
+def convert_nimbus_objects_to_JSON(annotationList: List[Dict], 
+                                   connectionList: Optional[List[Dict]] = None, 
+                                   propertyList: Optional[List[Dict]] = None, 
+                                   filename: str = "output.json") -> None:
+    output = {"annotations": [], "annotationConnections": [], "annotationProperties": [], "annotationPropertyValues": {}}
+
+    for annotation in annotationList:
+        ann_output = {
+            "tags": annotation.get("tags", []),
+            "shape": annotation.get("shape", ""),
+            "channel": annotation.get("channel", 0),
+            "location": annotation.get("location", {}),
+            "coordinates": annotation.get("coordinates", []),
+            "id": annotation.get("_id", ""),
+            "datasetId": annotation.get("datasetId", "")
+        }
+        if "color" in annotation:
+            ann_output["color"] = annotation["color"]
+        output["annotations"].append(ann_output)
+
+    if connectionList:
+        for connection in connectionList:
+            conn_output = {
+                "label": connection.get("label", ""),
+                "tags": connection.get("tags", []),
+                "id": connection.get("_id", ""),
+                "parentId": connection.get("parentId", ""),
+                "childId": connection.get("childId", ""),
+                "datasetId": connection.get("datasetId", "")
+            }
+            output["annotationConnections"].append(conn_output)
+
+    if propertyList:
+        # Add a dummy property
+        output["annotationProperties"].append({
+            "id": "dummy_property_id",
+            "name": "Dummy Property",
+            "image": "properties/dummy:latest",
+            "tags": {"exclusive": False, "tags": ["dummy"]},
+            "shape": "polygon",
+            "workerInterface": {}
+        })
+
+        for prop in propertyList:
+            ann_id = prop.get("annotationId", "")
+            values = prop.get("values", {})
+            if ann_id and values:
+                output["annotationPropertyValues"][ann_id] = values
+
+    json_string = json.dumps(output, indent=2)
+    return json_string
+    # with open(filename, 'w') as f:
+    #     json.dump(output, f, indent=2)
+
+def convert_JSON_to_nimbus_objects(filename: str) -> tuple:
+    with open(filename, 'r') as f:
+        data = json.load(f)
+
+    annotationList = []
+    for ann in data.get("annotations", []):
+        annotation = {
+            "_id": ann.get("id", ""),
+            "tags": ann.get("tags", []),
+            "shape": ann.get("shape", ""),
+            "channel": ann.get("channel", 0),
+            "location": ann.get("location", {}),
+            "coordinates": ann.get("coordinates", []),
+            "datasetId": ann.get("datasetId", "")
+        }
+        if "color" in ann:
+            annotation["color"] = ann["color"]
+        annotationList.append(annotation)
+
+    connectionList = []
+    for conn in data.get("annotationConnections", []):
+        connection = {
+            "_id": conn.get("id", ""),
+            "label": conn.get("label", ""),
+            "tags": conn.get("tags", []),
+            "parentId": conn.get("parentId", ""),
+            "childId": conn.get("childId", ""),
+            "datasetId": conn.get("datasetId", "")
+        }
+        connectionList.append(connection)
+
+    propertyList = []
+    for ann_id, values in data.get("annotationPropertyValues", {}).items():
+        property_value = {
+            "annotationId": ann_id,
+            "values": values
+        }
+        propertyList.append(property_value)
+
+    return annotationList, connectionList, propertyList
     
 
 

@@ -90,6 +90,6 @@ docker build -f ./workers/properties/lines/line_scan_worker/$DOCKERFILE -t prope
 
 
 # AI workers
-echo "Building AI worker: ai_worker"
-docker build -f ./workers/annotations/ai_worker/$DOCKERFILE -t annotations/ai_worker:latest ./workers/annotations/ai_worker/
-# docker build -f ./workers/annotations/ai_worker/Dockerfile_M1 -t annotations/ai_worker:latest ./workers/annotations/ai_worker/
+echo "Building AI worker: ai_analysis"
+docker build -f ./workers/annotations/ai_analysis/$DOCKERFILE -t annotations/ai_analysis:latest ./workers/annotations/ai_analysis/
+# docker build -f ./workers/annotations/ai_analysis/Dockerfile_M1 -t annotations/ai_analysis:latest ./workers/annotations/ai_analysis/
