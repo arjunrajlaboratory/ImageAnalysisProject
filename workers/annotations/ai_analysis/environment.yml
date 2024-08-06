@@ -1,0 +1,13 @@
+name: worker
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+- python=3.9
+- pip
+- numpy
+- pandas
+- geopandas
+- scipy
+- shapely
+- anthropic
