@@ -51,6 +51,37 @@ def interface(image, apiUrl, token):
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
 
+# Function to auto-scale image
+def auto_scale_image(image):
+    image = image.squeeze()  # Remove single-dimensional entries
+    vmin, vmax = np.percentile(image, (1, 99.5))  # Use 2nd and 98th percentiles for contrast
+    return (image - vmin) / (vmax - vmin)
+
+
+def segment_image(image, model_type="vit_h", checkpoint_path="./sam_vit_h_4b8939.pth"):
+    # Load the image
+    # image = np.array(Image.open(image_path))
+    
+    # Set up the model
+    sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
+
+    if torch.cuda.is_available:
+        print("Using GPU")
+    else:
+        print("Using CPU")
+
+    sam.to(device='cuda' if torch.cuda.is_available() else 'cpu')
+    
+    predictor = SamPredictor(sam)
+    predictor.set_image(image)
+    
+    # Generate automatic masks
+    masks, _, _ = predictor.predict(
+        point_coords=None,
+        point_labels=None,
+        multimask_output=True
+    )
+    return masks
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -93,7 +124,29 @@ def compute(datasetId, apiUrl, token, params):
     print("Padding:", padding)
     print("Smoothing:", smoothing)
 
+    xy = tile['XY']
+    z = tile['Z']
+    time = tile['Time']
+    
+    channel_load = channel
+    frame = tileClient.coordinatesToFrameIndex(xy, z, time, channel_load)
+    image_phase = tileClient.getRegion(datasetId, frame=frame)
+    channel_load = 1
+    frame = tileClient.coordinatesToFrameIndex(xy, z, time, channel_load)
+    image_fluor = tileClient.getRegion(datasetId, frame=frame)
 
+    # Auto-scale images
+    image_phase_scaled = auto_scale_image(image_phase)
+    image_fluor_scaled = auto_scale_image(image_fluor)
+
+    # Create RGB image
+    rgb_image = np.zeros((*image_phase_scaled.shape, 3))
+    rgb_image[:,:,0] = image_phase_scaled  # Red channel
+    rgb_image[:,:,1] = np.maximum(image_phase_scaled, image_fluor_scaled)  # Green channel
+    rgb_image[:,:,2] = image_phase_scaled  # Blue channel
+
+    masks = segment_image(rgb_image)
+    print(masks)
 
 
 if __name__ == '__main__':
