@@ -1,0 +1,17 @@
+name: worker
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy=1.23.5
+  - imageio
+  - rasterio
+  - shapely=1.8.5
+  - pip:
+    - deeptile
+    - stardist==0.9.1
+    - tensorflow==2.11.0
+    - csbdeep
+    - scikit-image==0.19.3
