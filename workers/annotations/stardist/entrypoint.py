@@ -160,7 +160,6 @@ def compute(datasetId, apiUrl, token, params):
             },
             "datasetId": datasetId,
             "coordinates": [{"x": float(x), "y": float(y)} for x, y in polygon.exterior.coords],
-            "color": "#FF0000" # I don't know why this needs to be included. It should be an optional field. But it doesn't seem to run without it.
         }
         out_annotations.append(annotation)
 
