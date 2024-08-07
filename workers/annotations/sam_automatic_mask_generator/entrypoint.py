@@ -5,14 +5,17 @@ import sys
 from functools import partial
 from itertools import product
 
+import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
 
 import numpy as np  # library for array manipulation
 from shapely.geometry import Polygon
+from skimage.measure import find_contours
+from shapely.geometry import Polygon
 
 import torch
-from segment_anything import sam_model_registry, SamPredictor
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 from PIL import Image
 
 
@@ -59,9 +62,8 @@ def auto_scale_image(image):
 
 
 def segment_image(image, model_type="vit_h", checkpoint_path="./sam_vit_h_4b8939.pth"):
-    # Load the image
-    # image = np.array(Image.open(image_path))
-    
+    # image is assumed to already be an numpy array of a color image
+        
     # Set up the model
     sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
 
@@ -71,16 +73,18 @@ def segment_image(image, model_type="vit_h", checkpoint_path="./sam_vit_h_4b8939
         print("Using CPU")
 
     sam.to(device='cuda' if torch.cuda.is_available() else 'cpu')
-    
-    predictor = SamPredictor(sam)
-    predictor.set_image(image)
-    
-    # Generate automatic masks
-    masks, _, _ = predictor.predict(
-        point_coords=None,
-        point_labels=None,
-        multimask_output=True
+
+    # Create the mask generator
+    mask_generator = SamAutomaticMaskGenerator(
+        sam,
+        points_per_side=64
     )
+
+    # Generate the masks
+    masks = mask_generator.generate(image)
+
+    print(f"Number of masks: {len(masks)}")
+    
     return masks
 
 def compute(datasetId, apiUrl, token, params):
@@ -100,6 +104,7 @@ def compute(datasetId, apiUrl, token, params):
         connectTo: how new annotations should be connected
     """
 
+    annotationClient = annotations_client.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
@@ -146,7 +151,43 @@ def compute(datasetId, apiUrl, token, params):
     rgb_image[:,:,2] = image_phase_scaled  # Blue channel
 
     masks = segment_image(rgb_image)
-    print(masks)
+
+    print(len(masks), "masks generated")
+
+    annotations = []
+
+    for i, mask_data in enumerate(masks):
+        mask = mask_data['segmentation']
+        
+        # Find contours in the mask
+        contours = find_contours(mask, 0.5)
+        
+        for contour in contours:
+            # Simplify the contour to reduce the number of points
+            polygon = Polygon(contour).simplify(smoothing, preserve_topology=True)
+            
+            if polygon.is_valid and not polygon.is_empty:
+                # Convert the polygon coordinates to the required format
+                coordinates = [{"x": float(y), "y": float(x)} for x, y in polygon.exterior.coords]
+                
+                # Create the annotation
+                annotation = {
+                    "tags": tags,
+                    "shape": "polygon",
+                    "channel": channel,
+                    "location": {
+                        "XY": xy,  # You may need to adjust this based on your tile information
+                        "Z": z,        # Adjust as needed
+                        "Time": time      # Adjust as needed
+                    },
+                    "datasetId": datasetId,
+                    "coordinates": coordinates
+                }
+                
+                annotations.append(annotation)
+
+    # Upload the annotations
+    annotationClient.createMultipleAnnotations(annotations)
 
 
 if __name__ == '__main__':
