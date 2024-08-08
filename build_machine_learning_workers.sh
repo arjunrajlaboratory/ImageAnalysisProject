@@ -15,7 +15,10 @@ docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:late
 docker build ./workers/annotations/laplacian_of_gaussian/ -t annotations/laplacian_of_gaussian:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Laplacian of Gaussian" --label "interfaceCategory=Laplacian of Gaussian"
 
 docker build ./workers/annotations/sam_automatic_mask_generator/ -t annotations/sam_automatic_mask_generator:latest 
-docker build -f ./workers/annotations/sam_automatic_mask_generator/Dockerfile_M1 ./workers/annotations/sam_automatic_mask_generator/ -t annotations/sam_automatic_mask_generator:latest 
+# docker build -f ./workers/annotations/sam_automatic_mask_generator/Dockerfile_M1 ./workers/annotations/sam_automatic_mask_generator/ -t annotations/sam_automatic_mask_generator:latest 
+
+docker build ./workers/annotations/sam2_automatic_mask_generator/ -t annotations/sam2_automatic_mask_generator:latest 
+
 
 #docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
 
