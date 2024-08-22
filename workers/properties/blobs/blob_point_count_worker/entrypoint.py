@@ -3,17 +3,26 @@ import json
 import sys
 
 import annotation_client.workers as workers
+from annotation_client.utils import sendProgress
+
+from shapely.geometry import Point, Polygon
+
+from annotation_utilities.point_in_polygon import point_in_polygon
+from annotation_utilities import annotation_tools
+
+from rtree import index
 
 import numpy as np
-# from point_in_polygon import point_in_polygon
-from annotation_utilities.point_in_polygon import point_in_polygon
-
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
-    # Available types: number, text, tags, layer
     interface = {
+        'Count points across all z-slices': {
+            'type': 'select',
+            'items': ['Yes', 'No'],
+            'default': 'Yes'
+        },
         'Tags of points to count': {
             'type': 'tags'
         },
@@ -23,71 +32,82 @@ def interface(image, apiUrl, token):
             'default': 'Yes'
         },
     }
-    # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
 
-
 def compute(datasetId, apiUrl, token, params):
-    """
-    Params is a dict containing the following parameters:
-    required:
-        name: The name of the property
-        id: The id of the property
-        propertyType: can be "morphology", "relational", or "layer"
-    optional:
-        annotationId: A list of annotation ids for which the property should be computed
-        shape: The shape of annotations that should be used
-        layer: Which specific layer should be used for intensity calculations
-        tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
-    """
-
     workerInterface = params['workerInterface']
     tags = set(workerInterface.get('Tags of points to count', None))
+    count_across_z = workerInterface['Count points across all z-slices'] == 'Yes'
     exclusive = workerInterface['Exact tag match?'] == 'Yes'
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    
+    sendProgress(0.1, 'Fetching data', 'Getting polygon annotations')
+    blobAnnotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    
+    sendProgress(0.3, 'Fetching data', 'Getting point annotations')
     pointList = workerClient.get_annotation_list_by_shape('point', limit=0)
 
-    filteredPointList = []
-    for point in pointList:
-        point_tags = set(point['tags'])
-        if (exclusive and (point_tags == tags)) or ((not exclusive) and (len(point_tags & tags) > 0)):
-            filteredPointList.append(point)
-
-    points = np.array([[point['location'][i]
-                        for i in ['Time', 'XY', 'Z']] + list(point['coordinates'][0].values())[1::-1]
-                       for point in filteredPointList])
-
-    # We need at least one annotation
-    if len(annotationList) == 0:
+    if len(blobAnnotationList) == 0:
+        sendProgress(1.0, 'Complete', 'No polygon annotations found')
         return
 
-    for annotation in annotationList:
+    sendProgress(0.4, 'Processing data', 'Filtering point annotations')
+    filteredPointList = annotation_tools.get_annotations_with_tags(pointList, tags, exclusive=exclusive)
 
-        image = workerClient.get_image_for_annotation(annotation)
+    property_value_dict = {}
+    previous_time_value = None
+    previous_xy_value = None
+    idx = index.Index()
+    filtered_points = []
+    myPoints = []
 
-        if image is None:
-            continue
+    total_blobs = len(blobAnnotationList)
 
-        polygon = np.array([[coordinate[i] for i in ['y', 'x']] for coordinate in annotation['coordinates']])
-        filtered_points = points[np.all(points[:, :3] == np.array([annotation['location'][i] for i in ['Time', 'XY', 'Z']]), axis=1)][:, -2:]
-        point_count = np.sum(point_in_polygon(filtered_points, polygon))
+    for i, blob in enumerate(blobAnnotationList):
+        progress = 0.4 + (0.5 * (i / total_blobs))
+        sendProgress(progress, 'Computing', f'Processing polygon {i+1} of {total_blobs}')
 
-        workerClient.add_annotation_property_values(annotation, int(point_count))
+        xy_coords = [(coord['x'], coord['y']) for coord in blob['coordinates']]
+        polygon = Polygon(xy_coords)
+        
+        time_value = blob['location']['Time']
+        xy_value = blob['location']['XY']
+        z_value = blob['location']['Z']
 
+        if time_value != previous_time_value or xy_value != previous_xy_value:
+            if count_across_z:
+                filtered_points = annotation_tools.filter_elements_T_XY(filteredPointList, time_value, xy_value)
+            else:
+                filtered_points = annotation_tools.filter_elements_T_XY_Z(filteredPointList, time_value, xy_value, z_value)
+            
+            idx = index.Index()
+            myPoints = annotation_tools.create_points_from_annotations(filtered_points)
+            for j, point in enumerate(myPoints):
+                idx.insert(j, point.bounds)
+        
+        count = sum(1 for j in idx.intersection(polygon.bounds) if polygon.contains(myPoints[j]))
+        
+        property_value_dict[blob['_id']] = int(count)
+        
+        previous_time_value = time_value
+        previous_xy_value = xy_value
+
+    sendProgress(0.9, 'Saving data', 'Updating annotation property values')
+    dataset_property_value_dict = {datasetId: property_value_dict}
+    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
+
+    sendProgress(1.0, 'Complete', 'Property worker finished successfully')
 
 if __name__ == '__main__':
-    # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
-        description='Compute average intensity values in a circle around point annotations')
+        description='Compute point counts within polygon annotations')
 
     parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
-    parser.add_argument('--parameters', type=str,
-                        required=True, action='store')
+    parser.add_argument('--parameters', type=str, required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 

@@ -22,6 +22,9 @@ def create_points_from_annotations(elements):
 def filter_elements_T_XY(elements, time_value, xy_value):
     return [element for element in elements if element['location']['Time'] == time_value and element['location']['XY'] == xy_value]
 
+def filter_elements_T_XY_Z(elements, time_value, xy_value, z_value):
+    return [element for element in elements if element['location']['Time'] == time_value and element['location']['XY'] == xy_value and element['location']['Z'] == z_value]
+
 def get_annotations_with_tags(elements, tags, exclusive=False):
     result = []
     tags_set = set(tags)
