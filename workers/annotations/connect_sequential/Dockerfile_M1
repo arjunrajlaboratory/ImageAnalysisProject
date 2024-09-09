@@ -52,7 +52,7 @@ LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Connect Sequential" \
       interfaceCategory="Connections" \
-      description="Connects objects sequentially across time or z-slices"
+      description="Connects objects sequentially across time or z-slices, useful for time lapse data"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
 
