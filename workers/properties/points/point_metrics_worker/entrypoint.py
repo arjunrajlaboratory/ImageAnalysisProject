@@ -29,8 +29,8 @@ def compute(datasetId, apiUrl, token, params):
     if len(annotationList) == 0:
         return
 
-
     number_annotations = len(annotationList)
+    property_value_dict = {}  # Initialize as a dictionary
     for i, annotation in enumerate(annotationList):
 
         x = annotation['coordinates'][0]['x']
@@ -40,8 +40,14 @@ def compute(datasetId, apiUrl, token, params):
             'x': float(x),
             'y': float(y)
         }
+        # Add prop to the dictionary with annotation['_id'] as the key
+        property_value_dict[annotation['_id']] = prop
         sendProgress((i+1)/number_annotations, 'Computing point metrics', f"Processing annotation {i+1}/{number_annotations}")
-        workerClient.add_annotation_property_values(annotation, prop)
+
+    dataset_property_value_dict = {datasetId: property_value_dict}
+
+    sendProgress(0.5, 'Done computing', 'Sending computed metrics to the server')
+    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
