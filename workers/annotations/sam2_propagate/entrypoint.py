@@ -19,6 +19,7 @@ from shapely.geometry import Polygon
 import torch
 from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+from sam2.sam2_image_predictor import SAM2ImagePredictor
 from PIL import Image
 
 
@@ -80,9 +81,7 @@ def segment_image(image, checkpoint_path="/sam2_hiera_large.pt"):
 
     # model_cfg = "/segment-anything-2/sam2_configs/sam2_hiera_l.yaml" # This will need to be updated based on model chosen
     model_cfg = "sam2_hiera_l.yaml" # This will need to be updated based on model chosen
-
-
-    sam2 = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)
+    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)
 
     mask_generator = SAM2AutomaticMaskGenerator(sam2,points_per_side=128)
 
@@ -124,7 +123,10 @@ def compute(datasetId, apiUrl, token, params):
     channel = params['channel']
     tags = params['tags']
 
-    print("TESTING SAM AUTOMATIC MASK GENERATOR")
+    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    print("Length of annotations:", len(annotationList))
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, propagate_tags, exclusive=False)
+    print("Length of annotations:", len(annotationList))
 
     print("Tile:", tile)
     print("Channel:", channel)
@@ -139,18 +141,69 @@ def compute(datasetId, apiUrl, token, params):
     Z = tile['Z']
     Time = tile['Time']
 
-    images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time)
-    print("Length of images:", len(images))
-    layers = annotation_tools.get_layers(tileClient.client, datasetId)
-    print("Layers:", layers)
+    checkpoint_path="/sam2_hiera_large.pt"
+    model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
+    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cpu', apply_postprocessing=False)  # device='cuda' for GPU
+    predictor = SAM2ImagePredictor(sam2_model)
 
-    merged_image = annotation_tools.process_and_merge_channels(images, layers)
-    print("Merged image shape:", merged_image.shape)
+    new_annotations = []
+    Time = 0  # Let's start at the earliest time
 
-    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
-    print("Length of annotations:", len(annotationList))
-    annotationList = annotation_tools.get_annotations_with_tags(annotationList, propagate_tags, exclusive=False)
-    print("Length of annotations:", len(annotationList))
+    for Time in range(0, 2):
+        # Search the annotationList for annotations with the current Time.
+        # todo: We would want to go over all the XY and Z as well, but need to load images for each one.
+        sliced_annotations = annotation_tools.filter_elements_T_XY_Z(annotationList, Time, XY, Z)
+        sliced_new_annotations = annotation_tools.filter_elements_T_XY_Z(new_annotations, Time, XY, Z)
+
+        if len(sliced_annotations) == 0 and len(sliced_new_annotations) == 0: # If we didn't find any annotations to propagate, skip
+            continue
+
+        # Get the images for the next Time and XY and Z
+        images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time+1)
+        print("Length of images:", len(images))
+        layers = annotation_tools.get_layers(tileClient.client, datasetId)
+        print("Layers:", layers)
+
+        merged_image = annotation_tools.process_and_merge_channels(images, layers)
+        image = merged_image.astype(np.float32)
+
+        predictor.set_image(image)
+
+        polygons = [annotation_tools.annotations_to_polygons(sliced_annotations), annotation_tools.annotations_to_polygons(sliced_new_annotations)]
+        boxes = [polygon.bounds for polygon in polygons]
+        input_boxes = np.array(boxes)
+
+        masks, _, _ = predictor.predict(
+            point_coords=None,
+            point_labels=None,
+            boxes=input_boxes,
+            multimask_output=False,
+        )
+
+        print(f"Number of masks: {len(masks)}")
+        
+        # Find contours in the mask
+        temp_polygons = []
+        for mask in masks:
+            contour = find_contours(mask, 0.5)
+            polygon = Polygon(contour).simplify(smoothing, preserve_topology=True)
+            temp_polygons.append(polygon)
+
+        # def polygons_to_annotations(polygons, XY=0, Time=0, Z=0, tags=None, channel=0):
+
+        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, XY=XY, Time=Time+1, Z=Z, tags=tags, channel=channel)
+        new_annotations.extend(temp_annotations)
+
+    annotationClient.createMultipleAnnotations(new_annotations)
+
+    # images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time)
+    # print("Length of images:", len(images))
+    # layers = annotation_tools.get_layers(tileClient.client, datasetId)
+    # print("Layers:", layers)
+
+    # merged_image = annotation_tools.process_and_merge_channels(images, layers)
+    # print("Merged image shape:", merged_image.shape)
+
 
     # channel_load = channel
     # frame = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel_load)
