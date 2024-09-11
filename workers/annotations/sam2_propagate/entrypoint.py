@@ -143,7 +143,7 @@ def compute(datasetId, apiUrl, token, params):
 
     checkpoint_path="/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
+    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cpu', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)
 
     new_annotations = []
@@ -198,7 +198,7 @@ def compute(datasetId, apiUrl, token, params):
     print("Length of new annotations:", len(new_annotations))
     print("New annotations:", new_annotations[0])
 
-    #annotationClient.createMultipleAnnotations(new_annotations)
+    annotationClient.createMultipleAnnotations(new_annotations)
 
     # images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time)
     # print("Length of images:", len(images))
