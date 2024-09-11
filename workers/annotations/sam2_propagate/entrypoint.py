@@ -33,7 +33,7 @@ def interface(image, apiUrl, token):
             'default': 'sam2_hiera_large.pt',
             'displayOrder': 0
         },
-        'Tag of layer to propagate': {
+        'Tag of objects to propagate': {
             'type': 'tags',
             'displayOrder': 1
         },
@@ -67,7 +67,7 @@ def auto_scale_image(image):
     vmin, vmax = np.percentile(image, (1, 99.5))  # Use 2nd and 98th percentiles for contrast
     return (image - vmin) / (vmax - vmin)
 
-def segment_image(image, model_type="vit_h", checkpoint_path="/sam2_hiera_large.pt"):
+def segment_image(image, checkpoint_path="/sam2_hiera_large.pt"):
     # image is assumed to already be an numpy array of a color image
 
     # use bfloat16 for the entire notebook
@@ -118,6 +118,7 @@ def compute(datasetId, apiUrl, token, params):
     use_all_channels = params['workerInterface']['Use all channels']
     padding = float(params['workerInterface']['Padding'])
     smoothing = float(params['workerInterface']['Smoothing'])
+    propagate_tags = params['workerInterface']['Tag of objects to propagate']
 
     tile = params['tile']
     channel = params['channel']
@@ -146,8 +147,10 @@ def compute(datasetId, apiUrl, token, params):
     merged_image = annotation_tools.process_and_merge_channels(images, layers)
     print("Merged image shape:", merged_image.shape)
 
-    annotations = annotation_tools.get_annotations_for_tags(annotationClient, datasetId, tags)
-    print("Length of annotations:", len(annotations))
+    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    print("Length of annotations:", len(annotationList))
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, propagate_tags, exclusive=False)
+    print("Length of annotations:", len(annotationList))
 
     # channel_load = channel
     # frame = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel_load)
