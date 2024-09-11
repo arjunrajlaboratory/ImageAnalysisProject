@@ -143,7 +143,7 @@ def compute(datasetId, apiUrl, token, params):
 
     checkpoint_path="/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cpu', apply_postprocessing=False)  # device='cuda' for GPU
+    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)
 
     new_annotations = []
@@ -177,7 +177,7 @@ def compute(datasetId, apiUrl, token, params):
         masks, _, _ = predictor.predict(
             point_coords=None,
             point_labels=None,
-            boxes=input_boxes,
+            box=input_boxes,
             multimask_output=False,
         )
 
@@ -186,16 +186,19 @@ def compute(datasetId, apiUrl, token, params):
         # Find contours in the mask
         temp_polygons = []
         for mask in masks:
-            contour = find_contours(mask, 0.5)
-            polygon = Polygon(contour).simplify(smoothing, preserve_topology=True)
+            contours = find_contours(mask.squeeze(0), 0.5)
+            polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
             temp_polygons.append(polygon)
 
         # def polygons_to_annotations(polygons, XY=0, Time=0, Z=0, tags=None, channel=0):
 
-        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, XY=XY, Time=Time+1, Z=Z, tags=tags, channel=channel)
+        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=Time+1, Z=Z, tags=tags, channel=channel)
         new_annotations.extend(temp_annotations)
 
-    annotationClient.createMultipleAnnotations(new_annotations)
+    print("Length of new annotations:", len(new_annotations))
+    print("New annotations:", new_annotations[0])
+
+    #annotationClient.createMultipleAnnotations(new_annotations)
 
     # images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time)
     # print("Length of images:", len(images))

@@ -1,3 +1,18 @@
+
+# Detect architecture
+ARCH=$(uname -m)
+
+echo "Architecture: $ARCH"
+
+# Set Dockerfile based on architecture
+if [ "$ARCH" == "arm64" ]; then
+    echo "Compiling for M1 architecture"
+    DOCKERFILE="Dockerfile_M1"
+else
+    echo "Compiling for Intel architecture"
+    DOCKERFILE="Dockerfile"
+fi
+
 #docker build ./workers/properties/blobs/blob_point_count_worker/ -t properties/blob_point_count_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count" --label "interfaceCategory=Count"
 #docker build ./workers/properties/blobs/blob_point_count_3D_projection_worker/ -t properties/blob_point_count_3d_projection_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count 3D projection" --label "interfaceCategory=Count"
 
