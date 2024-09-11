@@ -17,3 +17,8 @@ docker build ./workers/annotations/laplacian_of_gaussian/ -t annotations/laplaci
 
 #docker build ./workers/test_worker/ -t both/test_worker:latest  --label isUPennContrastWorker --label isAnnotationWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Test worker" --label "interfaceCategory=Test"
 #docker build ./workers/annotations/test_multiple_annotation/ -t annotations/test_multiple_annotation:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Random square" --label "interfaceCategory=random"
+
+
+echo "Building SAM2 propagate worker"
+docker build -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
+# docker build -f ./workers/annotations/sam2_propagate/Dockerfile_M1 -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
