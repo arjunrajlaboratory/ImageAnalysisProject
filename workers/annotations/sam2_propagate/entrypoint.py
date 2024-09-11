@@ -169,7 +169,8 @@ def compute(datasetId, apiUrl, token, params):
 
         predictor.set_image(image)
 
-        polygons = [annotation_tools.annotations_to_polygons(sliced_annotations), annotation_tools.annotations_to_polygons(sliced_new_annotations)]
+        polygons = annotation_tools.annotations_to_polygons(sliced_annotations)
+        polygons.extend(annotation_tools.annotations_to_polygons(sliced_new_annotations))
         boxes = [polygon.bounds for polygon in polygons]
         input_boxes = np.array(boxes)
 
