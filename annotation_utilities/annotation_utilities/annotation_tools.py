@@ -125,7 +125,7 @@ def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, c
     
     annotations = []
     for polygon in polygons:
-        coordinates = [{'x': float(x), 'y': float(y)} for x, y in list(polygon.exterior.coords)[:-1]]  # Exclude the last point as it's the same as the first
+        coordinates = [{'x': float(y), 'y': float(x)} for x, y in list(polygon.exterior.coords)[:-1]]  # Exclude the last point as it's the same as the first
         
         annotation = {
             'coordinates': coordinates,
