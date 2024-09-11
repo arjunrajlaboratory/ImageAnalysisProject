@@ -1,5 +1,6 @@
 from shapely.geometry import Point, Polygon
 import numpy as np
+import matplotlib.colors as mcolors
 
 
 def create_points_from_annotations(elements):
