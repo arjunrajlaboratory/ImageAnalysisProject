@@ -104,6 +104,7 @@ def annotations_to_polygons(annotations):
     
     return polygons
 
+
 def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0):
     """
     Convert shapely Polygon objects to a list of annotations.
@@ -116,7 +117,7 @@ def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, c
     tags (list): A list of tags to apply to all annotations. Default is None.
     channel (int): The channel for all annotations. Default is 0.
     datasetId (str): The datasetId for all annotations.
-
+    
     Returns:
     list: A list of annotation dictionaries.
     """
