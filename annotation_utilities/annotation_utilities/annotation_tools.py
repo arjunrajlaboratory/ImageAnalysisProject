@@ -1,5 +1,6 @@
 from shapely.geometry import Point, Polygon
 import numpy as np
+import matplotlib.colors as mcolors
 
 
 def create_points_from_annotations(elements):
@@ -103,7 +104,8 @@ def annotations_to_polygons(annotations):
     
     return polygons
 
-def polygons_to_annotations(polygons, XY=0, Time=0, Z=0, tags=None, channel=0):
+
+def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0):
     """
     Convert shapely Polygon objects to a list of annotations.
     
@@ -114,6 +116,7 @@ def polygons_to_annotations(polygons, XY=0, Time=0, Z=0, tags=None, channel=0):
     Z (int): The Z position for all annotations. Default is 0.
     tags (list): A list of tags to apply to all annotations. Default is None.
     channel (int): The channel for all annotations. Default is 0.
+    datasetId (str): The datasetId for all annotations.
     
     Returns:
     list: A list of annotation dictionaries.
@@ -123,13 +126,14 @@ def polygons_to_annotations(polygons, XY=0, Time=0, Z=0, tags=None, channel=0):
     
     annotations = []
     for polygon in polygons:
-        coordinates = [{'x': float(x), 'y': float(y)} for x, y in list(polygon.exterior.coords)[:-1]]  # Exclude the last point as it's the same as the first
+        coordinates = [{'x': float(y), 'y': float(x)} for x, y in list(polygon.exterior.coords)[:-1]]  # Exclude the last point as it's the same as the first
         
         annotation = {
             'coordinates': coordinates,
             'location': {'XY': XY, 'Time': Time, 'Z': Z},
             'shape': 'polygon',
-            'channel': channel
+            'channel': channel,
+            'datasetId': datasetId
         }
         
         if tags:
