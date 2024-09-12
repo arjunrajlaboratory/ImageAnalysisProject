@@ -23,6 +23,7 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from PIL import Image
 
+from annotation_client.utils import sendProgress
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
@@ -148,20 +149,11 @@ def compute(datasetId, apiUrl, token, params):
             batch_z = list(reversed(list(batch_z)))
 
     batches = list(product(batch_xy, batch_z, batch_time))
+    total_batches = len(batches)
+    processed_batches = 0
 
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
-    print("Length of annotations:", len(annotationList))
     annotationList = annotation_tools.get_annotations_with_tags(annotationList, propagate_tags, exclusive=False)
-    print("Length of annotations:", len(annotationList))
-
-    print("Tile:", tile)
-    print("Channel:", channel)
-    print("Tags:", tags)
-
-    print("Model:", model)
-    print("Use all channels:", use_all_channels)
-    print("Padding:", padding)
-    print("Smoothing:", smoothing)
 
     checkpoint_path="/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
@@ -204,7 +196,7 @@ def compute(datasetId, apiUrl, token, params):
                 next_Time = Time
 
         # Check if the proposed location is within the bounds of the dataset set by either 0 or rangeXY, rangeZ, and rangeTime. If not, skip.
-        if next_Time < 0 or next_Time > rangeTime or next_Z < 0 or next_Z > rangeZ or next_XY < 0 or next_XY > rangeXY:
+        if next_Time < 0 or next_Time >= rangeTime or next_Z < 0 or next_Z >= rangeZ or next_XY < 0 or next_XY >= rangeXY:
             continue
 
         # Get the images for the next Time and XY and Z
@@ -242,6 +234,12 @@ def compute(datasetId, apiUrl, token, params):
         temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=next_XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
         new_annotations.extend(temp_annotations)
 
+        # Update progress after each batch
+        processed_batches += 1
+        fraction_done = processed_batches / total_batches
+        sendProgress(fraction_done, "Propagating annotations", f"{processed_batches} of {total_batches} frames processed")
+
+    sendProgress(0.9, "Uploading annotations", f"Sending {len(new_annotations)} annotations to server")
     annotationClient.createMultipleAnnotations(new_annotations)
 
 
