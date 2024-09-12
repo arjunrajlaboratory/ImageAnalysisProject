@@ -10,6 +10,7 @@ import annotation_client.workers as workers
 import annotation_client.tiles as tiles
 
 import annotation_utilities.annotation_tools as annotation_tools
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import numpy as np  # library for array manipulation
 from shapely.geometry import Polygon
@@ -28,69 +29,64 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Batch XY': {
+            'type': 'text',
+            'displayOrder': 0
+        },
+        'Batch Z': {
+            'type': 'text',
+            'displayOrder': 1
+        },
+        'Batch Time': {
+            'type': 'text',
+            'displayOrder': 2
+        },
+        'Propagate across': {
+            'type': 'select',
+            'items': ['Time', 'Z'],
+            'default': 'Time',
+            'displayOrder': 3
+        },
+        'Propagation direction': {
+            'type': 'select',
+            'items': ['Forward', 'Backward'],
+            'default': 'Forward',
+            'displayOrder': 4
+        },
         'Model': {
             'type': 'select',
             'items': ['sam2_hiera_large.pt'],
             'default': 'sam2_hiera_large.pt',
-            'displayOrder': 0
+            'displayOrder': 5
         },
         'Tag of objects to propagate': {
             'type': 'tags',
-            'displayOrder': 1
+            'displayOrder': 6
         },
         'Use all channels': {
             'type': 'checkbox',
             'default': True,
             'required': False,
-            'displayOrder': 2
+            'displayOrder': 7
         },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
-            'displayOrder': 3,
+            'displayOrder': 8,
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 3,
             'default': 0.3,
-            'displayOrder': 4,
+            'displayOrder': 9,
         },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
 
-# Function to auto-scale image
-def auto_scale_image(image):
-    image = image.squeeze()  # Remove single-dimensional entries
-    vmin, vmax = np.percentile(image, (1, 99.5))  # Use 2nd and 98th percentiles for contrast
-    return (image - vmin) / (vmax - vmin)
-
-def segment_image(image, checkpoint_path="/sam2_hiera_large.pt"):
-    # image is assumed to already be an numpy array of a color image
-
-    # use bfloat16 for the entire notebook
-    torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
-
-    if torch.cuda.get_device_properties(0).major >= 8:
-        # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-
-    # model_cfg = "/segment-anything-2/sam2_configs/sam2_hiera_l.yaml" # This will need to be updated based on model chosen
-    model_cfg = "sam2_hiera_l.yaml" # This will need to be updated based on model chosen
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)
-
-    mask_generator = SAM2AutomaticMaskGenerator(sam2,points_per_side=128)
-
-    # Generate the masks
-    masks = mask_generator.generate(image)
-
-    print(f"Number of masks: {len(masks)}")
-    
-    return masks
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -118,10 +114,40 @@ def compute(datasetId, apiUrl, token, params):
     padding = float(params['workerInterface']['Padding'])
     smoothing = float(params['workerInterface']['Smoothing'])
     propagate_tags = params['workerInterface']['Tag of objects to propagate']
+    propagate_across = params['workerInterface']['Propagate across']
+    propagation_direction = params['workerInterface']['Propagation direction']
+    batch_xy = params['workerInterface']['Batch XY']
+    batch_z = params['workerInterface']['Batch Z']
+    batch_time = params['workerInterface']['Batch Time']
+
+    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
+    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
+    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
 
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
+
+    XY = tile['XY']
+    Z = tile['Z']
+    Time = tile['Time']
+
+    if batch_xy is None:
+        batch_xy = [tile['XY']]
+    if batch_z is None:
+        batch_z = [tile['Z']]
+    if batch_time is None:
+        batch_time = [tile['Time']]
+
+    # If the propagation_direction is forward, then we are fine.
+    # If the propagation_direction is backward, then we need to reverse the variable specified by propagate_across.
+    if propagation_direction == 'Backward':
+        if propagate_across == 'Time':
+            batch_time = list(reversed(list(batch_time)))
+        elif propagate_across == 'Z':
+            batch_z = list(reversed(list(batch_z)))
+
+    batches = list(product(batch_xy, batch_z, batch_time))
 
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
     print("Length of annotations:", len(annotationList))
@@ -137,32 +163,53 @@ def compute(datasetId, apiUrl, token, params):
     print("Padding:", padding)
     print("Smoothing:", smoothing)
 
-    XY = tile['XY']
-    Z = tile['Z']
-    Time = tile['Time']
-
     checkpoint_path="/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
     sam2_model = build_sam2(model_cfg, checkpoint_path, device='cpu', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)
 
-    new_annotations = []
-    Time = 0  # Let's start at the earliest time
+    rangeXY = tileClient.tiles['IndexRange']['IndexXY']
+    rangeZ = tileClient.tiles['IndexRange']['IndexZ']
+    rangeTime = tileClient.tiles['IndexRange']['IndexT']
 
-    for Time in range(0, 2):
+    new_annotations = []
+
+    for batch in batches:
+        XY, Z, Time = batch
         # Search the annotationList for annotations with the current Time.
-        # todo: We would want to go over all the XY and Z as well, but need to load images for each one.
         sliced_annotations = annotation_tools.filter_elements_T_XY_Z(annotationList, Time, XY, Z)
         sliced_new_annotations = annotation_tools.filter_elements_T_XY_Z(new_annotations, Time, XY, Z)
 
         if len(sliced_annotations) == 0 and len(sliced_new_annotations) == 0: # If we didn't find any annotations to propagate, skip
             continue
 
+        # Propose a location to look for the next image, depending on the propagation_direction and the propagate_across variable (either Time or Z).
+        if propagation_direction == 'Forward':
+            if propagate_across == 'Time':
+                next_Time = Time + 1
+                next_XY = XY
+                next_Z = Z
+            elif propagate_across == 'Z':
+                next_Z = Z + 1
+                next_XY = XY
+                next_Time = Time
+        elif propagation_direction == 'Backward':
+            if propagate_across == 'Time':
+                next_Time = Time - 1
+                next_XY = XY
+                next_Z = Z
+            elif propagate_across == 'Z':
+                next_Z = Z - 1
+                next_XY = XY
+                next_Time = Time
+
+        # Check if the proposed location is within the bounds of the dataset set by either 0 or rangeXY, rangeZ, and rangeTime. If not, skip.
+        if next_Time < 0 or next_Time > rangeTime or next_Z < 0 or next_Z > rangeZ or next_XY < 0 or next_XY > rangeXY:
+            continue
+
         # Get the images for the next Time and XY and Z
-        images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time+1)
-        print("Length of images:", len(images))
+        images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, next_XY, next_Z, next_Time)
         layers = annotation_tools.get_layers(tileClient.client, datasetId)
-        print("Layers:", layers)
 
         merged_image = annotation_tools.process_and_merge_channels(images, layers)
         image = merged_image.astype(np.float32)
@@ -180,93 +227,22 @@ def compute(datasetId, apiUrl, token, params):
             box=input_boxes,
             multimask_output=False,
         )
-
-        print(f"Number of masks: {len(masks)}")
         
         # Find contours in the mask
         temp_polygons = []
         for mask in masks:
-            contours = find_contours(mask.squeeze(0), 0.5)
+            # Sometimes you get multiple masks (from multiple boxes), in which case you'll need to squeeze it.
+            # But if you only get one mask, don't squeeze it.
+            if mask.ndim == 3:
+                mask = mask.squeeze(0)
+            contours = find_contours(mask, 0.5)
             polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
             temp_polygons.append(polygon)
 
-        # def polygons_to_annotations(polygons, XY=0, Time=0, Z=0, tags=None, channel=0):
-
-        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=Time+1, Z=Z, tags=tags, channel=channel)
+        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=next_XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
         new_annotations.extend(temp_annotations)
 
-    print("Length of new annotations:", len(new_annotations))
-    print("New annotations:", new_annotations[0])
-
     annotationClient.createMultipleAnnotations(new_annotations)
-
-    # images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time)
-    # print("Length of images:", len(images))
-    # layers = annotation_tools.get_layers(tileClient.client, datasetId)
-    # print("Layers:", layers)
-
-    # merged_image = annotation_tools.process_and_merge_channels(images, layers)
-    # print("Merged image shape:", merged_image.shape)
-
-
-    # channel_load = channel
-    # frame = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel_load)
-    # image_phase = tileClient.getRegion(datasetId, frame=frame)
-    # channel_load = 1
-    # frame = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel_load)
-    # image_fluor = tileClient.getRegion(datasetId, frame=frame)
-
-    # # Auto-scale images
-    # image_phase_scaled = auto_scale_image(image_phase)
-    # image_fluor_scaled = auto_scale_image(image_fluor)
-
-    # # Create RGB image
-    # rgb_image = np.zeros((*image_phase_scaled.shape, 3))
-    # rgb_image[:,:,0] = image_phase_scaled  # Red channel
-    # rgb_image[:,:,1] = np.maximum(image_phase_scaled, image_fluor_scaled)  # Green channel
-    # rgb_image[:,:,2] = image_phase_scaled  # Blue channel
-
-    # # convert rgb_image to uint8
-    # rgb_image = (rgb_image * 255).astype(np.uint8)
-
-    # masks = segment_image(rgb_image)
-
-    # print(len(masks), "masks generated")
-
-    # annotations = []
-
-    # for i, mask_data in enumerate(masks):
-    #     mask = mask_data['segmentation']
-        
-    #     # Find contours in the mask
-    #     contours = find_contours(mask, 0.5)
-        
-    #     for contour in contours:
-    #         # Simplify the contour to reduce the number of points
-    #         polygon = Polygon(contour).simplify(smoothing, preserve_topology=True)
-            
-    #         if polygon.is_valid and not polygon.is_empty:
-    #             # Convert the polygon coordinates to the required format
-    #             coordinates = [{"x": float(y), "y": float(x)} for x, y in polygon.exterior.coords]
-                
-    #             # Create the annotation
-    #             annotation = {
-    #                 "tags": tags,
-    #                 "shape": "polygon",
-    #                 "channel": channel,
-    #                 "location": {
-    #                     "XY": xy,  # You may need to adjust this based on your tile information
-    #                     "Z": z,        # Adjust as needed
-    #                     "Time": time      # Adjust as needed
-    #                 },
-    #                 "datasetId": datasetId,
-    #                 "coordinates": coordinates
-    #             }
-                
-    #             annotations.append(annotation)
-
-    # # Upload the annotations
-    # annotationClient.createMultipleAnnotations(annotations)
 
 
 if __name__ == '__main__':
