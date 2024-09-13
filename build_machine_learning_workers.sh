@@ -13,31 +13,28 @@ else
     DOCKERFILE="Dockerfile"
 fi
 
-#docker build ./workers/properties/blobs/blob_point_count_worker/ -t properties/blob_point_count_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count" --label "interfaceCategory=Count"
-#docker build ./workers/properties/blobs/blob_point_count_3D_projection_worker/ -t properties/blob_point_count_3d_projection_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Point Count 3D projection" --label "interfaceCategory=Count"
-
-# This one has been moved to build_annotation_workers2.sh
-# docker build ./workers/properties/connections/children_count_worker/ -t properties/connection_children_count_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=polygon" --label "interfaceName=Children Count" --label "interfaceCategory=Count"
-
-#docker build ./workers/properties/points/point_circle_intensity_mean_worker/ -t properties/point_circle_intensity_mean_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Circle Intensity Mean" --label "interfaceCategory=Intensity"
-#docker build ./workers/properties/points/point_intensity_worker/ -t properties/point_intensity_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Intensity" --label "interfaceCategory=Intensity"
-#docker build ./workers/properties/points/point_threshold_intensity_mean_worker/ -t properties/point_threshold_intensity_mean_worker:latest --label isUPennContrastWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Threshold Intensity Mean" --label "interfaceCategory=Intensity"
-
-#docker build ./workers/annotations/cellori_segmentation/ -t annotations/cellori_segmentation_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellori" --label "interfaceCategory=Cellori"
+echo "Building Piscis worker"
 docker compose -f ./workers/annotations/piscis/docker-compose.yaml build
+
+echo "Building Cellpose worker"
 docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose" --label "annotationShape=polygon"
+
+echo "Building Stardist worker"
 docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stardist" --label "interfaceCategory=Stardist" --label "annotationShape=polygon"
+
+echo "Building Laplacian of Gaussian worker"
 docker build ./workers/annotations/laplacian_of_gaussian/ -t annotations/laplacian_of_gaussian:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Laplacian of Gaussian" --label "interfaceCategory=Laplacian of Gaussian"
 
+echo "Building SAM2 automatic mask generator worker"
 docker build ./workers/annotations/sam2_automatic_mask_generator/ -t annotations/sam2_automatic_mask_generator:latest 
-
-
-#docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
-
-#docker build ./workers/test_worker/ -t both/test_worker:latest  --label isUPennContrastWorker --label isAnnotationWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Test worker" --label "interfaceCategory=Test"
-#docker build ./workers/annotations/test_multiple_annotation/ -t annotations/test_multiple_annotation:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Random square" --label "interfaceCategory=random"
-
 
 echo "Building SAM2 propagate worker"
 docker build -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
 # docker build -f ./workers/annotations/sam2_propagate/Dockerfile_M1 -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
+
+# These are some legacy workers that are no longer used.
+#docker build ./workers/annotations/cellori_segmentation/ -t annotations/cellori_segmentation_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellori" --label "interfaceCategory=Cellori"
+#docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
+#docker build ./workers/test_worker/ -t both/test_worker:latest  --label isUPennContrastWorker --label isAnnotationWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Test worker" --label "interfaceCategory=Test"
+#docker build ./workers/annotations/test_multiple_annotation/ -t annotations/test_multiple_annotation:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Random square" --label "interfaceCategory=random"
+
