@@ -155,9 +155,17 @@ def compute(datasetId, apiUrl, token, params):
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
     annotationList = annotation_tools.get_annotations_with_tags(annotationList, propagate_tags, exclusive=False)
 
+    # use bfloat16 for the entire notebook
+    torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+
+    if torch.cuda.get_device_properties(0).major >= 8:
+        # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
     checkpoint_path="/sam2_hiera_large.pt"
     model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cpu', apply_postprocessing=False)  # device='cuda' for GPU
+    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)
 
     rangeXY = tileClient.tiles['IndexRange']['IndexXY']
