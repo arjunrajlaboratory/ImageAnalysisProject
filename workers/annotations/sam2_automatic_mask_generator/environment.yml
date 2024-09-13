@@ -9,8 +9,6 @@ dependencies:
   - rasterio
   - shapely
   - pillow
-  - pytorch
-  - torchvision
   - opencv
   - matplotlib
   - scikit-image
