@@ -55,7 +55,7 @@ RUN pip install /ImageAnalysisProject/annotation_utilities
 
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
-      interfaceName="SAM2 propagator" \
+      interfaceName="SAM2 video" \
       interfaceCategory="SAM2" \
       description="Uses SAM2 to track video through time or Z" \
       annotationShape="polygon"
