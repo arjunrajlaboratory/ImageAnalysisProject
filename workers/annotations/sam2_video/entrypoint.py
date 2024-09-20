@@ -19,8 +19,8 @@ from shapely.geometry import Polygon
 
 import torch
 from sam2.build_sam import build_sam2
-from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-from sam2.sam2_image_predictor import SAM2ImagePredictor
+from sam2.build_sam import build_sam2_video_predictor
+
 from PIL import Image
 
 from annotation_client.utils import sendProgress
@@ -56,8 +56,8 @@ def interface(image, apiUrl, token):
         },
         'Model': {
             'type': 'select',
-            'items': ['sam2_hiera_large.pt'],
-            'default': 'sam2_hiera_large.pt',
+            'items': ['sam2_hiera_tiny.pt'],
+            'default': 'sam2_hiera_tiny.pt',
             'displayOrder': 5
         },
         'Tag of objects to track': {
@@ -105,7 +105,6 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     model = params['workerInterface']['Model']
-    use_all_channels = params['workerInterface']['Use all channels']
     padding = float(params['workerInterface']['Padding'])
     smoothing = float(params['workerInterface']['Smoothing'])
     track_tags = params['workerInterface']['Tag of objects to track']
@@ -114,6 +113,20 @@ def compute(datasetId, apiUrl, token, params):
     batch_xy = params['workerInterface']['Batch XY']
     batch_z = params['workerInterface']['Batch Z']
     batch_time = params['workerInterface']['Batch Time']
+
+    # Here's some code to set up the model and predictor.
+    # use bfloat16 for computation
+    torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+
+    if torch.cuda.get_device_properties(0).major >= 8:
+        # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
+    checkpoint_path = "/" + model
+    model_cfg = "sam2_hiera_t.yaml"  # This will need to be updated based on model chosen
+    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
+    predictor = build_sam2_video_predictor(model_cfg, checkpoint_path, device="cuda") # device="cuda" for GPU
 
     batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
     batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
@@ -142,24 +155,17 @@ def compute(datasetId, apiUrl, token, params):
         elif track_across == 'Z':
             batch_z = list(reversed(list(batch_z)))
 
-    batches = list(product(batch_xy, batch_z, batch_time))
-    total_batches = len(batches)
-    processed_batches = 0
 
+    batches = list(product(batch_xy, batch_z, batch_time))
+
+    # Get the annotations with the track_tags, because those are the ones we want to propagate.
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
     annotationList = annotation_tools.get_annotations_with_tags(annotationList, track_tags, exclusive=False)
 
-    # use bfloat16 for the entire notebook
-    torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+    total_batches = len(batches)
+    processed_batches = 0
 
-    if torch.cuda.get_device_properties(0).major >= 8:
-        # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-
-    checkpoint_path="/sam2_hiera_large.pt"
-    model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
+    
     predictor = SAM2ImagePredictor(sam2_model)
 
     rangeXY = tileClient.tiles['IndexRange']['IndexXY']
