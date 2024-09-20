@@ -147,13 +147,17 @@ def compute(datasetId, apiUrl, token, params):
     if batch_time is None:
         batch_time = [tile['Time']]
 
+    batch_xy = list(batch_xy)
+    batch_z = list(batch_z)
+    batch_time = list(batch_time)
+
     # If the propagation_direction is forward, then we are fine.
     # If the propagation_direction is backward, then we need to reverse the variable specified by track_across.
     if track_direction == 'Backward':
         if track_across == 'Time':
-            batch_time = list(reversed(list(batch_time)))
+            batch_time = batch_time.reverse()
         elif track_across == 'Z':
-            batch_z = list(reversed(list(batch_z)))
+            batch_z = batch_z.reverse()
 
     # Get the annotations with the track_tags, because those are the ones we want to propagate.
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
@@ -171,6 +175,7 @@ def compute(datasetId, apiUrl, token, params):
         return
 
     processed_batches = 0
+    inference_state = None
 
     if track_across == 'Time':
         # Build mappings between frame_idx and Time
@@ -179,7 +184,7 @@ def compute(datasetId, apiUrl, token, params):
 
         for XY in batch_xy:
             for Z in batch_z:
-                # Get annotations in batch_time for this XY and Z
+                
                 sliced_annotations = [ann for ann in annotationList if ann['location']['XY'] == XY and ann['location']['Z'] == Z and ann['location']['Time'] in batch_time]
                 if len(sliced_annotations) == 0:
                     # No annotations to propagate
@@ -197,17 +202,18 @@ def compute(datasetId, apiUrl, token, params):
                 }
 
                 # Reset and init_state
-                predictor.reset_state()
+                if inference_state is not None:
+                    predictor.reset_state(inference_state)
                 inference_state = predictor.init_state(video_path=video_data)
 
                 # For each annotation, add prompt at its Time (ann_frame_idx)
                 for ann_obj_id, ann in enumerate(sliced_annotations):
-                    Time_ann = ann['Time']
+                    Time_ann = ann['location']['Time']
                     if Time_ann not in Time_to_frame_idx:
                         continue  # Skip annotations not in batch_time
                     ann_frame_idx = Time_to_frame_idx[Time_ann]
                     # Convert annotation to polygon and box
-                    polygon = annotation_tools.annotation_to_polygon(ann)
+                    polygon = annotation_tools.annotations_to_polygons(ann)[0]
                     box = np.array(polygon.bounds, dtype=np.float32)
                     # Add box prompt
                     predictor.add_new_points_or_box(
@@ -231,13 +237,13 @@ def compute(datasetId, apiUrl, token, params):
                     Time_frame = frame_idx_to_Time[frame_idx]
                     for obj_id, mask in masks.items():
                         # Convert mask to polygon
-                        contours = find_contours(mask, 0.5)
+                        contours = find_contours(mask.squeeze(), 0.5)
                         if len(contours) == 0:
                             continue
-                        polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
+                        polygon = Polygon(contours[0]).buffer(padding).simplify(smoothing, preserve_topology=True)
                         # Create annotation
-                        annotation = annotation_tools.polygon_to_annotation(polygon, datasetId, XY=XY, Z=Z, Time=Time_frame, tags=tags, channel=channel)
-                        new_annotations.append(annotation)
+                        annotation = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z, Time=Time_frame, tags=tags, channel=channel)
+                        new_annotations.extend(annotation)
 
                 # Update progress
                 processed_batches += 1
@@ -269,17 +275,18 @@ def compute(datasetId, apiUrl, token, params):
                 }
 
                 # Reset and init_state
-                predictor.reset_state()
+                if inference_state is not None:
+                    predictor.reset_state(inference_state)
                 inference_state = predictor.init_state(video_path=video_data)
 
                 # For each annotation, add prompt at its Z (ann_frame_idx)
                 for ann_obj_id, ann in enumerate(sliced_annotations):
-                    Z_ann = ann['Z']
+                    Z_ann = ann['location']['Z']
                     if Z_ann not in Z_to_frame_idx:
                         continue  # Skip annotations not in batch_z
                     ann_frame_idx = Z_to_frame_idx[Z_ann]
                     # Convert annotation to polygon and box
-                    polygon = annotation_tools.annotation_to_polygon(ann)
+                    polygon = annotation_tools.annotations_to_polygons(ann)[0]
                     box = np.array(polygon.bounds, dtype=np.float32)
                     # Add box prompt
                     predictor.add_new_points_or_box(
@@ -303,13 +310,13 @@ def compute(datasetId, apiUrl, token, params):
                     Z_frame = frame_idx_to_Z[frame_idx]
                     for obj_id, mask in masks.items():
                         # Convert mask to polygon
-                        contours = find_contours(mask, 0.5)
+                        contours = find_contours(mask.squeeze(), 0.5)
                         if len(contours) == 0:
                             continue
-                        polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
+                        polygon = Polygon(contours[0]).buffer(padding).simplify(smoothing, preserve_topology=True)
                         # Create annotation
-                        annotation = annotation_tools.polygon_to_annotation(polygon, datasetId, XY=XY, Z=Z_frame, Time=Time, tags=tags, channel=channel)
-                        new_annotations.append(annotation)
+                        annotation = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z_frame, Time=Time, tags=tags, channel=channel)
+                        new_annotations.extend(annotation)
 
                 # Update progress
                 processed_batches += 1
