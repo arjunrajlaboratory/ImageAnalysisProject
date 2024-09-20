@@ -32,6 +32,10 @@ echo "Building SAM2 propagate worker"
 docker build -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
 # docker build -f ./workers/annotations/sam2_propagate/Dockerfile_M1 -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
 
+echo "Building SAM2 video worker"
+docker build -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sam2_video_worker:latest ./workers/annotations/sam2_video/
+# docker build -f ./workers/annotations/sam2_video/Dockerfile_M1 -t annotations/sam2_video_worker:latest ./workers/annotations/sam2_video/
+
 # These are some legacy workers that are no longer used.
 #docker build ./workers/annotations/cellori_segmentation/ -t annotations/cellori_segmentation_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellori" --label "interfaceCategory=Cellori"
 #docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
