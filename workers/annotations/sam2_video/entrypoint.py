@@ -180,7 +180,7 @@ def compute(datasetId, apiUrl, token, params):
         for XY in batch_xy:
             for Z in batch_z:
                 # Get annotations in batch_time for this XY and Z
-                sliced_annotations = [ann for ann in annotationList if ann['XY'] == XY and ann['Z'] == Z and ann['Time'] in batch_time]
+                sliced_annotations = [ann for ann in annotationList if ann['location']['XY'] == XY and ann['location']['Z'] == Z and ann['location']['Time'] in batch_time]
                 if len(sliced_annotations) == 0:
                     # No annotations to propagate
                     processed_batches += 1
@@ -252,7 +252,7 @@ def compute(datasetId, apiUrl, token, params):
         for XY in batch_xy:
             for Time in batch_time:
                 # Get annotations in batch_z for this XY and Time
-                sliced_annotations = [ann for ann in annotationList if ann['XY'] == XY and ann['Time'] == Time and ann['Z'] in batch_z]
+                sliced_annotations = [ann for ann in annotationList if ann['location']['XY'] == XY and ann['location']['Time'] == Time and ann['location']['Z'] in batch_z]
                 if len(sliced_annotations) == 0:
                     # No annotations to propagate
                     processed_batches += 1
