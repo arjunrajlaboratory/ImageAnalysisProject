@@ -125,8 +125,8 @@ def compute(datasetId, apiUrl, token, params):
 
     checkpoint_path = "/" + model
     model_cfg = "sam2_hiera_t.yaml"  # This will need to be updated based on model chosen
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
-    predictor = build_sam2_video_predictor(model_cfg, checkpoint_path, device="cuda") # device="cuda" for GPU
+    # sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
+    predictor = build_sam2_video_predictor(model_cfg, checkpoint_path, device="cuda")  # device="cuda" for GPU
 
     batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
     batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
@@ -148,104 +148,177 @@ def compute(datasetId, apiUrl, token, params):
         batch_time = [tile['Time']]
 
     # If the propagation_direction is forward, then we are fine.
-    # If the propagation_direction is backward, then we need to reverse the variable specified by propagate_across.
+    # If the propagation_direction is backward, then we need to reverse the variable specified by track_across.
     if track_direction == 'Backward':
         if track_across == 'Time':
             batch_time = list(reversed(list(batch_time)))
         elif track_across == 'Z':
             batch_z = list(reversed(list(batch_z)))
 
-
-    batches = list(product(batch_xy, batch_z, batch_time))
-
     # Get the annotations with the track_tags, because those are the ones we want to propagate.
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
     annotationList = annotation_tools.get_annotations_with_tags(annotationList, track_tags, exclusive=False)
 
-    total_batches = len(batches)
-    processed_batches = 0
-
-    
-    predictor = SAM2ImagePredictor(sam2_model)
-
-    rangeXY = tileClient.tiles['IndexRange']['IndexXY']
-    rangeZ = tileClient.tiles['IndexRange']['IndexZ']
-    rangeTime = tileClient.tiles['IndexRange']['IndexT']
-
     new_annotations = []
 
-    for batch in batches:
-        XY, Z, Time = batch
-        # Search the annotationList for annotations with the current Time.
-        sliced_annotations = annotation_tools.filter_elements_T_XY_Z(annotationList, Time, XY, Z)
-        sliced_new_annotations = annotation_tools.filter_elements_T_XY_Z(new_annotations, Time, XY, Z)
+    # Define total_batches for progress reporting
+    if track_across == 'Time':
+        total_batches = len(batch_xy) * len(batch_z)
+    elif track_across == 'Z':
+        total_batches = len(batch_xy) * len(batch_time)
+    else:
+        sendProgress(1, "Error", f"Invalid track across value: {track_across}")
+        return
 
-        if len(sliced_annotations) == 0 and len(sliced_new_annotations) == 0: # If we didn't find any annotations to propagate, skip
-            continue
+    processed_batches = 0
 
-        # Propose a location to look for the next image, depending on the propagation_direction and the propagate_across variable (either Time or Z).
-        if track_direction == 'Forward':
-            if track_across == 'Time':
-                next_Time = Time + 1
-                next_XY = XY
-                next_Z = Z
-            elif track_across == 'Z':
-                next_Z = Z + 1
-                next_XY = XY
-                next_Time = Time
-        elif track_direction == 'Backward':
-            if track_across == 'Time':
-                next_Time = Time - 1
-                next_XY = XY
-                next_Z = Z
-            elif track_across == 'Z':
-                next_Z = Z - 1
-                next_XY = XY
-                next_Time = Time
+    if track_across == 'Time':
+        # Build mappings between frame_idx and Time
+        frame_idx_to_Time = {idx: Time for idx, Time in enumerate(batch_time)}
+        Time_to_frame_idx = {Time: idx for idx, Time in enumerate(batch_time)}
 
-        # Check if the proposed location is within the bounds of the dataset set by either 0 or rangeXY, rangeZ, and rangeTime. If not, skip.
-        if next_Time < 0 or next_Time >= rangeTime or next_Z < 0 or next_Z >= rangeZ or next_XY < 0 or next_XY >= rangeXY:
-            continue
+        for XY in batch_xy:
+            for Z in batch_z:
+                # Get annotations in batch_time for this XY and Z
+                sliced_annotations = [ann for ann in annotationList if ann['XY'] == XY and ann['Z'] == Z and ann['Time'] in batch_time]
+                if len(sliced_annotations) == 0:
+                    # No annotations to propagate
+                    processed_batches += 1
+                    fraction_done = processed_batches / total_batches
+                    sendProgress(fraction_done, "Tracking objects", f"{processed_batches} of {total_batches} batches processed")
+                    continue
 
-        # Get the images for the next Time and XY and Z
-        images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, next_XY, next_Z, next_Time)
-        layers = annotation_tools.get_layers(tileClient.client, datasetId)
+                # Prepare video_data
+                batches = [(XY, Z, Time) for Time in batch_time]
+                video_data = {
+                    "tileClient": tileClient,
+                    "datasetId": datasetId,
+                    "batches": batches
+                }
 
-        merged_image = annotation_tools.process_and_merge_channels(images, layers)
-        image = merged_image.astype(np.float32)
+                # Reset and init_state
+                predictor.reset_state()
+                inference_state = predictor.init_state(video_path=video_data)
 
-        predictor.set_image(image)
+                # For each annotation, add prompt at its Time (ann_frame_idx)
+                for ann_obj_id, ann in enumerate(sliced_annotations):
+                    Time_ann = ann['Time']
+                    if Time_ann not in Time_to_frame_idx:
+                        continue  # Skip annotations not in batch_time
+                    ann_frame_idx = Time_to_frame_idx[Time_ann]
+                    # Convert annotation to polygon and box
+                    polygon = annotation_tools.annotation_to_polygon(ann)
+                    box = np.array(polygon.bounds, dtype=np.float32)
+                    # Add box prompt
+                    predictor.add_new_points_or_box(
+                        inference_state=inference_state,
+                        frame_idx=ann_frame_idx,
+                        obj_id=ann_obj_id,
+                        box=box,
+                    )
 
-        polygons = annotation_tools.annotations_to_polygons(sliced_annotations)
-        polygons.extend(annotation_tools.annotations_to_polygons(sliced_new_annotations))
-        boxes = [polygon.bounds for polygon in polygons]
-        input_boxes = np.array(boxes)
+                # Run predictor
+                video_segments = {}
+                for out_frame_idx, out_obj_ids, out_mask_logits in predictor.propagate_in_video(inference_state):
+                    # Collect masks
+                    video_segments[out_frame_idx] = {
+                        out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
+                        for i, out_obj_id in enumerate(out_obj_ids)
+                    }
 
-        masks, _, _ = predictor.predict(
-            point_coords=None,
-            point_labels=None,
-            box=input_boxes,
-            multimask_output=False,
-        )
-        
-        # Find contours in the mask
-        temp_polygons = []
-        for mask in masks:
-            # Sometimes you get multiple masks (from multiple boxes), in which case you'll need to squeeze it.
-            # But if you only get one mask, don't squeeze it.
-            if mask.ndim == 3:
-                mask = mask.squeeze(0)
-            contours = find_contours(mask, 0.5)
-            polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
-            temp_polygons.append(polygon)
+                # Convert masks to annotations
+                for frame_idx, masks in video_segments.items():
+                    Time_frame = frame_idx_to_Time[frame_idx]
+                    for obj_id, mask in masks.items():
+                        # Convert mask to polygon
+                        contours = find_contours(mask, 0.5)
+                        if len(contours) == 0:
+                            continue
+                        polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
+                        # Create annotation
+                        annotation = annotation_tools.polygon_to_annotation(polygon, datasetId, XY=XY, Z=Z, Time=Time_frame, tags=tags, channel=channel)
+                        new_annotations.append(annotation)
 
-        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=next_XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
-        new_annotations.extend(temp_annotations)
+                # Update progress
+                processed_batches += 1
+                fraction_done = processed_batches / total_batches
+                sendProgress(fraction_done, "Tracking objects", f"{processed_batches} of {total_batches} batches processed")
 
-        # Update progress after each batch
-        processed_batches += 1
-        fraction_done = processed_batches / total_batches
-        sendProgress(fraction_done, "Propagating annotations", f"{processed_batches} of {total_batches} frames processed")
+    elif track_across == 'Z':
+        # Build mappings between frame_idx and Z
+        frame_idx_to_Z = {idx: Z for idx, Z in enumerate(batch_z)}
+        Z_to_frame_idx = {Z: idx for idx, Z in enumerate(batch_z)}
+
+        for XY in batch_xy:
+            for Time in batch_time:
+                # Get annotations in batch_z for this XY and Time
+                sliced_annotations = [ann for ann in annotationList if ann['XY'] == XY and ann['Time'] == Time and ann['Z'] in batch_z]
+                if len(sliced_annotations) == 0:
+                    # No annotations to propagate
+                    processed_batches += 1
+                    fraction_done = processed_batches / total_batches
+                    sendProgress(fraction_done, "Tracking objects", f"{processed_batches} of {total_batches} batches processed")
+                    continue
+
+                # Prepare video_data
+                batches = [(XY, Z, Time) for Z in batch_z]
+                video_data = {
+                    "tileClient": tileClient,
+                    "datasetId": datasetId,
+                    "batches": batches
+                }
+
+                # Reset and init_state
+                predictor.reset_state()
+                inference_state = predictor.init_state(video_path=video_data)
+
+                # For each annotation, add prompt at its Z (ann_frame_idx)
+                for ann_obj_id, ann in enumerate(sliced_annotations):
+                    Z_ann = ann['Z']
+                    if Z_ann not in Z_to_frame_idx:
+                        continue  # Skip annotations not in batch_z
+                    ann_frame_idx = Z_to_frame_idx[Z_ann]
+                    # Convert annotation to polygon and box
+                    polygon = annotation_tools.annotation_to_polygon(ann)
+                    box = np.array(polygon.bounds, dtype=np.float32)
+                    # Add box prompt
+                    predictor.add_new_points_or_box(
+                        inference_state=inference_state,
+                        frame_idx=ann_frame_idx,
+                        obj_id=ann_obj_id,
+                        box=box,
+                    )
+
+                # Run predictor
+                video_segments = {}
+                for out_frame_idx, out_obj_ids, out_mask_logits in predictor.propagate_in_video(inference_state):
+                    # Collect masks
+                    video_segments[out_frame_idx] = {
+                        out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
+                        for i, out_obj_id in enumerate(out_obj_ids)
+                    }
+
+                # Convert masks to annotations
+                for frame_idx, masks in video_segments.items():
+                    Z_frame = frame_idx_to_Z[frame_idx]
+                    for obj_id, mask in masks.items():
+                        # Convert mask to polygon
+                        contours = find_contours(mask, 0.5)
+                        if len(contours) == 0:
+                            continue
+                        polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
+                        # Create annotation
+                        annotation = annotation_tools.polygon_to_annotation(polygon, datasetId, XY=XY, Z=Z_frame, Time=Time, tags=tags, channel=channel)
+                        new_annotations.append(annotation)
+
+                # Update progress
+                processed_batches += 1
+                fraction_done = processed_batches / total_batches
+                sendProgress(fraction_done, "Tracking objects", f"{processed_batches} of {total_batches} batches processed")
+
+    else:
+        sendProgress(1, "Error", f"Invalid track across value: {track_across}")
+        return
 
     sendProgress(0.9, "Uploading annotations", f"Sending {len(new_annotations)} annotations to server")
     annotationClient.createMultipleAnnotations(new_annotations)
