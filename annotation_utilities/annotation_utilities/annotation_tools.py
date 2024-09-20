@@ -152,7 +152,9 @@ def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):
     Returns a list of images, one for each channel
     """
     images = []
-    for channel in range(0, tileClient.tiles['IndexRange']['IndexC']):
+    # Get the number of channels, defaulting to 1 if 'IndexC' doesn't exist
+    num_channels = tileClient.tiles['IndexRange'].get('IndexC', 1)
+    for channel in range(num_channels):
         frame = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel)
         image = tileClient.getRegion(datasetId, frame=frame)
         images.append(image)
@@ -196,8 +198,6 @@ def process_and_merge_channels(images, layers, mode='lighten'):
             white_value = white_point
         else:
             raise ValueError(f"Unsupported contrast mode: {contrast_mode}")
-        
-        print(f"Channel {layer['channel']} - black_value: {black_value}, white_value: {white_value}")
         
         img_normalized = np.clip((img - black_value) / (white_value - black_value), 0, 1)
         
