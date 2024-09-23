@@ -50,6 +50,46 @@ def interface(image, apiUrl, token):
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
 
+def get_property_info(annotation_client, property_value_list):
+    property_info = []
+    property_ids = set()
+
+    def get_value_type(value):
+        if isinstance(value, dict):
+            return {k: get_value_type(v) for k, v in value.items()}
+        elif isinstance(value, (int, float)):
+            return "number"
+        elif isinstance(value, str):
+            return "string"
+        else:
+            return "unknown"
+
+    # First pass: collect property IDs and determine value types
+    value_types = {}
+    for item in property_value_list:
+        if 'values' in item:
+            for prop_id, value in item['values'].items():
+                property_ids.add(prop_id)
+                if prop_id not in value_types:
+                    value_types[prop_id] = get_value_type(value)
+
+    # Second pass: fetch property details and compile final list
+    for prop_id in property_ids:
+        prop = annotation_client.getPropertyById(prop_id)
+        
+        detail = {
+            "_id": prop["_id"],
+            "name": prop["name"],
+            "image": prop.get("image", ""),
+            "tags": prop.get("tags", {}).get("tags", []),
+            "shape": prop.get("shape", ""),
+            "value": value_types.get(prop_id, "not found")
+        }
+        
+        property_info.append(detail)
+
+    return property_info
+
 def compute(datasetId, apiUrl, token, params):
     """
     params (could change):
@@ -90,9 +130,10 @@ def compute(datasetId, apiUrl, token, params):
 
     annotationList = annotationClient.getAnnotationsByDatasetId(datasetId)
     connectionList = annotationClient.getAnnotationConnections(datasetId)
-    propertyList = annotationClient.getPropertyValuesForDataset(datasetId) # Not sure how to get property names out, unfortunately.
+    propertyValueList = annotationClient.getPropertyValuesForDataset(datasetId) # Not sure how to get property names out, unfortunately.
+    propertyList = get_property_info(annotationClient, propertyValueList)
 
-    json_data = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyList)
+    json_data = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyValueList)
 
     # Initialize the Anthropic client
     client = Anthropic(api_key=api_key)
@@ -146,18 +187,6 @@ def compute(datasetId, apiUrl, token, params):
 
     # Extract the Python code from the message and run it
     code = extract_python_code_from_string(message.content[0].text)
-    sendProgress(0.75, 'Executing code', 'Executing the AI model code')
-
-    # Create a dictionary to hold our variables
-    local_vars = {'json_data': json_data}
-
-    # Execute the code with the local variables
-    exec(code, globals(), local_vars)
-
-    # Retrieve the modified data
-    output_json_data = local_vars.get('output_json_data', {})
-
-    # This would be the potential end of a loop that would iteratively run the code if errors arose.
 
     # Document the process
     doc_filename = f"Claude output {current_time}.txt"
@@ -177,12 +206,27 @@ def compute(datasetId, apiUrl, token, params):
     doc_size = len(documentation)
     doc_stream.seek(0)
 
-    sendProgress(0.90, 'Creating documentation', f"Saving {doc_filename} to dataset folder")
+    sendProgress(0.60, 'Creating documentation', f"Saving {doc_filename} to dataset folder")
 
     # Upload documentation content to the file
     # Get the dataset folder
     folder = annotationClient.client.getFolder(datasetId)
     annotationClient.client.uploadStreamToFolder(folder['_id'], doc_stream, doc_filename, doc_size, mimeType="text/plain")
+                                                 
+    sendProgress(0.75, 'Executing code', 'Executing the AI model code')
+
+    # Create a dictionary to hold our variables
+    local_vars = {'json_data': json_data}
+
+    # Execute the code with the local variables
+    exec(code, globals(), local_vars)
+
+    # Retrieve the modified data
+    output_json_data = local_vars.get('output_json_data', {})
+
+    # This would be the potential end of a loop that would iteratively run the code if errors arose.
+
+
 
     # Convert the output JSON data to a string
     output_json_string = json.dumps(output_json_data, indent=2)
@@ -200,7 +244,7 @@ def compute(datasetId, apiUrl, token, params):
 
 def convert_nimbus_objects_to_JSON(annotationList: List[Dict], 
                                    connectionList: Optional[List[Dict]] = None, 
-                                   propertyList: Optional[List[Dict]] = None, 
+                                   propertyValueList: Optional[List[Dict]] = None, 
                                    filename: str = "output.json") -> None:
     output = {"annotations": [], "annotationConnections": [], "annotationProperties": [], "annotationPropertyValues": {}}
 
@@ -230,7 +274,7 @@ def convert_nimbus_objects_to_JSON(annotationList: List[Dict],
             }
             output["annotationConnections"].append(conn_output)
 
-    if propertyList:  # This section needs to be done.
+    if propertyValueList:  # This section needs to be done.
         # Add a dummy property
         output["annotationProperties"].append({
             "id": "dummy_property_id",
@@ -241,7 +285,7 @@ def convert_nimbus_objects_to_JSON(annotationList: List[Dict],
             "workerInterface": {}
         })
 
-        for prop in propertyList:
+        for prop in propertyValueList:
             ann_id = prop.get("annotationId", "")
             values = prop.get("values", {})
             if ann_id and values:
@@ -280,15 +324,15 @@ def convert_JSON_to_nimbus_objects(filename: str) -> tuple:
         }
         connectionList.append(connection)
 
-    propertyList = []
+    propertyValueList = []
     for ann_id, values in data.get("annotationPropertyValues", {}).items():
         property_value = {
             "annotationId": ann_id,
             "values": values
         }
-        propertyList.append(property_value)
+        propertyValueList.append(property_value)
 
-    return annotationList, connectionList, propertyList
+    return annotationList, connectionList, propertyValueList
 
 def JSON_data_tags_to_prompt_string(data):
     # Extract unique tags from annotations
