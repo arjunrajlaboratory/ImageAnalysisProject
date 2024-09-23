@@ -27,10 +27,6 @@ import geopandas as gpd
 from shapely.geometry import Point, Polygon
 from scipy.spatial import cKDTree
 
-# Read the system prompt from the file
-with open('system_prompt.txt', 'r') as file:
-    SYSTEM_PROMPT = file.read()
-
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -100,6 +96,10 @@ def compute(datasetId, apiUrl, token, params):
 
     # Initialize the Anthropic client
     client = Anthropic(api_key=api_key)
+
+    # Read the system prompt from the file
+    with open('/system_prompt.txt', 'r') as file:
+        SYSTEM_PROMPT = file.read()
 
     # Get the tags from the data so that the AI knows how to manipulate them.
     tag_string = JSON_data_tags_to_prompt_string(json_data)
