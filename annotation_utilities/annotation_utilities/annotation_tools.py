@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.colors as mcolors
 
 
+# Note that this function should reverse x and y. It is used by point_count_worker, which mixes up x and y for the polygons as well, so it works consistently.
+# But that's not good. This function should not be used outside of the point_count_worker.
+# Instead, use annotations_to_points() below.
 def create_points_from_annotations(elements):
     """
     Create a list of Point objects from the x and y coordinates in each dictionary element.
@@ -142,6 +145,52 @@ def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, c
         if tags:
             annotation['tags'] = tags
         
+        annotations.append(annotation)
+    
+    return annotations
+
+def annotations_to_points(annotations):
+    """
+    Convert annotations to shapely Point objects.
+    
+    Args:
+    annotations (list or dict): A single annotation dictionary or a list of annotation dictionaries.
+    
+    Returns:
+    list: A list of shapely Point objects.
+    """
+    if isinstance(annotations, dict):
+        annotations = [annotations]
+    
+    points = []
+    for annotation in annotations:
+        coords = annotation['coordinates'][0]  # Assume there is only one coordinate in the list
+        y, x = coords['x'], coords['y']
+        point = Point(x, y)
+        points.append(point)
+    
+    return points
+
+def points_to_annotations(points, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0):
+    """
+    Convert shapely Point objects to a list of annotations.
+    
+    Args:
+    points (list): A list of shapely Point objects.
+    XY (int): The XY position for all annotations. Default is 0.
+    Time (int): The Time position for all annotations. Default is 0.
+    Z (int): The Z position for all annotations. Default is 0.
+    """
+
+    annotations = []
+    for point in points:
+        annotation = {
+            'coordinates': [{'x': point.y, 'y': point.x}],
+            'location': {'XY': XY, 'Time': Time, 'Z': Z},
+            'shape': 'point',
+            'channel': channel,
+            'datasetId': datasetId
+        }
         annotations.append(annotation)
     
     return annotations
