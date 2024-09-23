@@ -48,6 +48,8 @@ RUN pip install -e devops/girder/annotation_client/
 
 COPY ./entrypoint.py /
 
+ENV ANTHROPIC_API_KEY=""
+
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Claude natural language analyzer" \
