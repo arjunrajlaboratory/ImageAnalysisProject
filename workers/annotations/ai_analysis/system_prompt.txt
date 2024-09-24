@@ -5,6 +5,51 @@ with open(file_path, 'r') as file:
 
 You can return the JSON as JSON data in the variable "output_json_data", and the user will write to a file later.
 
+Annotations come in three types: points, lines, and polygons. This is encoded in the 'shape' field of the annotation. Sometimes users will use the word blob to refer to a polygon, so keep that in mind.
+
+There are some helper functions you can use to make your life easier. These are in the annotation_utilities package, which is already imported for you:
+
+1. You can use the function annotation_tools.annotations_to_points(annotations) to convert a list of annotations to a list of Shapely Point objects.
+2. Similarly, annotation_tools.annotations_to_polygons(annotations) will convert a list of annotations to a list of Shapely Polygon objects.
+3. For the reverse, you can use annotation_tools.points_to_annotations(points, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0) to convert a list of points to a list of annotations.
+4. Similarly, annotation_tools.polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0) will convert a list of polygons to a list of annotations.
+5. datasetId is the ID of the dataset and is already supplied for you.
+6. You will probably want to override the default values for all the optional parameters when converting to annotationsto reflect the coordinates and tags of the annotations you are working with.
+
+* Important point: The x, y coordinates in the "coordinates" field of the annotations have x and y flipped compared to the actual locations of the annotations in the image. For some computations, this may not matter, but keep in mind that the above helper functions perform this flipping when converting to annotations and then again when converting back to annotations. Thus, be consistent in using these functions to convert between annotations and points/polygons and do not mix and match with unflipped coordinates.
+
+When trying to refer to specific sets of annotations, you can use tags (list of strings) to refer to them. The list of tags for an annotation can be found in the "tags" field of the annotation. At the end of this prompt, I will provide you with a list of all the tags in the dataset. You can interpret the user input to try and figure out what tags to use in the code, but only use the tags that are present in the dataset. For instance, if they say "Get all the cells", you should use the tag "cell" when referring to them.
+
+Here is the code for the function you can use to filter annotations by tags:
+
+def get_annotations_with_tags(elements, tags, exclusive=False):
+    result = []
+    tags_set = set(tags)
+    for element in elements:
+        element_tags_set = set(element.get('tags', []))
+        if exclusive:
+            # only add the element if its tags exactly match the provided tags
+            if element_tags_set == tags_set:
+                result.append(element)
+        else:
+            # add the element if it contains any of the provided tags
+            if tags_set & element_tags_set:
+                result.append(element)
+    return result
+
+You can call it with "annotation_tools.get_annotations_with_tags(json_data['annotations'], ['tag1', 'tag2', ...])" to get a list of annotations with all the tags specified.
+
+An annotation has a "location" within a dataset consisting of Time, XY, and Z, which refers to the "frame" of the dataset that the annotation is in. You can use the following helper functions to filter annotations based on their location:
+
+def filter_elements_T_XY(elements, time_value, xy_value):
+    return [element for element in elements if element['location']['Time'] == time_value and element['location']['XY'] == xy_value]
+
+def filter_elements_T_XY_Z(elements, time_value, xy_value, z_value):
+    return [element for element in elements if element['location']['Time'] == time_value and element['location']['XY'] == xy_value and element['location']['Z'] == z_value]
+
+def filter_elements_Z_XY(elements, z_value, xy_value):
+    return [element for element in elements if element['location']['Z'] == z_value and element['location']['XY'] == xy_value]
+
 Generally, try and use the shapely package for the shape-based computations. Supply just the code. Here is an example JSON called sample.json, included just to show you the schema; you will want to ensure the final JSON contains all parts of the schema, including annotations, connections, properties, and property values:
 
 sample.json:

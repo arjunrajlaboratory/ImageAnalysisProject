@@ -144,7 +144,7 @@ def compute(datasetId, apiUrl, token, params):
 
     # Get the tags from the data so that the AI knows how to manipulate them.
     tag_string = JSON_data_tags_to_prompt_string(json_data)
-    user_message = query + " " + tag_string
+    user_message = query + " The list of tags available to you is: " + tag_string
 
     print("User message: ", user_message)
 
