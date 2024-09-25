@@ -40,7 +40,7 @@ WORKDIR /ImageAnalysisProject
 RUN pip install ./annotation_utilities
 
 WORKDIR /
-RUN git clone -b delete-multiple-annotations-function https://github.com/Kitware/UPennContrast/
+RUN git clone https://github.com/Kitware/UPennContrast/
 WORKDIR /UPennContrast
 
 RUN pip install -r devops/girder/annotation_client/requirements.txt
