@@ -5,7 +5,7 @@ with open(file_path, 'r') as file:
 
 You can return the JSON as JSON data in the variable "output_json_data", and the user will write to a file later.
 
-Annotations come in three types: points, lines, and polygons. This is encoded in the 'shape' field of the annotation. Sometimes users will use the word blob to refer to a polygon, so keep that in mind.
+Annotations come in three types: points, lines, and polygons. This is encoded in the 'shape' field of the annotation. Sometimes users will use the word blob to refer to a polygon, so keep that in mind. Annotations and connections have '_id' fields, which are unique identifiers for them in the backend database. In a connection, the 'parentId' and 'childId' fields refer to the _id fields of the annotations that the connection is between.
 
 There are some helper functions you can use to make your life easier. These are in the annotation_utilities package, which is already imported for you:
 
@@ -80,7 +80,7 @@ sample.json:
                     "y": 266
                 }
             ],
-            "id": "6692561b6fbb27ec7b06ea42",
+            "_id": "6692561b6fbb27ec7b06ea42",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -108,7 +108,7 @@ sample.json:
                     "y": 158
                 }
             ],
-            "id": "6692562f6fbb27ec7b06ea51",
+            "_id": "6692562f6fbb27ec7b06ea51",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -136,7 +136,7 @@ sample.json:
                     "y": 468
                 }
             ],
-            "id": "669256326fbb27ec7b06ea54",
+            "_id": "669256326fbb27ec7b06ea54",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -164,7 +164,7 @@ sample.json:
                     "y": 295
                 }
             ],
-            "id": "669256356fbb27ec7b06ea57",
+            "_id": "669256356fbb27ec7b06ea57",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -185,7 +185,7 @@ sample.json:
                     "z": 0
                 }
             ],
-            "id": "669256386fbb27ec7b06ea5a",
+            "_id": "669256386fbb27ec7b06ea5a",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -206,7 +206,7 @@ sample.json:
                     "z": 0
                 }
             ],
-            "id": "669256396fbb27ec7b06ea5d",
+            "_id": "669256396fbb27ec7b06ea5d",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -237,7 +237,7 @@ sample.json:
                     "z": 0
                 }
             ],
-            "id": "669256526fbb27ec7b06ea75",
+            "_id": "669256526fbb27ec7b06ea75",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -268,7 +268,7 @@ sample.json:
                     "z": 0
                 }
             ],
-            "id": "6692565d6fbb27ec7b06ea78",
+            "_id": "6692565d6fbb27ec7b06ea78",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         },
         {
@@ -297,7 +297,7 @@ sample.json:
                     "y": 215
                 }
             ],
-            "id": "6692636e6fbb27ec7b06f0d9",
+            "_id": "6692636e6fbb27ec7b06f0d9",
             "datasetId": "6692500e6fbb27ec7b06e47a",
             "color": "#FA0C0C"
         },
@@ -326,7 +326,7 @@ sample.json:
                     "y": 219
                 }
             ],
-            "id": "669263716fbb27ec7b06f0dc",
+            "_id": "669263716fbb27ec7b06f0dc",
             "datasetId": "6692500e6fbb27ec7b06e47a",
             "color": "#FA0C0C"
         },
@@ -355,7 +355,7 @@ sample.json:
                     "y": 443.8633617492953
                 }
             ],
-            "id": "6698c9486fbb27ec7b075ee3",
+            "_id": "6698c9486fbb27ec7b075ee3",
             "datasetId": "6692500e6fbb27ec7b06e47a"
         }
     ],
@@ -365,7 +365,7 @@ sample.json:
             "tags": [
                 "nucleus"
             ],
-            "id": "6692573f6fbb27ec7b06eaaf",
+            "_id": "6692573f6fbb27ec7b06eaaf",
             "parentId": "6692562f6fbb27ec7b06ea51",
             "childId": "669256386fbb27ec7b06ea5a",
             "datasetId": "6692500e6fbb27ec7b06e47a"
@@ -375,7 +375,7 @@ sample.json:
             "tags": [
                 "nucleus"
             ],
-            "id": "6692573f6fbb27ec7b06eab0",
+            "_id": "6692573f6fbb27ec7b06eab0",
             "parentId": "6692562f6fbb27ec7b06ea51",
             "childId": "669256396fbb27ec7b06ea5d",
             "datasetId": "6692500e6fbb27ec7b06e47a"
@@ -383,7 +383,7 @@ sample.json:
     ],
     "annotationProperties": [
         {
-            "id": "669256da6fbb27ec7b06ea98",
+            "_id": "669256da6fbb27ec7b06ea98",
             "name": "cell Blob metrics",
             "image": "properties/blob_metrics:latest",
             "tags": {
@@ -396,7 +396,7 @@ sample.json:
             "workerInterface": {}
         },
         {
-            "id": "6692570b6fbb27ec7b06eaa3",
+            "_id": "6692570b6fbb27ec7b06eaa3",
             "name": "nucleus Blob intensity measurements",
             "image": "properties/blob_intensity:latest",
             "tags": {

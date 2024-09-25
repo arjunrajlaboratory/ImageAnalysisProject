@@ -7,6 +7,7 @@ import time
 import timeit
 from datetime import datetime
 from typing import List, Dict, Optional
+import pprint
 import io
 from anthropic import Anthropic
 
@@ -144,7 +145,7 @@ def compute(datasetId, apiUrl, token, params):
 
     # Get the tags from the data so that the AI knows how to manipulate them.
     tag_string = JSON_data_tags_to_prompt_string(json_data)
-    user_message = query + " The list of tags available to you is: " + tag_string
+    user_message = query + " " + tag_string
 
     print("User message: ", user_message)
 
@@ -219,6 +220,8 @@ def compute(datasetId, apiUrl, token, params):
     local_vars = {'json_data': json_data}
 
     # Execute the code with the local variables
+    pprint.pprint(json_data)
+    print("Code: ", code)
     exec(code, globals(), local_vars)
 
     # Retrieve the modified data
@@ -226,6 +229,10 @@ def compute(datasetId, apiUrl, token, params):
 
     # This would be the potential end of a loop that would iteratively run the code if errors arose.
 
+
+    # Update the annotations and connections in the database
+    sendProgress(0.80, 'Updating annotations and connections', 'Updating the annotations and connections in the database')
+    update_annotations_and_connections(annotationClient, output_json_data['annotations'], output_json_data['annotationConnections'], datasetId)
 
 
     # Convert the output JSON data to a string
@@ -241,6 +248,50 @@ def compute(datasetId, apiUrl, token, params):
     # Upload output JSON content to the file
     annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
 
+def update_annotations_and_connections(annotationClient, new_annotation_list, new_connection_list, datasetId):
+    # 1. Remove _id from annotations and add datasetId.
+    # Keep a list of the old annotation ids to map to the newly generated ids later.
+    new_annotation_ids = []
+    for ann in new_annotation_list:
+        new_annotation_ids.append(ann.pop('_id', None))
+        ann['datasetId'] = datasetId
+
+    # 2. Remove _id from connections and add datasetId
+    for conn in new_connection_list:
+        conn.pop('_id', None)
+        conn['datasetId'] = datasetId
+
+    # 3. Delete all existing annotations (this will also delete associated connections and property values)
+    existingAnnotations = annotationClient.getAnnotationsByDatasetId(datasetId)
+    existingAnnotationIds = [ann['_id'] for ann in existingAnnotations]
+    annotationClient.deleteMultipleAnnotations(existingAnnotationIds)
+
+    # 4. Upload new annotations and keep the return value
+    new_annotations = annotationClient.createMultipleAnnotations(new_annotation_list)
+
+    # 5. Map initial _ids to newly generated _ids from server
+    id_mapping = {new_ann_id: new_ann['_id'] for new_ann_id, new_ann in zip(new_annotation_ids, new_annotations)}
+
+    # 6. Update parentId and childId in connections to match the new _ids from the server
+    for conn in new_connection_list:
+        new_parent_id = id_mapping.get(conn['parentId'])
+        new_child_id = id_mapping.get(conn['childId'])
+        
+        if new_parent_id is None:
+            print(f"Error: No matching ID in new connections for parentId {conn['parentId']}")
+        else:
+            conn['parentId'] = new_parent_id
+        
+        if new_child_id is None:
+            print(f"Error: No matching ID in new connections for childId {conn['childId']}")
+        else:
+            conn['childId'] = new_child_id
+
+    # 7. Upload new connections
+    new_connections = annotationClient.createMultipleConnections(new_connection_list)
+
+    return new_annotations, new_connections
+
 
 def convert_nimbus_objects_to_JSON(annotationList: List[Dict], 
                                    connectionList: Optional[List[Dict]] = None, 
@@ -255,7 +306,7 @@ def convert_nimbus_objects_to_JSON(annotationList: List[Dict],
             "channel": annotation.get("channel", 0),
             "location": annotation.get("location", {}),
             "coordinates": annotation.get("coordinates", []),
-            "id": annotation.get("_id", ""),
+            "_id": annotation.get("_id", ""),
             "datasetId": annotation.get("datasetId", "")
         }
         if "color" in annotation:
@@ -267,7 +318,7 @@ def convert_nimbus_objects_to_JSON(annotationList: List[Dict],
             conn_output = {
                 "label": connection.get("label", ""),
                 "tags": connection.get("tags", []),
-                "id": connection.get("_id", ""),
+                "_id": connection.get("_id", ""),
                 "parentId": connection.get("parentId", ""),
                 "childId": connection.get("childId", ""),
                 "datasetId": connection.get("datasetId", "")
@@ -277,7 +328,7 @@ def convert_nimbus_objects_to_JSON(annotationList: List[Dict],
     if propertyValueList:  # This section needs to be done.
         # Add a dummy property
         output["annotationProperties"].append({
-            "id": "dummy_property_id",
+            "_id": "dummy_property_id",
             "name": "Dummy Property",
             "image": "properties/dummy:latest",
             "tags": {"exclusive": False, "tags": ["dummy"]},
@@ -300,7 +351,7 @@ def convert_JSON_to_nimbus_objects(filename: str) -> tuple:
     annotationList = []
     for ann in data.get("annotations", []):
         annotation = {
-            "_id": ann.get("id", ""),
+            "_id": ann.get("_id", ""),
             "tags": ann.get("tags", []),
             "shape": ann.get("shape", ""),
             "channel": ann.get("channel", 0),
@@ -315,7 +366,7 @@ def convert_JSON_to_nimbus_objects(filename: str) -> tuple:
     connectionList = []
     for conn in data.get("annotationConnections", []):
         connection = {
-            "_id": conn.get("id", ""),
+            "_id": conn.get("_id", ""),
             "label": conn.get("label", ""),
             "tags": conn.get("tags", []),
             "parentId": conn.get("parentId", ""),
@@ -346,7 +397,7 @@ def JSON_data_tags_to_prompt_string(data):
     # Create the formatted string
     if sorted_tags:
         tags_string = ', '.join(f'"{tag}"' for tag in sorted_tags)
-        result = f"The list of tags in the JSON is: {tags_string}"
+        result = f"The list of tags available to you in the JSON is: {tags_string}"
     else:
         result = "There are no tags in the annotations."
     
