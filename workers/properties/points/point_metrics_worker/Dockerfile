@@ -52,6 +52,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="point" \
       interfaceName="Point metrics" \
-      interfaceCategory="Morphology"
+      interfaceCategory="Morphology" \
+      description="Computes a variety of metrics for points, like X and Y coordinates"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]

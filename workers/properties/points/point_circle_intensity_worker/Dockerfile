@@ -50,6 +50,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="point" \
       interfaceName="Point intensity" \
-      interfaceCategory="Intensity"
+      interfaceCategory="Intensity" \
+      description="Computes a variety of intensity metrics around a point; radius 1 for pixel precision"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]

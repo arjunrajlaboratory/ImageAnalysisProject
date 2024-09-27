@@ -52,6 +52,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Blob intensity percentile measurements" \
-      interfaceCategory="Intensity"
+      interfaceCategory="Intensity" \
+      description="Compute intensity at a specific percentile for blobs"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]
