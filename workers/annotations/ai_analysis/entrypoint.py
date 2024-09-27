@@ -18,7 +18,6 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 
-#import annotation_tools
 import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
@@ -222,7 +221,11 @@ def compute(datasetId, apiUrl, token, params):
     # Execute the code with the local variables
     pprint.pprint(json_data)
     print("Code: ", code)
-    exec(code, globals(), local_vars)
+    try:
+        exec(code, globals(), local_vars)
+    except Exception as e:
+        print(f"Error executing code: {e}")
+        raise
 
     # Retrieve the modified data
     output_json_data = local_vars.get('output_json_data', {})
