@@ -5,6 +5,8 @@ import sys
 import os  # Add this import
 import time
 import timeit
+import random
+import math
 from datetime import datetime
 from typing import List, Dict, Optional
 import pprint
@@ -24,8 +26,10 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, Polygon, LineString
+from shapely import ops
 from scipy.spatial import cKDTree
+from scipy import stats, optimize, interpolate
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)

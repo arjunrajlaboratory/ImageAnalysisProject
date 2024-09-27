@@ -19,9 +19,11 @@ fi
 # Annotation workers
 echo "Building annotation worker: connect_to_nearest"
 docker build -f ./workers/annotations/connect_to_nearest/$DOCKERFILE -t annotations/connect_to_nearest:latest ./workers/annotations/connect_to_nearest/
+# docker build -f ./workers/annotations/connect_to_nearest/Dockerfile_M1 -t annotations/connect_to_nearest:latest ./workers/annotations/connect_to_nearest/
 
 echo "Building annotation worker: connect_sequential"
 docker build -f ./workers/annotations/connect_sequential/$DOCKERFILE -t annotations/connect_sequential:latest ./workers/annotations/connect_sequential/
+# docker build -f ./workers/annotations/connect_sequential/Dockerfile_M1 -t annotations/connect_sequential:latest ./workers/annotations/connect_sequential/
 
 
 # Property workers
