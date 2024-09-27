@@ -52,6 +52,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Count children" \
-      interfaceCategory="Quantification"
+      interfaceCategory="Quantification" \
+      description="Count the number of children objects that are connected to a parent polygon"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]

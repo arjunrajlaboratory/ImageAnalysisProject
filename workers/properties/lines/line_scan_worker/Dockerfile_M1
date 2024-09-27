@@ -44,6 +44,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="line" \
       interfaceName="Line scan CSV" \
-      interfaceCategory="Intensity"
+      interfaceCategory="Intensity" \
+      description="Compute the intensity along a line and puts the results in a CSV file"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

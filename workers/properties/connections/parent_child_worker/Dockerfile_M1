@@ -52,6 +52,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Parent and child" \
-      interfaceCategory="Connections"
+      interfaceCategory="Connections" \
+      description="Creates a set of identifiers that describe the parent-child relationships between polygons"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]

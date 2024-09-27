@@ -52,7 +52,8 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Point count" \
-      interfaceCategory="Quantification"
+      interfaceCategory="Quantification" \
+      description="Count the number of points that fall within a blob/polygon; can work in 2D or 3D"
 
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]

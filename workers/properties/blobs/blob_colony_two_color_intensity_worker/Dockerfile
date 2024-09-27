@@ -52,6 +52,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Colony two color intensity" \
-      interfaceCategory="Intensity"
+      interfaceCategory="Intensity" \
+      description="Compute intensity across two channels for blobs; useful for colony intensity measurements"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]

@@ -14,6 +14,7 @@ LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="line" \
       interfaceName="length" \
-      interfaceCategory="Morphology"
+      interfaceCategory="Morphology" \
+      description="Compute the length of lines"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
