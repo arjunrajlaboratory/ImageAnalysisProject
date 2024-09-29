@@ -239,9 +239,15 @@ def compute(datasetId, apiUrl, token, params):
     # This would be the potential end of a loop that would iteratively run the code if errors arose.
 
 
-    # Update the annotations and connections in the database
-    sendProgress(0.80, 'Updating annotations and connections', 'Updating the annotations and connections in the database')
-    update_annotations_and_connections(annotationClient, output_json_data['annotations'], output_json_data['annotationConnections'], datasetId)
+    # Update the annotations, connections, and property values in the database
+    sendProgress(0.80, 'Updating annotations, connections, and property values', 'Updating the annotations, connections, and property values in the database')
+    update_annotations_connections_propertyvalues(
+        annotationClient, 
+        output_json_data['annotations'], 
+        output_json_data['annotationConnections'], 
+        output_json_data['annotationPropertyValues'], 
+        datasetId
+    )
 
 
     # Convert the output JSON data to a string
@@ -257,7 +263,7 @@ def compute(datasetId, apiUrl, token, params):
     # Upload output JSON content to the file
     annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
 
-def update_annotations_and_connections(annotationClient, new_annotation_list, new_connection_list, datasetId):
+def update_annotations_connections_propertyvalues(annotationClient, new_annotation_list, new_connection_list, new_property_value_list, datasetId):
     # 1. Remove _id from annotations and add datasetId.
     # Keep a list of the old annotation ids to map to the newly generated ids later.
     new_annotation_ids = []
@@ -299,8 +305,24 @@ def update_annotations_and_connections(annotationClient, new_annotation_list, ne
     # 7. Upload new connections
     new_connections = annotationClient.createMultipleConnections(new_connection_list)
 
-    return new_annotations, new_connections
+    # 8. Update property values
+    for prop_value in new_property_value_list:
+        # Remove the '_id' field
+        prop_value.pop('_id', None)
+        
+        # Remap the 'annotationId'
+        old_annotation_id = prop_value['annotationId']
+        new_annotation_id = id_mapping.get(old_annotation_id)
+        
+        if new_annotation_id is None:
+            print(f"Error: No matching ID in new annotations for annotationId {old_annotation_id}")
+        else:
+            prop_value['annotationId'] = new_annotation_id
 
+    # 9. Upload new property values
+    new_property_values = annotationClient.addMultipleAnnotationPropertyValues(new_property_value_list)
+
+    return new_annotations, new_connections, new_property_values
 
 def convert_nimbus_objects_to_JSON(annotationList: List[Dict], 
                                    connectionList: Optional[List[Dict]] = None, 
@@ -336,20 +358,15 @@ def convert_nimbus_objects_to_JSON(annotationList: List[Dict],
 
     if propertyValueList:  # This section needs to be done.
         # Add a dummy property
-        output["annotationProperties"].append({
-            "_id": "dummy_property_id",
-            "name": "Dummy Property",
-            "image": "properties/dummy:latest",
-            "tags": {"exclusive": False, "tags": ["dummy"]},
-            "shape": "polygon",
-            "workerInterface": {}
-        })
-
-        for prop in propertyValueList:
-            ann_id = prop.get("annotationId", "")
-            values = prop.get("values", {})
-            if ann_id and values:
-                output["annotationPropertyValues"][ann_id] = values
+        # output["annotationProperties"].append({
+        #     "_id": "dummy_property_id",
+        #     "name": "Dummy Property",
+        #     "image": "properties/dummy:latest",
+        #     "tags": {"exclusive": False, "tags": ["dummy"]},
+        #     "shape": "polygon",
+        #     "workerInterface": {}
+        # })
+        output["annotationPropertyValues"] = propertyValueList
 
     return output
 
