@@ -219,20 +219,22 @@ def compute(datasetId, apiUrl, token, params):
                                                  
     sendProgress(0.75, 'Executing code', 'Executing the AI model code')
 
-    # Create a dictionary to hold our variables
-    local_vars = {'json_data': json_data}
+    # Define a single namespace dictionary
+    exec_namespace = {
+        "json_data": json_data  # Pass the existing json_data into the exec environment
+    }
 
     # Execute the code with the local variables
     pprint.pprint(json_data)
     print("Code: ", code)
     try:
-        exec(code, globals(), local_vars)
+        exec(code, exec_namespace)
     except Exception as e:
         print(f"Error executing code: {e}")
         raise
 
     # Retrieve the modified data
-    output_json_data = local_vars.get('output_json_data', {})
+    output_json_data = exec_namespace.get('output_json_data', {})
 
     # This would be the potential end of a loop that would iteratively run the code if errors arose.
 
