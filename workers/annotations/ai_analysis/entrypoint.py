@@ -80,7 +80,7 @@ def get_property_info(annotation_client, property_value_list):
     # Second pass: fetch property details and compile final list
     for prop_id in property_ids:
         prop = annotation_client.getPropertyById(prop_id)
-        
+
         detail = {
             "_id": prop["_id"],
             "name": prop["name"],
@@ -89,7 +89,7 @@ def get_property_info(annotation_client, property_value_list):
             "shape": prop.get("shape", ""),
             "value": value_types.get(prop_id, "not found")
         }
-        
+
         property_info.append(detail)
 
     return property_info
@@ -149,6 +149,9 @@ def compute(datasetId, apiUrl, token, params):
     # Get the tags from the data so that the AI knows how to manipulate them.
     tag_string = JSON_data_tags_to_prompt_string(json_data)
     user_message = query + " " + tag_string
+
+    property_string = pprint.pformat(get_property_info(annotationClient, propertyList), indent=2)
+    user_message = user_message + "\n\n" + "The properties available to you are:\n" + property_string
 
     print("User message: ", user_message)
 

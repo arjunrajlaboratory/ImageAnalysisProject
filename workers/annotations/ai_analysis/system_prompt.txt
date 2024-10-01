@@ -9,7 +9,7 @@ Annotations come in three types: points, lines, and polygons. This is encoded in
 
 There are some helper functions you can use to make your life easier. These are in the annotation_utilities.annotation_tools package, which is already imported for you as annotation_tools.
 
-*Do not import annotation_tools yourself! If you insist on doing it, you will get an error. You can do `import annotation_utilities.annotation_tools as annotation_tools`, but again do not import annotation_tools directly.*
+* You can do `import annotation_utilities.annotation_tools as annotation_tools` to get access to the helper functions, but do not do `import annotation_tools` directly. *
 
 1. You can use the function annotation_tools.annotations_to_points(annotations) to convert a list of annotations to a list of Shapely Point objects.
 2. Similarly, annotation_tools.annotations_to_polygons(annotations) will convert a list of annotations to a list of Shapely Polygon objects.
@@ -385,66 +385,123 @@ sample.json:
     ],
     "annotationProperties": [
         {
-            "_id": "669256da6fbb27ec7b06ea98",
-            "name": "cell Blob metrics",
+            "_id": "66f3a8b643c86080ec905507",
             "image": "properties/blob_metrics:latest",
-            "tags": {
-                "exclusive": false,
-                "tags": [
-                    "cell"
-                ]
-            },
+            "name": "nucleus Blob metrics",
             "shape": "polygon",
-            "workerInterface": {}
+            "tags": ["nucleus"],
+            "value": {
+                "Area": "number",
+                "Centroid": {"x": "number", "y": "number"},
+                "Circularity": "number",
+                "Compactness": "number",
+                "Convexity": "number",
+                "Eccentricity": "number",
+                "Elongation": "number",
+                "Fractal_Dimension": "number",
+                "Perimeter": "number",
+                "Rectangularity": "number",
+                "Solidity": "number"
+            }
         },
         {
-            "_id": "6692570b6fbb27ec7b06eaa3",
-            "name": "nucleus Blob intensity measurements",
+            "_id": "66f936cf5910864bcb1c2e0c",
             "image": "properties/blob_intensity:latest",
-            "tags": {
-                "exclusive": false,
-                "tags": [
-                    "nucleus"
-                ]
-            },
+            "name": "nucleus Blob intensity measurements",
             "shape": "polygon",
-            "workerInterface": {
-                "Channel": 1
+            "tags": ["nucleus"],
+            "value": {
+                "25thPercentileIntensity": "number",
+                "75thPercentileIntensity": "number",
+                "MaxIntensity": "number",
+                "MeanIntensity": "number",
+                "MedianIntensity": "number",
+                "MinIntensity": "number",
+                "TotalIntensity": "number"
             }
         }
     ],
-    "annotationPropertyValues": {
-        "6692561b6fbb27ec7b06ea42": {
-            "669256da6fbb27ec7b06ea98": {
-                "Area": 5840,
-                "Centroid": {
-                    "x": 678.4908105022831,
-                    "y": 279.0122431506849
+    "annotationPropertyValues": [
+        {
+            "_id": "66f941a75910864bcb1c2f66",
+            "access": {
+                "groups": [],
+                "users": [
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2},
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2},
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2},
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2}
+                ]
+            },
+            "annotationId": "6692561b6fbb27ec7b06ea42",
+            "datasetId": "6692500e6fbb27ec7b06e47a",
+            "values": {
+                "66f3a8b643c86080ec905507": {
+                    "Area": 0.5,
+                    "Centroid": {"x": 589.1666666666666, "y": 469.0},
+                    "Circularity": 0.012564749830125269,
+                    "Compactness": 0.012564749830125269,
+                    "Convexity": 1.0,
+                    "Eccentricity": 0.9999672555690418,
+                    "Elongation": 0.9920000000000018,
+                    "Fractal_Dimension": -8.965970372455905,
+                    "Perimeter": 22.362121931389954,
+                    "Rectangularity": 0.5000000000001132,
+                    "Solidity": 1.0000000000000002
                 },
-                "Circularity": 0.8205950927590248,
-                "Compactness": 0.8205950927590248,
-                "Convexity": 0.9756912538635034,
-                "Eccentricity": 0.8007082748936661,
-                "Elongation": 0.3771186440677967,
-                "Fractal_Dimension": 1.3146444632102863,
-                "Perimeter": 299.0521284760509,
-                "Rectangularity": 0.7680445059379685,
-                "Solidity": 1.0075347154358751
+                "66f936cf5910864bcb1c2e0c": {
+                    "25thPercentileIntensity": 4231.0,
+                    "75thPercentileIntensity": 4231.0,
+                    "MaxIntensity": 4231.0,
+                    "MeanIntensity": 4231.0,
+                    "MedianIntensity": 4231.0,
+                    "MinIntensity": 4231.0,
+                    "TotalIntensity": 4231.0
+                }
             }
         },
-        "669256326fbb27ec7b06ea54": {
-            "6692570b6fbb27ec7b06eaa3": {
-                "25thPercentileIntensity": 4843,
-                "75thPercentileIntensity": 27636,
-                "MaxIntensity": 47803,
-                "MeanIntensity": 15642.933621933622,
-                "MedianIntensity": 8704,
-                "MinIntensity": 3333,
-                "TotalIntensity": 10840553
+        {
+            "_id": "66f941a75910864bcb1c2f67",
+            "access": {
+                "groups": [],
+                "users": [
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2},
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2},
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2},
+                    {"flags": [], "id": "6574d20a3db6a2e4bff67d64", "level": 2}
+                ]
+            },
+            "annotationId": "6692562f6fbb27ec7b06ea51",
+            "datasetId": "6692500e6fbb27ec7b06e47a",
+            "values": {
+                "66f3a8b643c86080ec905507": {
+                    "Area": 15.5,
+                    "Centroid": {"x": 698.1666666666667, "y": 288.66666666666663},
+                    "Circularity": 0.17632343058647013,
+                    "Compactness": 0.17632343058647013,
+                    "Convexity": 1.0,
+                    "Eccentricity": 0.9931576464514775,
+                    "Elongation": 0.8847583643122705,
+                    "Fractal_Dimension": 2.556624796172209,
+                    "Perimeter": 33.23653703001352,
+                    "Rectangularity": 0.5000000000000097,
+                    "Solidity": 1.0
+                },
+                "66f936cf5910864bcb1c2e0c": {
+                    "25thPercentileIntensity": 2756.0,
+                    "75thPercentileIntensity": 2912.75,
+                    "MaxIntensity": 2993.0,
+                    "MeanIntensity": 2830.6875,
+                    "MedianIntensity": 2839.0,
+                    "MinIntensity": 2606.0,
+                    "TotalIntensity": 45291.0
+                }
             }
         }
-    }
+    ]
 }
+
+Here is how properties and property values are structured: the property is a dictionary with an ID in "_id". Each property value has fields for the annotationId, datasetId, and then the values, which is a dictionary with the ID of the property as the key and the value as the value. The value can be a string, number, list, or dictionary, depending on the property specified. Dictionaries allow for multiple values to be stored per property in a nested fashion. You can use these property values to inform your code. For instance, you might have a property value for the 'Area' of an annotation, which is a number, and you might want to assign a color to the annotation based on its area. You can access these property values using the annotationId.
 
 Here are other imports that you will have access to:
 

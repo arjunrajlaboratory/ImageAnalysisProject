@@ -55,7 +55,10 @@ LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Claude natural language analyzer" \
       interfaceCategory="AI analysis" \
-      description="Uses Claude AI to analyze images"
+      description="Uses Claude AI to analyze images" \
+      advancedOptionsPanel="False" \
+      annotationConfigurationPanel="False" \
+      defaultToolName="Claude natural language analyzer"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
 
