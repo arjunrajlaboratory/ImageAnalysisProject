@@ -26,7 +26,7 @@ def preview(datasetId, apiUrl, token, params, bimage):
     keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
     threshold = float(workerInterface['Threshold'])
-    sigma = float(workerInterface['Gaussian Sigma'])
+    sigma = float(workerInterface['Sigma'])
 
     # Get the tile
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
