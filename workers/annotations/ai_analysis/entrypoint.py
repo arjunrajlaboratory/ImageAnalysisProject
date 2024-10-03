@@ -222,12 +222,14 @@ def compute(datasetId, apiUrl, token, params):
                                                  
     sendProgress(0.75, 'Executing code', 'Executing the AI model code')
 
-    # Define a single namespace dictionary
-    exec_namespace = {
-        "json_data": json_data  # Pass the existing json_data into the exec environment
-    }
+    # Use a copy of the current globals and add/override as needed
+    exec_namespace = globals().copy()
+    exec_namespace.update({
+        "json_data": json_data
+        # Add or override specific names if necessary
+    })
 
-    # Execute the code with the local variables
+    # Execute the code with the combined namespace
     pprint.pprint(json_data)
     print("Code: ", code)
     try:
