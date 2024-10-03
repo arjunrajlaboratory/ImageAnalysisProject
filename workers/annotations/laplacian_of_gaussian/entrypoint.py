@@ -127,7 +127,7 @@ def compute(datasetId, apiUrl, token, params):
    # Get the Gaussian sigma and threshold from interface values
     stack = worker.workerInterface['Mode'] == 'Z-Stack'
     threshold = float(worker.workerInterface['Threshold'])
-    sigma = float(worker.workerInterface['Gaussian Sigma'])
+    sigma = float(worker.workerInterface['Sigma'])
 
     f_process = partial(find_spots, stack=stack, sigma=sigma, threshold=threshold)
     worker.process(f_process, f_annotation='point', stack_zs='all' if stack else None, progress_text='Running Spot Finder')
