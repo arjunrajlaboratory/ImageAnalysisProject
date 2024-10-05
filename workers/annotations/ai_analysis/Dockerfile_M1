@@ -48,6 +48,7 @@ RUN pip install -e devops/girder/annotation_client/
 
 COPY ./entrypoint.py /
 COPY ./system_prompt.txt /
+COPY ./property_handling.py /
 
 ENV ANTHROPIC_API_KEY=""
 

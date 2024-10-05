@@ -31,7 +31,7 @@ from shapely import ops
 from scipy.spatial import cKDTree
 from scipy import stats, optimize, interpolate
 
-from property_handling import *
+import property_handling
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
@@ -59,46 +59,6 @@ def interface(image, apiUrl, token):
 
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
-
-def get_property_info(annotation_client, property_value_list):
-    property_info = []
-    property_ids = set()
-
-    def get_value_type(value):
-        if isinstance(value, dict):
-            return {k: get_value_type(v) for k, v in value.items()}
-        elif isinstance(value, (int, float)):
-            return "number"
-        elif isinstance(value, str):
-            return "string"
-        else:
-            return "unknown"
-
-    # First pass: collect property IDs and determine value types
-    value_types = {}
-    for item in property_value_list:
-        if 'values' in item:
-            for prop_id, value in item['values'].items():
-                property_ids.add(prop_id)
-                if prop_id not in value_types:
-                    value_types[prop_id] = get_value_type(value)
-
-    # Second pass: fetch property details and compile final list
-    for prop_id in property_ids:
-        prop = annotation_client.getPropertyById(prop_id)
-        
-        detail = {
-            "_id": prop["_id"],
-            "name": prop["name"],
-            "image": prop.get("image", ""),
-            "tags": prop.get("tags", {}).get("tags", []),
-            "shape": prop.get("shape", ""),
-            "value": value_types.get(prop_id, "not found")
-        }
-        
-        property_info.append(detail)
-
-    return property_info
 
 def get_all_dataset_properties(annotation_client, datasetId):
     property_info = []
@@ -217,10 +177,15 @@ def compute(datasetId, apiUrl, token, params):
 
     print("Input parameters: ", api_key, output_json_filename, query)
 
+    sendProgress(0.1, 'Getting information', 'Getting annotations, connections, and property values from the dataset')
     annotationList = annotationClient.getAnnotationsByDatasetId(datasetId)
     connectionList = annotationClient.getAnnotationConnections(datasetId)
     propertyValueList = annotationClient.getPropertyValuesForDataset(datasetId) # Not sure how to get property names out, unfortunately.
-    propertyList = get_property_info(annotationClient, propertyValueList)
+    # propertyList = property_handling.get_property_info(annotationClient, propertyValueList)
+    # Using the propertyValueList, we can get the property names and make a dataframe that is easier for the AI to reason about.
+    property_descriptions = property_handling.get_property_info(annotationClient, propertyValueList)
+    property_id_to_name, property_name_to_id = property_handling.create_property_mappings(property_descriptions)
+    df = property_handling.create_dataframe_from_annotations(propertyValueList, property_id_to_name, annotationList)
 
     json_data = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyValueList)
 
@@ -235,8 +200,9 @@ def compute(datasetId, apiUrl, token, params):
     tag_string = JSON_data_tags_to_prompt_string(json_data)
     user_message = query + " " + tag_string
 
-    property_string = pprint.pformat(get_property_info(annotationClient, propertyList), indent=2)
-    user_message = user_message + "\n\n" + "The properties available to you are:\n" + property_string
+    # TODO: Update this to use the dataframe column names.
+    # property_string = pprint.pformat(property_handling.get_property_info(annotationClient, propertyList), indent=2)
+    # user_message = user_message + "\n\n" + "The properties available to you are:\n" + property_string
 
     print("User message: ", user_message)
 
@@ -315,7 +281,7 @@ def compute(datasetId, apiUrl, token, params):
     })
 
     # Execute the code with the combined namespace
-    pprint.pprint(json_data)
+    # pprint.pprint(json_data)
     print("Code: ", code)
     try:
         exec(code, exec_namespace)
