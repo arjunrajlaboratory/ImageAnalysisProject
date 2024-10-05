@@ -1,8 +1,14 @@
-
 # Detect architecture
 ARCH=$(uname -m)
 
 echo "Architecture: $ARCH"
+
+# Check for --no-cache option
+NO_CACHE=""
+if [ "$1" == "--no-cache" ]; then
+    NO_CACHE="--no-cache"
+    echo "Building without cache"
+fi
 
 # Set Dockerfile based on architecture
 if [ "$ARCH" == "arm64" ]; then
@@ -14,26 +20,26 @@ else
 fi
 
 echo "Building Piscis worker"
-docker compose -f ./workers/annotations/piscis/docker-compose.yaml build
+docker compose -f ./workers/annotations/piscis/docker-compose.yaml build $NO_CACHE
 
 echo "Building Cellpose worker"
-docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose" --label "annotationShape=polygon"
+docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose" --label "annotationShape=polygon" $NO_CACHE
 
 echo "Building Stardist worker"
-docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stardist" --label "interfaceCategory=Stardist" --label "annotationShape=polygon"
+docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stardist" --label "interfaceCategory=Stardist" --label "annotationShape=polygon" $NO_CACHE
 
 echo "Building Laplacian of Gaussian worker"
-docker build ./workers/annotations/laplacian_of_gaussian/ -t annotations/laplacian_of_gaussian:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Laplacian of Gaussian" --label "interfaceCategory=Laplacian of Gaussian"
+docker build ./workers/annotations/laplacian_of_gaussian/ -t annotations/laplacian_of_gaussian:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Laplacian of Gaussian" --label "interfaceCategory=Laplacian of Gaussian" $NO_CACHE
 
 echo "Building SAM2 automatic mask generator worker"
-docker build ./workers/annotations/sam2_automatic_mask_generator/ -t annotations/sam2_automatic_mask_generator:latest 
+docker build ./workers/annotations/sam2_automatic_mask_generator/ -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
 
 echo "Building SAM2 propagate worker"
-docker build -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
+docker build -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/ $NO_CACHE
 # docker build -f ./workers/annotations/sam2_propagate/Dockerfile_M1 -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
 
 echo "Building SAM2 video worker"
-docker build -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sam2_video_worker:latest ./workers/annotations/sam2_video/
+docker build -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sam2_video_worker:latest ./workers/annotations/sam2_video/ $NO_CACHE
 # docker build -f ./workers/annotations/sam2_video/Dockerfile_M1 -t annotations/sam2_video_worker:latest ./workers/annotations/sam2_video/
 
 # These are some legacy workers that are no longer used.
