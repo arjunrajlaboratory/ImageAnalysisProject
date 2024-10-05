@@ -61,6 +61,9 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 def get_all_dataset_properties(annotation_client, datasetId):
+    """
+    Get all the properties for the dataset.
+    """
     property_info = []
     property_ids = set()
 
@@ -181,14 +184,14 @@ def compute(datasetId, apiUrl, token, params):
     annotationList = annotationClient.getAnnotationsByDatasetId(datasetId)
     connectionList = annotationClient.getAnnotationConnections(datasetId)
     propertyValueList = annotationClient.getPropertyValuesForDataset(datasetId)
-    # TODO: the propertyList may be useful for saving the JSON output.
-    # propertyList = property_handling.get_property_info(annotationClient, propertyValueList)
+    propertyList = get_all_dataset_properties(annotationClient, datasetId)
     # Using the propertyValueList, we can get the property names and make a dataframe that is easier for the AI to reason about.
     property_descriptions = property_handling.get_property_info(annotationClient, propertyValueList)
     property_id_to_name, property_name_to_id = property_handling.create_property_mappings(property_descriptions)
     df = property_handling.create_dataframe_from_annotations(propertyValueList, property_id_to_name, annotationList)
 
-    dictionary_data = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyValueList)
+    dictionary_data = convert_nimbus_objects_to_dictionary(annotationList, connectionList, propertyValueList)
+    dictionary_data['annotationProperties'] = propertyList
     dictionary_data['df'] = df
 
     # Initialize the Anthropic client
@@ -244,14 +247,13 @@ def compute(datasetId, apiUrl, token, params):
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     input_json_filename = f"Claude input {current_time}.json"
 
-    # TODO: Save the input JSON data. Need to remove the df in order to save it.
+    # TODO: Save the input JSON data. Need to skip the df in order to save it properly because you can't JSON serialize a dataframe.
+    # sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
     # # Save input JSON data
     # input_json_string = json.dumps(json_data, indent=2)
     # input_json_stream = io.StringIO(input_json_string)
     # input_size = len(input_json_string)
     # input_json_stream.seek(0)
-
-    # sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
 
     # # Get the dataset folder
     # folder = annotationClient.client.getFolder(datasetId)
@@ -330,6 +332,10 @@ def compute(datasetId, apiUrl, token, params):
         ai_property_id,
         datasetId
     )
+
+    # Save the updated property list to the dictionary data.
+    propertyList = get_all_dataset_properties(annotationClient, datasetId)
+    dictionary_data['annotationProperties'] = propertyList
 
     # TODO: Save the output JSON data. Need to remove the df in order to save it.
     # # Convert the output JSON data to a string
@@ -411,15 +417,12 @@ def update_annotations_connections_propertyvalues(
     # First, we need to convert the annotationIds to the new ids in the df.
     df = property_handling.convert_annotation_ids_to_new_ids(df, id_mapping)
     prop_vals = property_handling.convert_columns_to_property_values(df, datasetId, ai_property_id)
-    annotationClient.deleteAnnotationPropertyValues(ai_property_id,datasetId) # First delete the old property values.
-    prop_vals = annotationClient.addMultipleAnnotationPropertyValues(prop_vals) # Then add the new property values.
-
-    # ai_property_values = property_handling.create_property_values_from_dataframe(df, property_name_to_id, ai_property_name)
-    # ai_property_values = annotationClient.addMultipleAnnotationPropertyValues(ai_property_values)
+    annotationClient.deleteAnnotationPropertyValues(ai_property_id,datasetId)  # First delete the old property values.
+    prop_vals = annotationClient.addMultipleAnnotationPropertyValues(prop_vals)  # Then add the new property values.
 
     return new_annotations, new_connections, new_property_values
 
-def convert_nimbus_objects_to_JSON(annotationList: List[Dict], 
+def convert_nimbus_objects_to_dictionary(annotationList: List[Dict], 
                                    connectionList: Optional[List[Dict]] = None, 
                                    propertyValueList: Optional[List[Dict]] = None, 
                                    filename: str = "output.json") -> None:
