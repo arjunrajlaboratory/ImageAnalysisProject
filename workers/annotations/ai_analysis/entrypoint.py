@@ -141,6 +141,38 @@ def add_ai_property_to_all_configurations(annotation_client, datasetId, ai_prope
         else:
             print(f"AI property already in configuration {configId}")
 
+def save_dataset_to_JSON_file(annotationClient, json_filename, dictionary_data, datasetId):
+    # Temporarily remove the 'df' key-value pair
+    df = dictionary_data.pop('df', None)
+
+    try:
+        # Convert the dictionary to a JSON string, excluding 'df'
+        json_string = json.dumps(dictionary_data, indent=2)
+
+        # Convert JSON string to a stream
+        json_stream = io.StringIO(json_string)
+        json_size = len(json_string)
+        json_stream.seek(0)
+
+        # Get the dataset folder
+        folder = annotationClient.client.getFolder(datasetId)
+
+        # Upload JSON content to the file
+        annotationClient.client.uploadStreamToFolder(
+            folder['_id'], 
+            json_stream, 
+            json_filename, 
+            json_size, 
+            mimeType="application/json"
+        )
+
+        print(f"Saved {json_filename} to dataset folder")
+
+    finally:
+        # Always put the 'df' key-value pair back, even if an exception occurs
+        if df is not None:
+            dictionary_data['df'] = df
+
 def compute(datasetId, apiUrl, token, params):
     """
     params (could change):
@@ -205,10 +237,6 @@ def compute(datasetId, apiUrl, token, params):
     tag_string = JSON_data_tags_to_prompt_string(dictionary_data)
     user_message = query + "\n\n" + tag_string
 
-    # TODO: Update this to use the dataframe column names. # Done I think, although perhaps want to put in the JSON at the end.
-    # property_string = pprint.pformat(property_handling.get_property_info(annotationClient, propertyList), indent=2)
-    # user_message = user_message + "\n\n" + "The properties available to you are:\n" + property_string
-
     # Give the tag to column and column to tag mappings.
     tag_to_columns, column_to_tags = property_handling.create_tag_column_mappings(df)
     user_message = user_message + "\n\n" + "The tag to column mapping of property values is: " + pprint.pformat(tag_to_columns, indent=2)
@@ -244,28 +272,18 @@ def compute(datasetId, apiUrl, token, params):
         ]
     )
 
+    # Save the current state of the data to a JSON file.
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    input_json_filename = f"Claude input {current_time}.json"
+    input_json_filename = f"Claude input before {current_time}.json"
 
-    # TODO: Save the input JSON data. Need to skip the df in order to save it properly because you can't JSON serialize a dataframe.
-    # sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
-    # # Save input JSON data
-    # input_json_string = json.dumps(json_data, indent=2)
-    # input_json_stream = io.StringIO(input_json_string)
-    # input_size = len(input_json_string)
-    # input_json_stream.seek(0)
-
-    # # Get the dataset folder
-    # folder = annotationClient.client.getFolder(datasetId)
-
-    # # Upload input JSON content to the file
-    # annotationClient.client.uploadStreamToFolder(folder['_id'], input_json_stream, input_json_filename, input_size, mimeType="application/json")
+    sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
+    save_dataset_to_JSON_file(annotationClient, input_json_filename, dictionary_data, datasetId)
 
     # Extract the Python code from the message and run it
     code = extract_python_code_from_string(message.content[0].text)
 
     # Document the process
-    doc_filename = f"Claude output {current_time}.txt"
+    doc_filename = f"Claude code generation and output {current_time}.txt"
 
     documentation = f"""Input JSON Filename: {input_json_filename}
     Output JSON Filename: {output_json_filename}
@@ -337,19 +355,12 @@ def compute(datasetId, apiUrl, token, params):
     propertyList = get_all_dataset_properties(annotationClient, datasetId)
     dictionary_data['annotationProperties'] = propertyList
 
-    # TODO: Save the output JSON data. Need to remove the df in order to save it.
-    # # Convert the output JSON data to a string
-    # output_json_string = json.dumps(output_json_data, indent=2)
+    # Save the updated data to a JSON file.
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    output_json_filename = f"Claude output after {current_time}.json"
 
-    # # Convert output JSON string to a stream
-    # json_stream = io.StringIO(output_json_string)
-    # size = len(output_json_string) # Get the length of the string as required by Girder
-    # json_stream.seek(0) # Reset the stream to the beginning
-
-    # sendProgress(0.95, 'Uploading file', f"Saving {output_json_filename} to dataset folder")
-
-    # # Upload output JSON content to the file
-    # annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
+    sendProgress(0.85, 'Saving output data', f"Saving {output_json_filename} to dataset folder")
+    save_dataset_to_JSON_file(annotationClient, output_json_filename, dictionary_data, datasetId)
 
 def update_annotations_connections_propertyvalues(
     annotationClient, new_annotation_list, new_connection_list,
