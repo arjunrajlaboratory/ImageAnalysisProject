@@ -36,6 +36,11 @@ def filter_elements_Z_XY(elements, z_value, xy_value):
 def get_annotations_with_tags(elements, tags, exclusive=False):
     result = []
     tags_set = set(tags)
+
+    # If the tags are empty and exclusive is false, return all elements
+    if not tags and not exclusive:
+        return elements
+
     for element in elements:
         element_tags_set = set(element.get('tags', []))
         if exclusive:
@@ -43,8 +48,8 @@ def get_annotations_with_tags(elements, tags, exclusive=False):
             if element_tags_set == tags_set:
                 result.append(element)
         else:
-            # add the element if it contains any of the provided tags
-            if tags_set & element_tags_set:
+            # add the element if it contains any of the provided tags OR both sets are empty
+            if (tags_set & element_tags_set) or (not tags_set and not element_tags_set):
                 result.append(element)
     return result
 
