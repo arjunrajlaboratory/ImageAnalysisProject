@@ -31,6 +31,8 @@ from shapely import ops
 from scipy.spatial import cKDTree
 from scipy import stats, optimize, interpolate
 
+from property_handling import *
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -42,6 +44,10 @@ def interface(image, apiUrl, token):
         },
         'Query': {
             'type': 'text',
+        },
+        'AI Property Name': {
+            'type': 'text',
+            'default': 'AI properties'
         }
     }
 
@@ -80,7 +86,7 @@ def get_property_info(annotation_client, property_value_list):
     # Second pass: fetch property details and compile final list
     for prop_id in property_ids:
         prop = annotation_client.getPropertyById(prop_id)
-
+        
         detail = {
             "_id": prop["_id"],
             "name": prop["name"],
@@ -89,10 +95,88 @@ def get_property_info(annotation_client, property_value_list):
             "shape": prop.get("shape", ""),
             "value": value_types.get(prop_id, "not found")
         }
+        
+        property_info.append(detail)
+
+    return property_info
+
+def get_all_dataset_properties(annotation_client, datasetId):
+    property_info = []
+    property_ids = set()
+
+    # Get all configurations for the dataset
+    configurationList = annotation_client.getDatasetViewsByDatasetId(datasetId)
+
+    # Collect all propertyIds from all configurations
+    for config in configurationList:
+        configId = config['configurationId']
+        configuration = annotation_client.getItemById(configId)
+        property_ids.update(configuration['meta'].get('propertyIds', []))
+
+    # Fetch details for each property
+    for prop_id in property_ids:
+        prop = annotation_client.getPropertyById(prop_id)
+        
+        detail = {
+            "_id": prop["_id"],
+            "name": prop["name"],
+            "image": prop.get("image", ""),
+            "tags": prop.get("tags", {}).get("tags", []),
+            "shape": prop.get("shape", ""),
+            "workerInterface": prop.get("workerInterface", {})
+        }
 
         property_info.append(detail)
 
     return property_info
+
+def get_ai_property_id(annotation_client, property_info, ai_property_name):
+    """
+    Checks if a property with the name ai_property_name exists.
+    If it exists, returns its _id.
+    Otherwise, creates a new property with the name ai_property_name and returns the new _id.
+    """
+    for prop in property_info:
+        if prop['name'] == ai_property_name:
+            return prop['_id']
+
+    # Define the new property since it doesn't exist
+    new_property = {
+        "image": "properties/none:latest",
+        "name": ai_property_name,
+        "shape": "polygon",
+        "tags": {
+            "exclusive": False,
+            "tags": []
+        },
+        "workerInterface": {}
+    }
+
+    # Create the new property using the annotation client
+    new_prop = annotation_client.createNewProperty(new_property)
+
+    # Return the _id of the newly created property
+    return new_prop['_id']
+
+def add_ai_property_to_all_configurations(annotation_client, datasetId, ai_property_id):
+    # Get all configurations for the dataset
+    configurationList = annotation_client.getDatasetViewsByDatasetId(datasetId)
+
+    # Iterate through each configuration
+    for config in configurationList:
+        configId = config['configurationId']
+        # Get the properties for the current configuration
+        properties = annotation_client.getItemById(configId)
+
+        # Check if the AI property is already in the properties
+        if ai_property_id not in properties['meta']['propertyIds']:
+            print(f"Adding AI property to configuration {configId}")
+            # Add the AI property to the configuration
+            properties['meta']['propertyIds'].append(ai_property_id)
+            # Update the configuration with the new property
+            annotation_client.setPropertiesByConfigurationId(configId, properties['meta']['propertyIds'])
+        else:
+            print(f"AI property already in configuration {configId}")
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -122,13 +206,14 @@ def compute(datasetId, apiUrl, token, params):
     api_key = os.getenv('ANTHROPIC_API_KEY') or workerInterface['Claude API key']
     output_json_filename = workerInterface['Output JSON filename']
     query = workerInterface['Query']
-    
+    ai_property_name = workerInterface['AI Property Name']
+
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
         apiUrl=apiUrl, token=token)
     tileClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
-    
+
 
     print("Input parameters: ", api_key, output_json_filename, query)
 
@@ -243,6 +328,10 @@ def compute(datasetId, apiUrl, token, params):
 
     # This would be the potential end of a loop that would iteratively run the code if errors arose.
 
+    # Let's add the AI property to all configurations.
+    all_properties = get_all_dataset_properties(annotationClient, datasetId)
+    ai_property_id = get_ai_property_id(annotationClient, all_properties, ai_property_name)
+    add_ai_property_to_all_configurations(annotationClient, datasetId, ai_property_id)
 
     # Update the annotations, connections, and property values in the database
     sendProgress(0.80, 'Updating annotations, connections, and property values', 'Updating the annotations, connections, and property values in the database')
@@ -253,7 +342,6 @@ def compute(datasetId, apiUrl, token, params):
         output_json_data['annotationPropertyValues'], 
         datasetId
     )
-
 
     # Convert the output JSON data to a string
     output_json_string = json.dumps(output_json_data, indent=2)
