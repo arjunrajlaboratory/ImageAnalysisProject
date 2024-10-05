@@ -47,12 +47,19 @@ RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
 
 COPY ./entrypoint.py /
+COPY ./system_prompt.txt /
+COPY ./property_handling.py /
+
+ENV ANTHROPIC_API_KEY=""
 
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Claude natural language analyzer" \
       interfaceCategory="AI analysis" \
-      description="Uses Claude AI to analyze images"
+      description="Uses Claude AI to analyze images" \
+      advancedOptionsPanel="False" \
+      annotationConfigurationPanel="False" \
+      defaultToolName="Claude natural language analyzer"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
 
