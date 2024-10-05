@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 def get_annotation_properties(annotation_id):
     return combined_data.get(annotation_id, {}).get('values', {})
@@ -172,7 +173,7 @@ def convert_columns_to_property_values(df, datasetId, propertyId, columns=None):
     # Iterate through the DataFrame rows
     for annotationId, row in df_subset.iterrows():
         # Create a dictionary for the current row, replacing NaN with None
-        row_dict = row.where(pd.notna(row), None).to_dict()
+        row_dict = {k: v if pd.notna(v) else None for k, v in row.items()}
 
         # Create the property value dictionary
         property_value = {
@@ -186,6 +187,21 @@ def convert_columns_to_property_values(df, datasetId, propertyId, columns=None):
         property_values.append(property_value)
 
     return property_values
+
+def convert_annotation_ids_to_new_ids(df, id_mapping):
+    """
+    Converts the annotation IDs in the DataFrame to the new IDs using the provided mapping.
+
+    Args:
+        df (DataFrame): The DataFrame with original annotation IDs. The index is the annotationId.
+        id_mapping (dict): A mapping from old annotation IDs to new annotation IDs.
+
+    Returns:
+        DataFrame: The DataFrame with updated annotation IDs.
+    """
+    df.index = df.index.map(id_mapping)
+    return df
+
 
 # Function to normalize property names by creating new merged columns
 def create_merged_columns(df, merge_map):
@@ -325,3 +341,46 @@ def get_property_info(annotation_client, property_value_list):
         property_info.append(detail)
 
     return property_info
+
+def create_tag_column_mappings(df):
+    """
+    Creates two mappings:
+    1. For each tag, the columns where all annotations with that tag have non-null values.
+    2. For each column, the tags where all annotations with that tag have non-null values.
+
+    Args:
+    df (pandas.DataFrame): The dataframe containing the annotations data.
+
+    Returns:
+    tuple: (tag_to_columns, column_to_tags)
+        - tag_to_columns (dict): Mapping of tags to lists of column names.
+        - column_to_tags (dict): Mapping of column names to sets of tags.
+    """
+    # Ensure 'tags' column exists
+    if 'tags' not in df.columns:
+        raise ValueError("DataFrame must contain a 'tags' column")
+
+    # Initialize the mappings
+    tag_to_columns = {}
+    column_to_tags = {col: set() for col in df.columns if col != 'tags'}
+
+    # Get unique tags
+    all_tags = set(tag for tags in df['tags'] for tag in tags if isinstance(tags, list))
+
+    # Iterate through each tag
+    for tag in all_tags:
+        # Get rows with this tag
+        tag_rows = df[df['tags'].apply(lambda x: tag in x if isinstance(x, list) else False)]
+        
+        # Find columns where all values are non-null for this tag
+        non_null_columns = tag_rows.columns[tag_rows.notna().all()].tolist()
+        non_null_columns = [col for col in non_null_columns if col != 'tags']
+        
+        # Update tag_to_columns mapping
+        tag_to_columns[tag] = non_null_columns
+        
+        # Update column_to_tags mapping
+        for col in non_null_columns:
+            column_to_tags[col].add(tag)
+
+    return tag_to_columns, column_to_tags

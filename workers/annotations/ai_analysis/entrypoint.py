@@ -180,14 +180,16 @@ def compute(datasetId, apiUrl, token, params):
     sendProgress(0.1, 'Getting information', 'Getting annotations, connections, and property values from the dataset')
     annotationList = annotationClient.getAnnotationsByDatasetId(datasetId)
     connectionList = annotationClient.getAnnotationConnections(datasetId)
-    propertyValueList = annotationClient.getPropertyValuesForDataset(datasetId) # Not sure how to get property names out, unfortunately.
+    propertyValueList = annotationClient.getPropertyValuesForDataset(datasetId)
+    # TODO: the propertyList may be useful for saving the JSON output.
     # propertyList = property_handling.get_property_info(annotationClient, propertyValueList)
     # Using the propertyValueList, we can get the property names and make a dataframe that is easier for the AI to reason about.
     property_descriptions = property_handling.get_property_info(annotationClient, propertyValueList)
     property_id_to_name, property_name_to_id = property_handling.create_property_mappings(property_descriptions)
     df = property_handling.create_dataframe_from_annotations(propertyValueList, property_id_to_name, annotationList)
 
-    json_data = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyValueList)
+    dictionary_data = convert_nimbus_objects_to_JSON(annotationList, connectionList, propertyValueList)
+    dictionary_data['df'] = df
 
     # Initialize the Anthropic client
     client = Anthropic(api_key=api_key)
@@ -197,12 +199,25 @@ def compute(datasetId, apiUrl, token, params):
         SYSTEM_PROMPT = file.read()
 
     # Get the tags from the data so that the AI knows how to manipulate them.
-    tag_string = JSON_data_tags_to_prompt_string(json_data)
-    user_message = query + " " + tag_string
+    tag_string = JSON_data_tags_to_prompt_string(dictionary_data)
+    user_message = query + "\n\n" + tag_string
 
-    # TODO: Update this to use the dataframe column names.
+    # TODO: Update this to use the dataframe column names. # Done I think, although perhaps want to put in the JSON at the end.
     # property_string = pprint.pformat(property_handling.get_property_info(annotationClient, propertyList), indent=2)
     # user_message = user_message + "\n\n" + "The properties available to you are:\n" + property_string
+
+    # Give the tag to column and column to tag mappings.
+    tag_to_columns, column_to_tags = property_handling.create_tag_column_mappings(df)
+    user_message = user_message + "\n\n" + "The tag to column mapping of property values is: " + pprint.pformat(tag_to_columns, indent=2)
+    user_message = user_message + "\n\n" + "The column to tag mapping of property values is: " + pprint.pformat(column_to_tags, indent=2)
+
+    # Give the head of the dataframe.
+    user_message = user_message + "\n\n" + "The head of the dataframe is: \n" + df.head().to_string()
+
+    # Give the column names of the dataframe.
+    user_message = user_message + "\n\n" + "The column names of the dataframe are: " + ", ".join(df.columns)
+
+    original_columns = df.columns.tolist()  # We will need this later to distinguish between the old columns and the new ones.
 
     print("User message: ", user_message)
 
@@ -229,19 +244,20 @@ def compute(datasetId, apiUrl, token, params):
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     input_json_filename = f"Claude input {current_time}.json"
 
-    # Save input JSON data
-    input_json_string = json.dumps(json_data, indent=2)
-    input_json_stream = io.StringIO(input_json_string)
-    input_size = len(input_json_string)
-    input_json_stream.seek(0)
+    # TODO: Save the input JSON data. Need to remove the df in order to save it.
+    # # Save input JSON data
+    # input_json_string = json.dumps(json_data, indent=2)
+    # input_json_stream = io.StringIO(input_json_string)
+    # input_size = len(input_json_string)
+    # input_json_stream.seek(0)
 
-    sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
+    # sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
 
-    # Get the dataset folder
-    folder = annotationClient.client.getFolder(datasetId)
+    # # Get the dataset folder
+    # folder = annotationClient.client.getFolder(datasetId)
 
-    # Upload input JSON content to the file
-    annotationClient.client.uploadStreamToFolder(folder['_id'], input_json_stream, input_json_filename, input_size, mimeType="application/json")
+    # # Upload input JSON content to the file
+    # annotationClient.client.uploadStreamToFolder(folder['_id'], input_json_stream, input_json_filename, input_size, mimeType="application/json")
 
     # Extract the Python code from the message and run it
     code = extract_python_code_from_string(message.content[0].text)
@@ -276,7 +292,7 @@ def compute(datasetId, apiUrl, token, params):
     # Use a copy of the current globals and add/override as needed
     exec_namespace = globals().copy()
     exec_namespace.update({
-        "json_data": json_data
+        "dictionary_data": dictionary_data
         # Add or override specific names if necessary
     })
 
@@ -290,7 +306,7 @@ def compute(datasetId, apiUrl, token, params):
         raise
 
     # Retrieve the modified data
-    output_json_data = exec_namespace.get('output_json_data', {})
+    dictionary_data = exec_namespace.get('dictionary_data', {})
 
     # This would be the potential end of a loop that would iteratively run the code if errors arose.
 
@@ -299,30 +315,40 @@ def compute(datasetId, apiUrl, token, params):
     ai_property_id = get_ai_property_id(annotationClient, all_properties, ai_property_name)
     add_ai_property_to_all_configurations(annotationClient, datasetId, ai_property_id)
 
+    # Create a new DataFrame with only the new columns so the new ones can be processed for upload.
+    new_columns = [col for col in df.columns if col not in original_columns]
+    new_df = df[new_columns]
+
     # Update the annotations, connections, and property values in the database
     sendProgress(0.80, 'Updating annotations, connections, and property values', 'Updating the annotations, connections, and property values in the database')
     update_annotations_connections_propertyvalues(
-        annotationClient, 
-        output_json_data['annotations'], 
-        output_json_data['annotationConnections'], 
-        output_json_data['annotationPropertyValues'], 
+        annotationClient,
+        dictionary_data['annotations'],
+        dictionary_data['annotationConnections'],
+        dictionary_data['annotationPropertyValues'],
+        new_df,
+        ai_property_id,
         datasetId
     )
 
-    # Convert the output JSON data to a string
-    output_json_string = json.dumps(output_json_data, indent=2)
+    # TODO: Save the output JSON data. Need to remove the df in order to save it.
+    # # Convert the output JSON data to a string
+    # output_json_string = json.dumps(output_json_data, indent=2)
 
-    # Convert output JSON string to a stream
-    json_stream = io.StringIO(output_json_string)
-    size = len(output_json_string) # Get the length of the string as required by Girder
-    json_stream.seek(0) # Reset the stream to the beginning
+    # # Convert output JSON string to a stream
+    # json_stream = io.StringIO(output_json_string)
+    # size = len(output_json_string) # Get the length of the string as required by Girder
+    # json_stream.seek(0) # Reset the stream to the beginning
 
-    sendProgress(0.95, 'Uploading file', f"Saving {output_json_filename} to dataset folder")
+    # sendProgress(0.95, 'Uploading file', f"Saving {output_json_filename} to dataset folder")
 
-    # Upload output JSON content to the file
-    annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
+    # # Upload output JSON content to the file
+    # annotationClient.client.uploadStreamToFolder(folder['_id'], json_stream, output_json_filename, size, mimeType="application/json")
 
-def update_annotations_connections_propertyvalues(annotationClient, new_annotation_list, new_connection_list, new_property_value_list, datasetId):
+def update_annotations_connections_propertyvalues(
+    annotationClient, new_annotation_list, new_connection_list,
+    new_property_value_list, df, ai_property_id, datasetId
+):
     # 1. Remove _id from annotations and add datasetId.
     # Keep a list of the old annotation ids to map to the newly generated ids later.
     new_annotation_ids = []
@@ -378,8 +404,18 @@ def update_annotations_connections_propertyvalues(annotationClient, new_annotati
         else:
             prop_value['annotationId'] = new_annotation_id
 
-    # 9. Upload new property values
+    # 9. Upload new versions of the original property values
     new_property_values = annotationClient.addMultipleAnnotationPropertyValues(new_property_value_list)
+
+    # 10. Now let's collect the new dataframe property values, make them into a list of propertyValues, and upload them.
+    # First, we need to convert the annotationIds to the new ids in the df.
+    df = property_handling.convert_annotation_ids_to_new_ids(df, id_mapping)
+    prop_vals = property_handling.convert_columns_to_property_values(df, datasetId, ai_property_id)
+    annotationClient.deleteAnnotationPropertyValues(ai_property_id,datasetId) # First delete the old property values.
+    prop_vals = annotationClient.addMultipleAnnotationPropertyValues(prop_vals) # Then add the new property values.
+
+    # ai_property_values = property_handling.create_property_values_from_dataframe(df, property_name_to_id, ai_property_name)
+    # ai_property_values = annotationClient.addMultipleAnnotationPropertyValues(ai_property_values)
 
     return new_annotations, new_connections, new_property_values
 
@@ -387,7 +423,7 @@ def convert_nimbus_objects_to_JSON(annotationList: List[Dict],
                                    connectionList: Optional[List[Dict]] = None, 
                                    propertyValueList: Optional[List[Dict]] = None, 
                                    filename: str = "output.json") -> None:
-    output = {"annotations": [], "annotationConnections": [], "annotationProperties": [], "annotationPropertyValues": {}}
+    output = {"annotations": [], "annotationConnections": [], "annotationPropertyValues": {}}
 
     for annotation in annotationList:
         ann_output = {
