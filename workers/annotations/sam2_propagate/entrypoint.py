@@ -1,7 +1,7 @@
 import argparse
 import json
 import sys
-
+import os
 from functools import partial
 from itertools import product
 
@@ -27,6 +27,12 @@ from annotation_client.utils import sendProgress
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # List all .pt files in the /sam2/checkpoints directory
+    models = [f for f in os.listdir('/code/sam2/checkpoints') if f.endswith('.pt')]
+
+    # Set the default model
+    default_model = 'sam2.1_hiera_small.pt' if 'sam2.1_hiera_small.pt' in models else models[0] if models else None
 
     # Available types: number, text, tags, layer
     interface = {
@@ -56,33 +62,27 @@ def interface(image, apiUrl, token):
         },
         'Model': {
             'type': 'select',
-            'items': ['sam2_hiera_large.pt'],
-            'default': 'sam2_hiera_large.pt',
+            'items': models,
+            'default': default_model,
             'displayOrder': 5
         },
         'Tag of objects to propagate': {
             'type': 'tags',
             'displayOrder': 6
         },
-        'Use all channels': {
-            'type': 'checkbox',
-            'default': True,
-            'required': False,
-            'displayOrder': 7
-        },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
-            'displayOrder': 8,
+            'displayOrder': 7,
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 3,
             'default': 0.3,
-            'displayOrder': 9,
+            'displayOrder': 8,
         },
     }
     # Send the interface object to the server
@@ -111,7 +111,6 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     model = params['workerInterface']['Model']
-    use_all_channels = params['workerInterface']['Use all channels']
     padding = float(params['workerInterface']['Padding'])
     smoothing = float(params['workerInterface']['Smoothing'])
     propagate_tags = params['workerInterface']['Tag of objects to propagate']
@@ -163,8 +162,15 @@ def compute(datasetId, apiUrl, token, params):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    checkpoint_path="/sam2_hiera_large.pt"
-    model_cfg = "sam2_hiera_l.yaml"  # This will need to be updated based on model chosen
+    checkpoint_path = f"/code/sam2/checkpoints/{model}"
+    # This needless naming change is making me sad.
+    model_to_cfg = {
+        'sam2.1_hiera_base_plus.pt': 'sam2.1_hiera_b+.yaml',
+        'sam2.1_hiera_large.pt': 'sam2.1_hiera_l.yaml',
+        'sam2.1_hiera_small.pt': 'sam2.1_hiera_s.yaml',
+        'sam2.1_hiera_tiny.pt': 'sam2.1_hiera_t.yaml',
+    }
+    model_cfg = f"configs/sam2.1/{model_to_cfg[model]}"
     sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)
 
