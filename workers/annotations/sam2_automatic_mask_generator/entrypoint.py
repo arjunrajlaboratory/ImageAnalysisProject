@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import os
 
 from functools import partial
 from itertools import product
@@ -28,6 +29,12 @@ from annotation_client.utils import sendProgress
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
+    # List all .pt files in the /sam2/checkpoints directory
+    models = [f for f in os.listdir('/code/sam2/checkpoints') if f.endswith('.pt')]
+
+    # Set the default model
+    default_model = 'sam2.1_hiera_small.pt' if 'sam2.1_hiera_small.pt' in models else models[0] if models else None
+
     interface = {
         'Batch XY': {
             'type': 'text',
@@ -43,29 +50,23 @@ def interface(image, apiUrl, token):
         },
         'Model': {
             'type': 'select',
-            'items': ['sam2_hiera_large.pt'],
-            'default': 'sam2_hiera_large.pt',
+            'items': models,
+            'default': default_model,
             'displayOrder': 3
-        },
-        'Use all channels': {
-            'type': 'checkbox',
-            'default': True,
-            'required': False,
-            'displayOrder': 4
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 3,
             'default': 0.3,
-            'displayOrder': 5,
+            'displayOrder': 4,
         },
         'Points per side': {
             'type': 'number',
             'min': 16,
             'max': 128,
             'default': 32,
-            'displayOrder': 6,
+            'displayOrder': 5,
         },
     }
     client.setWorkerImageInterface(image, interface)
@@ -76,7 +77,6 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     model = params['workerInterface']['Model']
-    use_all_channels = params['workerInterface']['Use all channels']
     smoothing = float(params['workerInterface']['Smoothing'])
     points_per_side = int(params['workerInterface']['Points per side'])
     batch_xy = params['workerInterface']['Batch XY']
@@ -107,8 +107,15 @@ def compute(datasetId, apiUrl, token, params):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    checkpoint_path = f"/{model}"
-    model_cfg = "sam2_hiera_l.yaml"
+    checkpoint_path = f"/code/sam2/checkpoints/{model}"
+    # This needless naming change is making me sad.
+    model_to_cfg = {
+        'sam2.1_hiera_base_plus.pt': 'sam2.1_hiera_b+.yaml',
+        'sam2.1_hiera_large.pt': 'sam2.1_hiera_l.yaml',
+        'sam2.1_hiera_small.pt': 'sam2.1_hiera_s.yaml',
+        'sam2.1_hiera_tiny.pt': 'sam2.1_hiera_t.yaml',
+    }
+    model_cfg = f"configs/sam2.1/{model_to_cfg[model]}"
     sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)
     mask_generator = SAM2AutomaticMaskGenerator(sam2_model, points_per_side=points_per_side)
 
@@ -145,7 +152,7 @@ def compute(datasetId, apiUrl, token, params):
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
-        description='SAM Automatic Mask Generator')
+        description='SAM2 Automatic Mask Generator')
 
     parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
