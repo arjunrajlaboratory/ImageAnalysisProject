@@ -43,9 +43,16 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
-RUN git clone -b nimbus-video-predictor https://github.com/arjunrajlaboratory/segment-anything-2-nimbus.git
-RUN pip install -e /segment-anything-2-nimbus
-RUN /segment-anything-2-nimbus/checkpoints/download_ckpts.sh
+RUN mkdir -p /code
+RUN git clone -b nimbus-video-predictor https://github.com/arjunrajlaboratory/segment-anything-2-nimbus.git /code/segment-anything-2-nimbus
+RUN pip install -e /code/segment-anything-2-nimbus
+
+# Change directory to sam2/checkpoints
+WORKDIR /code/segment-anything-2-nimbus/checkpoints
+# Download the checkpoints into the checkpoints directory
+RUN ./download_ckpts.sh
+# Change back to the root directory
+WORKDIR /
 
 COPY ./utils.py /
 COPY ./entrypoint.py /

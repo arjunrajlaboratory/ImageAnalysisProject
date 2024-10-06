@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import os
 
 from functools import partial
 from itertools import product
@@ -27,6 +28,12 @@ from annotation_client.utils import sendProgress
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # List all .pt files in the /sam2/checkpoints directory
+    models = [f for f in os.listdir('/code/segment-anything-2-nimbus/checkpoints') if f.endswith('.pt')]
+
+    # Set the default model
+    default_model = 'sam2.1_hiera_small.pt' if 'sam2.1_hiera_small.pt' in models else models[0] if models else None
 
     # Available types: number, text, tags, layer
     interface = {
@@ -56,8 +63,8 @@ def interface(image, apiUrl, token):
         },
         'Model': {
             'type': 'select',
-            'items': ['sam2_hiera_tiny.pt'],
-            'default': 'sam2_hiera_tiny.pt',
+            'items': models,
+            'default': default_model,
             'displayOrder': 5
         },
         'Tag of objects to track': {
@@ -123,8 +130,15 @@ def compute(datasetId, apiUrl, token, params):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    checkpoint_path = "/" + model
-    model_cfg = "sam2_hiera_t.yaml"  # This will need to be updated based on model chosen
+    checkpoint_path = f"/code/segment-anything-2-nimbus/checkpoints/{model}"
+    # This needless naming change is making me sad.
+    model_to_cfg = {
+        'sam2.1_hiera_base_plus.pt': 'sam2.1_hiera_b+.yaml',
+        'sam2.1_hiera_large.pt': 'sam2.1_hiera_l.yaml',
+        'sam2.1_hiera_small.pt': 'sam2.1_hiera_s.yaml',
+        'sam2.1_hiera_tiny.pt': 'sam2.1_hiera_t.yaml',
+    }
+    model_cfg = f"configs/sam2.1/{model_to_cfg[model]}"
     # sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = build_sam2_video_predictor(model_cfg, checkpoint_path, device="cuda")  # device="cuda" for GPU
 
