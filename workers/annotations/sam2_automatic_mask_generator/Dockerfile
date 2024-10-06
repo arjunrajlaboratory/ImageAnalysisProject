@@ -43,9 +43,16 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
-RUN git clone https://github.com/facebookresearch/segment-anything-2.git
-RUN pip install -e /segment-anything-2
-RUN /segment-anything-2/checkpoints/download_ckpts.sh
+RUN mkdir -p /code
+RUN git clone https://github.com/facebookresearch/sam2.git /code/sam2
+RUN pip install -e /code/sam2
+
+# Change directory to sam2/checkpoints
+WORKDIR /code/sam2/checkpoints
+# Download the checkpoints into the checkpoints directory
+RUN ./download_ckpts.sh
+# Change back to the root directory
+WORKDIR /
 
 COPY ./utils.py /
 COPY ./entrypoint.py /
