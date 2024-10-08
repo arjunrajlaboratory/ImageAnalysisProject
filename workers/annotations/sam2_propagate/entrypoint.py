@@ -124,10 +124,6 @@ def compute(datasetId, apiUrl, token, params):
     batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
     batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
 
-    batch_xy = list(batch_xy)
-    batch_z = list(batch_z)
-    batch_time = list(batch_time)
-
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
@@ -142,6 +138,10 @@ def compute(datasetId, apiUrl, token, params):
         batch_z = [tile['Z']]
     if batch_time is None:
         batch_time = [tile['Time']]
+
+    batch_xy = list(batch_xy)
+    batch_z = list(batch_z)
+    batch_time = list(batch_time)
 
     # If the propagation_direction is forward, then we are fine.
     # If the propagation_direction is backward, then we need to reverse the variable specified by propagate_across.
