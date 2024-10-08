@@ -120,9 +120,9 @@ def compute(datasetId, apiUrl, token, params):
     batch_z = params['workerInterface']['Batch Z']
     batch_time = params['workerInterface']['Batch Time']
 
-    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
+    batch_xy = list(batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True))
+    batch_z = list(batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True))
+    batch_time = list(batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True))
 
     tile = params['tile']
     channel = params['channel']
@@ -190,24 +190,19 @@ def compute(datasetId, apiUrl, token, params):
             continue
 
         # Propose a location to look for the next image, depending on the propagation_direction and the propagate_across variable (either Time or Z).
-        if propagation_direction == 'Forward':
-            if propagate_across == 'Time':
-                next_Time = Time + 1
-                next_XY = XY
-                next_Z = Z
-            elif propagate_across == 'Z':
-                next_Z = Z + 1
-                next_XY = XY
-                next_Time = Time
-        elif propagation_direction == 'Backward':
-            if propagate_across == 'Time':
-                next_Time = Time - 1
-                next_XY = XY
-                next_Z = Z
-            elif propagate_across == 'Z':
-                next_Z = Z - 1
-                next_XY = XY
-                next_Time = Time
+        if propagate_across == 'Time':
+            # find the current index of Time in the batch_time list
+            current_index = batch_time.index(Time)
+            if not current_index == len(batch_time) - 1: # If we're not at the last frame, propagate to the next frame
+                next_Time = batch_time[current_index + 1]
+            else:
+                continue
+        elif propagate_across == 'Z':
+            current_index = batch_z.index(Z)
+            if not current_index == len(batch_z) - 1:
+                next_Z = batch_z[current_index + 1]
+            else:
+                continue
 
         # Check if the proposed location is within the bounds of the dataset set by either 0 or rangeXY, rangeZ, and rangeTime. If not, skip.
         if next_Time < 0 or next_Time >= rangeTime or next_Z < 0 or next_Z >= rangeZ or next_XY < 0 or next_XY >= rangeXY:
