@@ -169,9 +169,9 @@ def compute(datasetId, apiUrl, token, params):
     # If the propagation_direction is backward, then we need to reverse the variable specified by track_across.
     if track_direction == 'Backward':
         if track_across == 'Time':
-            batch_time = batch_time.reverse()
+            batch_time = batch_time[::-1]
         elif track_across == 'Z':
-            batch_z = batch_z.reverse()
+            batch_z = batch_z[::-1]
 
     # Get the annotations with the track_tags, because those are the ones we want to propagate.
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
