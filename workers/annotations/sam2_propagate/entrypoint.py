@@ -199,21 +199,19 @@ def compute(datasetId, apiUrl, token, params):
             current_index = batch_time.index(Time)
             if not current_index == len(batch_time) - 1: # If we're not at the last frame, propagate to the next frame
                 next_Time = batch_time[current_index + 1]
+                next_Z = Z
             else:
                 continue
         elif propagate_across == 'Z':
             current_index = batch_z.index(Z)
             if not current_index == len(batch_z) - 1:
                 next_Z = batch_z[current_index + 1]
+                next_Time = Time
             else:
                 continue
 
-        # Check if the proposed location is within the bounds of the dataset set by either 0 or rangeXY, rangeZ, and rangeTime. If not, skip.
-        if next_Time < 0 or next_Time >= rangeTime or next_Z < 0 or next_Z >= rangeZ or next_XY < 0 or next_XY >= rangeXY:
-            continue
-
         # Get the images for the next Time and XY and Z
-        images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, next_XY, next_Z, next_Time)
+        images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, next_Z, next_Time)
         layers = annotation_tools.get_layers(tileClient.client, datasetId)
 
         merged_image = annotation_tools.process_and_merge_channels(images, layers)
@@ -244,7 +242,7 @@ def compute(datasetId, apiUrl, token, params):
             polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
             temp_polygons.append(polygon)
 
-        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=next_XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
+        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
         new_annotations.extend(temp_annotations)
 
         # Update progress after each batch
