@@ -120,9 +120,13 @@ def compute(datasetId, apiUrl, token, params):
     batch_z = params['workerInterface']['Batch Z']
     batch_time = params['workerInterface']['Batch Time']
 
-    batch_xy = list(batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True))
-    batch_z = list(batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True))
-    batch_time = list(batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True))
+    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
+    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
+    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
+
+    batch_xy = list(batch_xy)
+    batch_z = list(batch_z)
+    batch_time = list(batch_time)
 
     tile = params['tile']
     channel = params['channel']
