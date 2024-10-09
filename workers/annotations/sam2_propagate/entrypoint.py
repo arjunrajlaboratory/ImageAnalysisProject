@@ -5,7 +5,7 @@ import os
 from functools import partial
 from itertools import product
 import uuid
-import pprint
+
 import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
@@ -438,14 +438,11 @@ def compute(datasetId, apiUrl, token, params):
     sendProgress(0.9, "Uploading annotations", f"Sending {len(new_annotations)} annotations to server")
 
     stripped_annotations, id_mappings = strip_ids(new_annotations)
-    pprint.pprint(stripped_annotations)
-    pprint.pprint(id_mappings)
 
     annotations_from_server = annotationClient.createMultipleAnnotations(stripped_annotations)
 
     if connect_sequentially:
         connections = generate_connections(annotations_from_server, id_mappings, datasetId, ['SAM2_PROPAGATED'], propagation_direction)
-        pprint.pprint(connections)
         annotationClient.createMultipleConnections(connections)
     
 
