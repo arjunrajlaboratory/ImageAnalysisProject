@@ -4,7 +4,8 @@ import sys
 import os
 from functools import partial
 from itertools import product
-
+import uuid
+import pprint
 import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
@@ -75,19 +76,24 @@ def interface(image, apiUrl, token):
             'default': True,
             'displayOrder': 7
         },
+        'Connect sequentially': {
+            'type': 'checkbox',
+            'default': True,
+            'displayOrder': 8
+        },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
-            'displayOrder': 8,
+            'displayOrder': 9,
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 3,
             'default': 0.3,
-            'displayOrder': 9,
+            'displayOrder': 10,
         },
     }
     # Send the interface object to the server
@@ -119,6 +125,120 @@ def sam2_masks_to_polygons(masks, smoothing, padding):
     return polygons
 
 
+def assign_temporary_ids(annotations):
+    """
+    Assigns a unique temporary ID to each annotation.
+
+    Args:
+        annotations (list): List of annotation dictionaries.
+
+    Returns:
+        list: List of annotations with added 'tempId'.
+    """
+    for ann in annotations:
+        ann['tempId'] = str(uuid.uuid4())
+    return annotations
+
+
+def assign_parent_ids(annotations, parent_annotations):
+    """
+    Assigns the 'parentId' to each annotation based on the corresponding parent annotation.
+
+    Args:
+        annotations (list): List of child annotation dictionaries.
+        parent_annotations (list): List of parent annotation dictionaries.
+
+    Returns:
+        list: List of child annotations with added 'parentId'.
+    """
+    if len(annotations) != len(parent_annotations):
+        raise ValueError("The number of annotations and parent_annotations must be the same.")
+
+    for child_ann, parent_ann in zip(annotations, parent_annotations):
+        # Attempt to get 'tempId'; if not present, fallback to '_id'; else None
+        child_ann['parentId'] = parent_ann.get('tempId') or parent_ann.get('_id', None)
+    return annotations
+
+
+def strip_ids(annotations):
+    """
+    Strips 'tempId' and 'parentId' from each annotation.
+
+    Args:
+        annotations (list): List of annotation dictionaries with 'tempId' and 'parentId'.
+
+    Returns:
+        list: List of annotations without 'tempId' and 'parentId'.
+        list: List of dictionaries containing 'tempId' and 'parentId' for mapping.
+    """
+    # stripped_annotations = []
+    id_mappings = []
+
+    for ann in annotations:
+        temp_id = ann.pop('tempId', None)
+        parent_id = ann.pop('parentId', None)
+        # stripped_annotations.append(ann)
+        id_mappings.append({
+            'tempId': temp_id,
+            'parentId': parent_id
+        })
+
+    return annotations, id_mappings
+    # return stripped_annotations, id_mappings
+
+
+def generate_connections(annotations_from_server, id_mappings, datasetId, tags, propagation_direction):
+    """
+    Generates a list of connection dictionaries mapping parent IDs to child IDs.
+
+    Args:
+        annotations_from_server (list): List of annotation dictionaries returned from the server with '_id'.
+        id_mappings (list): List of dictionaries containing 'tempId' and 'parentId'.
+
+    Returns:
+        list: List of connection dictionaries with 'parentId' and 'childId'.
+    """
+    if len(annotations_from_server) != len(id_mappings):
+        raise ValueError("The number of annotations_from_server and id_mappings must be the same.")
+
+    # Create a mapping from tempId to server-assigned _id
+    temp_to_server_id = {}
+    for server_ann, mapping in zip(annotations_from_server, id_mappings):
+        temp_id = mapping.get('tempId')
+        server_id = server_ann.get('_id')
+        if temp_id and server_id:
+            temp_to_server_id[temp_id] = server_id
+
+    # Generate connections
+    connections = []
+    for mapping in id_mappings:
+        parent_temp_id = mapping.get('parentId')
+        child_temp_id = mapping.get('tempId')
+
+        parent_server_id = temp_to_server_id.get(parent_temp_id, parent_temp_id) # If the parent_temp_id is not in the temp_to_server_id, then use the parent_temp_id as the server_id, which should be the original annotationId.
+        if parent_server_id is None: # If there is truly no match, either mapped or original, then skip.
+            continue
+        child_server_id = temp_to_server_id.get(child_temp_id)
+
+        if child_server_id:
+            if propagation_direction == 'Forward': # Always make the earlier in Time/Z be the parent
+                connections.append({
+                    'parentId': parent_server_id,
+                    'childId': child_server_id,
+                    'tags': tags,
+                    'datasetId': datasetId
+                })
+            else:
+                connections.append({
+                    'parentId': child_server_id,
+                    'childId': parent_server_id,
+                    'tags': tags,
+                    'datasetId': datasetId
+                })
+
+    return connections
+
+
 def compute(datasetId, apiUrl, token, params):
     """
     params (could change):
@@ -145,6 +265,7 @@ def compute(datasetId, apiUrl, token, params):
     smoothing = float(params['workerInterface']['Smoothing'])
     propagate_tags = params['workerInterface']['Tag of objects to propagate']
     resegment_propagation_objects = params['workerInterface']['Resegment propagation objects']
+    connect_sequentially = params['workerInterface']['Connect sequentially']
     propagate_across = params['workerInterface']['Propagate across']
     propagation_direction = params['workerInterface']['Propagation direction']
     batch_xy = params['workerInterface']['Batch XY']
@@ -221,7 +342,7 @@ def compute(datasetId, apiUrl, token, params):
         sliced_annotations = annotation_tools.filter_elements_T_XY_Z(annotationList, Time, XY, Z)
         if resegment_propagation_objects and len(sliced_annotations) > 0:
             # If we are resegmenting, then we will load the current image and run the predictor.
-            # Slight inefficient because we are loading the image twice, but it's not a big deal.
+            # Slightly inefficient because we are loading the image twice, but it's not a big deal.
 
             # Get the images for the current Time and XY and Z
             images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time)
@@ -246,6 +367,8 @@ def compute(datasetId, apiUrl, token, params):
             # Find contours in the mask
             temp_polygons = sam2_masks_to_polygons(masks, smoothing, padding)
             temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=Time, Z=Z, tags=tags, channel=channel)
+            temp_annotations = assign_temporary_ids(temp_annotations) # Assign a temporary id to each annotation
+            # In this case, we do not need to assign parentIds, because these are the "root" annotations
             new_annotations.extend(temp_annotations)  # Add the new annotations to the new_annotations list for downstream processing
 
         sliced_new_annotations = annotation_tools.filter_elements_T_XY_Z(new_annotations, Time, XY, Z)  # This will include the resegmented annotations if they were created
@@ -298,6 +421,13 @@ def compute(datasetId, apiUrl, token, params):
         temp_polygons = sam2_masks_to_polygons(masks, smoothing, padding)
 
         temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
+        temp_annotations = assign_temporary_ids(temp_annotations) # Assign a temporary id to each annotation
+        if not resegment_propagation_objects:
+            sliced_new_annotations = assign_temporary_ids(sliced_new_annotations)
+            sliced_annotations.extend(sliced_new_annotations)
+            temp_annotations = assign_parent_ids(temp_annotations, sliced_annotations) # Assign a parentId to each annotation
+        else:
+            temp_annotations = assign_parent_ids(temp_annotations, sliced_new_annotations) # Assign a parentId to each annotation
         new_annotations.extend(temp_annotations)
 
         # Update progress after each batch
@@ -306,7 +436,18 @@ def compute(datasetId, apiUrl, token, params):
         sendProgress(fraction_done, "Propagating annotations", f"{processed_batches} of {total_batches} frames processed")
 
     sendProgress(0.9, "Uploading annotations", f"Sending {len(new_annotations)} annotations to server")
-    annotationClient.createMultipleAnnotations(new_annotations)
+
+    stripped_annotations, id_mappings = strip_ids(new_annotations)
+    pprint.pprint(stripped_annotations)
+    pprint.pprint(id_mappings)
+
+    annotations_from_server = annotationClient.createMultipleAnnotations(stripped_annotations)
+
+    if connect_sequentially:
+        connections = generate_connections(annotations_from_server, id_mappings, datasetId, ['SAM2_PROPAGATED'], propagation_direction)
+        pprint.pprint(connections)
+        annotationClient.createMultipleConnections(connections)
+    
 
 
 if __name__ == '__main__':
