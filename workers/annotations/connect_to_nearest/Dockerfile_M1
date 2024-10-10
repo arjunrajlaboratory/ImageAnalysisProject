@@ -55,7 +55,10 @@ LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Connect to Nearest" \
       interfaceCategory="Connections" \
-      description="Connects objects to each other based on distance"
+      description="Connects objects to each other based on distance" \
+      advancedOptionsPanel="False" \
+      annotationConfigurationPanel="False" \
+      defaultToolName="Connect to Nearest"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
 
