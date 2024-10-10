@@ -71,23 +71,95 @@ def interface(image, apiUrl, token):
             'type': 'tags',
             'displayOrder': 6
         },
+        'Connect sequentially': {
+            'type': 'checkbox',
+            'default': True,
+            'displayOrder': 7
+        },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
-            'displayOrder': 7,
+            'displayOrder': 8,
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 3,
             'default': 0.3,
-            'displayOrder': 8,
+            'displayOrder': 9,
         },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
+
+
+def strip_ids(annotations):
+    """
+    Strips 'obj_id' from each annotation.
+
+    Args:
+        annotations (list): List of annotation dictionaries with 'obj_id'.
+
+    Returns:
+        list: List of annotations without 'obj_id'.
+        list: List of dictionaries containing 'obj_id' for mapping.
+    """
+    # stripped_annotations = []
+    id_mappings = []
+
+    for ann in annotations:
+        obj_id = ann.pop('obj_id', None)
+        # stripped_annotations.append(ann)
+        id_mappings.append(obj_id)
+
+    return annotations, id_mappings
+
+
+def generate_connections(annotations_from_server, id_mappings, datasetId, connection_tags):
+
+    # Check that the number of annotations in annotations_from_server is the same as the number of id_mappings.
+    if len(annotations_from_server) != len(id_mappings):
+        raise ValueError("Annotations from server and id mappings do not have the same length")
+
+    # Make a list of all the obj_ids in id_mappings.
+    obj_ids = list(set(id_mappings))
+
+    # Create a dictionary to store indices for each obj_id
+    obj_id_indices = {obj_id: [] for obj_id in obj_ids}
+
+    # Populate the dictionary with indices
+    for index, obj_id in enumerate(id_mappings):
+        if obj_id in obj_id_indices:
+            obj_id_indices[obj_id].append(index)
+
+    # Create a corresponding list of annotations for each obj_id
+    obj_id_annotations = {
+        obj_id: [annotations_from_server[i] for i in indices]
+        for obj_id, indices in obj_id_indices.items()
+    }
+    
+    # Sort each list of annotations by 'Time' and 'Z' in ascending order
+    for obj_id, annotations in obj_id_annotations.items():
+        obj_id_annotations[obj_id] = sorted(
+            annotations,
+            key=lambda ann: (ann['location']['Time'], ann['location']['Z'])
+        )
+
+    new_connections = []
+
+    # Create connections between consecutive annotations in each list
+    for obj_id, annotations in obj_id_annotations.items():
+        for i in range(len(annotations) - 1):
+            new_connections.append({
+                'parentId': annotations[i]['_id'],
+                'childId': annotations[i + 1]['_id'],
+                'datasetId': datasetId,
+                'tags': connection_tags
+            })
+
+    return new_connections
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -255,9 +327,11 @@ def compute(datasetId, apiUrl, token, params):
                         if len(contours) == 0:
                             continue
                         polygon = Polygon(contours[0]).buffer(padding).simplify(smoothing, preserve_topology=True)
-                        # Create annotation
-                        annotation = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z, Time=Time_frame, tags=tags, channel=channel)
-                        new_annotations.extend(annotation)
+                        # Create annotations
+                        annotations = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z, Time=Time_frame, tags=tags, channel=channel)
+                        for annotation in annotations:
+                            annotation['obj_id'] = obj_id
+                        new_annotations.extend(annotations)
 
                 # Update progress
                 processed_batches += 1
@@ -328,9 +402,11 @@ def compute(datasetId, apiUrl, token, params):
                         if len(contours) == 0:
                             continue
                         polygon = Polygon(contours[0]).buffer(padding).simplify(smoothing, preserve_topology=True)
-                        # Create annotation
-                        annotation = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z_frame, Time=Time, tags=tags, channel=channel)
-                        new_annotations.extend(annotation)
+                        # Create annotations
+                        annotations = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z_frame, Time=Time, tags=tags, channel=channel)
+                        for annotation in annotations:
+                            annotation['obj_id'] = obj_id
+                        new_annotations.extend(annotations)
 
                 # Update progress
                 processed_batches += 1
@@ -342,7 +418,11 @@ def compute(datasetId, apiUrl, token, params):
         return
 
     sendProgress(0.9, "Uploading annotations", f"Sending {len(new_annotations)} annotations to server")
-    annotationClient.createMultipleAnnotations(new_annotations)
+    new_annotations, id_mappings = strip_ids(new_annotations)
+    annotations_from_server = annotationClient.createMultipleAnnotations(new_annotations)
+
+    new_connections = generate_connections(annotations_from_server, id_mappings, datasetId, ['SAM2_VIDEO'])
+    annotationClient.createMultipleConnections(new_connections)
 
 
 if __name__ == '__main__':
