@@ -51,7 +51,7 @@ COPY ./entrypoint.py /
 LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \
       annotationShape="polygon" \
-      interfaceName="Count children" \
+      interfaceName="Count connected objects" \
       interfaceCategory="Quantification" \
       description="Count the number of children objects that are connected to a parent polygon"
 

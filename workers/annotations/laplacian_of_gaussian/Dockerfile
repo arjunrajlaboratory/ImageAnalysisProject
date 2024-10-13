@@ -46,6 +46,7 @@ LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Laplacian of Gaussian" \
       interfaceCategory="Object Detection" \
-      description="Detects spots in images using the Laplacian of Gaussian method"
+      description="Detects spots in images using the Laplacian of Gaussian method" \
+      hasPreview="True"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

@@ -7,6 +7,20 @@ from annotation_client.utils import sendProgress
 import annotation_utilities.annotation_tools as annotation_tools
 
 
+
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    interface = {
+        'Point Metrics': {
+            'type': 'notes',
+            'value': 'This tool adds a property to the points to document their coordinates. '
+                     'It gives each point an x and y coordinate.',
+            'displayOrder': 0,
+        }
+    }
+    client.setWorkerImageInterface(image, interface)
+
+
 def compute(datasetId, apiUrl, token, params):
     """
     Params is a dict containing the following parameters:
@@ -71,3 +85,5 @@ if __name__ == '__main__':
     match args.request:
         case 'compute':
             compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)

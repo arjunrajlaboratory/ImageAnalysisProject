@@ -37,63 +37,102 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'SAM2 Propagate': {
+            'type': 'notes',
+            'value': 'This tool uses the SAM2 model to take an existing annotation and propagate it through time or z-slices.'
+                     'It uses the existing annotation as a mask to segment the object in the next frame.'
+                     'It is useful for e.g. time-lapse microscopy in cases where the objects change in character over time.',
+            'displayOrder': 0,
+        },
         'Batch XY': {
             'type': 'text',
-            'displayOrder': 0
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the XY positions you want to process',
+                'persistentPlaceholder': True,
+                'filled': True,
+                'tooltip': 'Enter the XY positions to process. Separate multiple groups with a comma.'
+            },
+            'displayOrder': 1
         },
         'Batch Z': {
             'type': 'text',
-            'displayOrder': 1
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Z positions you want to process/propagate through',
+                'persistentPlaceholder': True,
+                'filled': True,
+                'tooltip': 'Enter the Z positions to process/propagate through. Separate multiple groups with a comma.'
+            },
+            'displayOrder': 2
         },
         'Batch Time': {
             'type': 'text',
-            'displayOrder': 2
-        },
-        'Propagate across': {
-            'type': 'select',
-            'items': ['Time', 'Z'],
-            'default': 'Time',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Time positions you want to process/propagate through',
+                'persistentPlaceholder': True,
+                'filled': True,
+                'tooltip': 'Enter the Time positions to process/propagate through. Separate multiple groups with a comma.'
+            },
             'displayOrder': 3
-        },
-        'Propagation direction': {
-            'type': 'select',
-            'items': ['Forward', 'Backward'],
-            'default': 'Forward',
-            'displayOrder': 4
-        },
-        'Model': {
-            'type': 'select',
-            'items': models,
-            'default': default_model,
-            'displayOrder': 5
         },
         'Tag of objects to propagate': {
             'type': 'tags',
             'displayOrder': 6
         },
+        'Propagate across': {
+            'type': 'select',
+            'items': ['Time', 'Z'],
+            'default': 'Time',
+            'displayOrder': 4
+        },
+        'Propagation direction': {
+            'type': 'select',
+            'items': ['Forward', 'Backward'],
+            'default': 'Forward',
+            'displayOrder': 5
+        },
+        'Model': {
+            'type': 'select',
+            'items': models,
+            'default': default_model,
+            'displayOrder': 6
+        },
+        'Note on resegmentation': {
+            'type': 'notes',
+            'value': 'If resegmentation is selected, the tool will run the SAM2 model on the current image and create new annotations for the propagated objects.'
+                     'This maintains consistency between the propagated objects and the original objects.',
+            'displayOrder': 7,
+        },
         'Resegment propagation objects': {
             'type': 'checkbox',
             'default': True,
-            'displayOrder': 7
+            'displayOrder': 8
         },
         'Connect sequentially': {
             'type': 'checkbox',
             'default': True,
-            'displayOrder': 8
+            'displayOrder': 9
+        },
+        'Padding and smoothing': {
+            'type': 'notes',
+            'value': 'Padding will expand (or, if negative, subtract) from the polygon. Smoothing is used to simplify the polygons.',
+            'displayOrder': 10,
         },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
-            'displayOrder': 9,
+            'displayOrder': 11,
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 3,
             'default': 0.3,
-            'displayOrder': 10,
+            'displayOrder': 12,
         },
     }
     # Send the interface object to the server

@@ -117,19 +117,33 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Using connect sequential': {
+            'type': 'notes',
+            'value': 'This tool connects objects sequentially across time or z-slices.'
+                     'It is useful for connecting objects that are moving or changing over time or z-slices.',
+            'displayOrder': 0,
+        },
         'Object to connect tag': {
-            'type': 'tags'
+            'type': 'tags',
+            'displayOrder': 1,
         },
         'Connect sequentially across': {
             'type': 'select',
             'items': ['Time', 'Z'],
-            'default': 'Time'
+            'default': 'Time',
+            'displayOrder': 2,
+        },
+        'Max distance note': {
+            'type': 'notes',
+            'value': 'The maximum distance (in pixels) between the child and parent objects to be connected. Otherwise, objects will not be connected.',
+            'displayOrder': 3,
         },
         'Max distance (pixels)': {
             'type': 'number',
             'min': 0,
             'max': 5000,
-            'default': 1000
+            'default': 1000,
+            'displayOrder': 4,
         }
     }
     # Send the interface object to the server

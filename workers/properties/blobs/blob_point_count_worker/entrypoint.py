@@ -18,18 +18,30 @@ def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     interface = {
+        'Point Count': {
+            'type': 'notes',
+            'value': 'This tool counts the number of points within polygon annotations. '
+                     'The points will be of the tags specified in the "Tags of points to count" field. If not specified, '
+                     'all points will be counted. The count can optionally be restricted to a specific z-slice or all z-slices. '
+                     'If the "Count points across all z-slices" field is set to "No", then the count will be restricted to the z-slice '
+                     'of the polygon annotations, but if it is set to "Yes", then it will count points across all z-slices.',
+            'displayOrder': 0,
+        },
+        'Tags of points to count': {
+            'type': 'tags',
+            'displayOrder': 1,
+        },
         'Count points across all z-slices': {
             'type': 'select',
             'items': ['Yes', 'No'],
-            'default': 'Yes'
-        },
-        'Tags of points to count': {
-            'type': 'tags'
+            'default': 'Yes',
+            'displayOrder': 2,
         },
         'Exact tag match?': {
             'type': 'select',
             'items': ['Yes', 'No'],
-            'default': 'Yes'
+            'default': 'No',
+            'displayOrder': 3,
         },
     }
     client.setWorkerImageInterface(image, interface)

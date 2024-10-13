@@ -22,70 +22,112 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Cellpose': {
+            'type': 'notes',
+            'value': 'This tool runs the Cellpose model to segment the image into cells.',
+            'displayOrder': 0,
+        },
+        'Batch XY': {
+            'type': 'text',
+            'vueAttrs': {
+               'placeholder': 'ex. 1-3, 5-8',
+               'label': 'Enter the XY positions you want to iterate over',
+               'persistentPlaceholder': True,
+               'filled': True,
+            },
+            'displayOrder': 1
+        },
+        'Batch Z': {
+            'type': 'text',
+            'vueAttrs': {
+               'placeholder': 'ex. 1-3, 5-8',
+               'label': 'Enter the Z slices you want to iterate over',
+               'persistentPlaceholder': True,
+               'filled': True,
+            },
+            'displayOrder': 2
+        },
+        'Batch Time': {
+            'type': 'text',
+            'vueAttrs': {
+               'placeholder': 'ex. 1-3, 5-8',
+               'label': 'Enter the Time points you want to iterate over',
+               'persistentPlaceholder': True,
+               'filled': True,
+            },
+            'displayOrder': 3
+        },
+        'Select a model': {
+            'type': 'notes',
+            'value': 'Select the model to use for segmenting cells. cyto3 is the most accurate for cells, whereas nuclei is best for finding nuclei. '
+                     'You will need to select a nuclei and cytoplasm channel in both cases. '
+                     'If you select nuclei, put the nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
+            'displayOrder': 4,
+        },
         'Model': {
             'type': 'select',
             'items': ['cyto', 'cyto2', 'cyto3', 'nuclei'],
             'default': 'cyto3',
-            'displayOrder': 3
+            'displayOrder': 5
         },
         'Nuclei Channel': {
             'type': 'channel',
             'default': -1,
             'required': False,
-            'displayOrder': 4
+            'displayOrder': 6
         },
         'Cytoplasm Channel': {
             'type': 'channel',
             'default': -1,
             'required': False,
-            'displayOrder': 5
+            'displayOrder': 7
         },
         'Diameter': {
             'type': 'number',
             'min': 0,
             'max': 200,
             'default': 10,
-            'displayOrder': 6
+            'displayOrder': 8
         },
-        'Tile Size': {
+        'Padding and Smoothing': {
+            'type': 'notes',
+            'value': 'Padding will expand (or, if negative, subtract) from the polygon. Smoothing is used to simplify the polygons.',
+            'displayOrder': 9,
+        },
+        'Smoothing': {
             'type': 'number',
             'min': 0,
-            'max': 2048,
-            'default': 1024,
-            'displayOrder': 9
-        },
-        'Tile Overlap': {
-            'type': 'number',
-            'min': 0,
-            'max': 1,
-            'default': 0.1,
-            'displayOrder': 10
-        },
-        'Batch XY': {
-            'type': 'text',
-            'displayOrder': 0
-        },
-        'Batch Z': {
-            'type': 'text',
-            'displayOrder': 1
-        },
-        'Batch Time': {
-            'type': 'text',
-            'displayOrder': 2
+            'max': 10,
+            'default': 0.3,
+            'displayOrder': 10,
         },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
-            'displayOrder': 8,
+            'displayOrder': 11,
         },
-        'Smoothing': {
+        'Tiling': {
+            'type': 'notes',
+            'value': 'Tiling is used to speed up processing by breaking the image into smaller tiles. '
+                     'Make sure that the largest object is smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
+                     'then the largest object should be less than 102 pixels in its longest dimension.',
+            'displayOrder': 12,
+        },
+        'Tile Size': {
             'type': 'number',
             'min': 0,
-            'max': 10,
-            'default': 1,
-            'displayOrder': 7,
+            'max': 2048,
+            'default': 1024,
+            'displayOrder': 13
+        },
+        'Tile Overlap': {
+            'type': 'number',
+            'min': 0,
+            'max': 1,
+            'default': 0.1,
+            'displayOrder': 14
         },
     }
     # Send the interface object to the server

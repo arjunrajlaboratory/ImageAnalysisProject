@@ -16,17 +16,27 @@ def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     interface = {
+        'Line Scan CSV': {
+            'type': 'notes',
+            'value': 'This tool computes the intensity along a line and puts the results in a CSV file. '
+                     'The intensity is computed for all channels by default, but this can be restricted to a single channel. '
+                     'The output is saved as a CSV file in the dataset folder.',
+            'displayOrder': 0,
+        },
         'All channels': {
             'type': 'checkbox',
             'default': True,
+            'displayOrder': 1,
         },
         'Channel': {
             'type': 'channel',
             'default': 0,
+            'displayOrder': 2,
         },
         'File name': {
             'type': 'text',
             'default': 'line_scan_output.csv',
+            'displayOrder': 3,
         },
     }
     client.setWorkerImageInterface(image, interface)

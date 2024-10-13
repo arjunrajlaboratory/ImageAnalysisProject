@@ -18,14 +18,23 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Blob Intensity Percentile': {
+            'type': 'notes',
+            'value': 'This tool computes the pixel intensity of objects in the specified channel at the specified percentile. '
+                     'For instance, if you set the percentile to 90, it will compute the 90th percentile intensity of the objects.',
+            'displayOrder': 0,
+        },
         'Channel': {
-            'type': 'channel'
+            'type': 'channel',
+            'required': True,
+            'displayOrder': 1,
         },
         'Percentile': {
             'type': 'number',
             'min': 0,
             'max': 99.99999,
             'default': 50,
+            'displayOrder': 2,
         },
     }
     # Send the interface object to the server

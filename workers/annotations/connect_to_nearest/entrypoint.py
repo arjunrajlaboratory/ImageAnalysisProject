@@ -111,27 +111,44 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Connect to nearest': {
+            'type': 'notes',
+            'value': 'This tool connects annotations to their nearest neighbors.'
+                     'It will connect from objects with the parent tag to objects with the child tag.',
+            'displayOrder': 0,
+        },
         'Parent tag': {
-            'type': 'tags'
+            'type': 'tags',
+            'displayOrder': 1,
         },
         'Child tag': {
-            'type': 'tags'
+            'type': 'tags',
+            'displayOrder': 2,
+        },
+        'Connect across note': {
+            'type': 'notes',
+            'value': 'If you connect across Z or T, then the tool will ignore Z and T, respectively, when connecting.'
+                     'For instance, if you connect across Z, it will connect a parent in Z=1 to a child in Z=4.',
+            'displayOrder': 3,
         },
         'Connect across Z': {
             'type': 'select',
             'items': ['Yes', 'No'],
-            'default': 'No'
+            'default': 'No',
+            'displayOrder': 4,
         },
         'Connect across T': {
             'type': 'select',
             'items': ['Yes', 'No'],
-            'default': 'No'
+            'default': 'No',
+            'displayOrder': 5,
         },
         'Max distance (pixels)': {
             'type': 'number',
             'min': 0,
             'max': 5000,
-            'default': 1000
+            'default': 1000,
+            'displayOrder': 6,
         }
     }
     # Send the interface object to the server

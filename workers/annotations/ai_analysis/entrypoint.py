@@ -40,21 +40,28 @@ def interface(image, apiUrl, token):
     interface = {
         'Output JSON filename': {
             'type': 'text',
-            'default': 'output.json'
+            'default': 'output.json',
+            'displayOrder': 3
         },
         'Query': {
             'type': 'text',
+            'displayOrder': 1
         },
         'AI Property Name': {
             'type': 'text',
-            'default': 'AI properties'
+            'default': 'AI properties',
+            'vueAttr': {
+                'label': 'Property name for AI generated properties'
+            },
+            'displayOrder': 2
         }
     }
 
     # Only add the API key field if the environment variable is not set
     if not os.getenv('ANTHROPIC_API_KEY'):
         interface['Claude API key'] = {
-            'type': 'text'
+            'type': 'text',
+            'displayOrder': 0
         }
 
     # Send the interface object to the server

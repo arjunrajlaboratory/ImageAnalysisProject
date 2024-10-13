@@ -26,39 +26,100 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Piscis': {
+            'type': 'notes',
+            'value': 'This tool uses the Piscis model to find points in images. '
+                     'It can be used to segment in 2D or 3D.',
+            'displayOrder': 0,
+        },
+        'Batch XY': {
+            'type': 'text',
+            'vueAttrs': {
+               'placeholder': 'ex. 1-3, 5-8',
+               'label': 'Enter the XY positions you want to iterate over',
+               'persistentPlaceholder': True,
+               'filled': True,
+            },
+            'displayOrder': 1,
+        },
+        'Batch Z': {
+            'type': 'text',
+            'vueAttrs': {
+               'placeholder': 'ex. 1-3, 5-8',
+               'label': 'Enter the Z slices you want to iterate over',
+               'persistentPlaceholder': True,
+               'filled': True,
+            },
+            'displayOrder': 2,
+        },
+        'Batch Time': {
+            'type': 'text',
+            'vueAttrs': {
+               'placeholder': 'ex. 1-3, 5-8',
+               'label': 'Enter the Time points you want to iterate over',
+               'persistentPlaceholder': True,
+               'filled': True,  
+            },
+            'displayOrder': 3,
+        },
+        'Select a model': {
+            'type': 'notes',
+            'value': 'Select the model to use for segmentation. These can be pre-trained models or models you have generated yourself with Piscis Train. '
+                     'The model determines how sensitive the point detection is.',
+            'displayOrder': 4,
+        },
         'Model': {
             'type': 'select',
             'items': models,
-            'default': '20230905'
+            'default': '20230905',
+            'displayOrder': 5,
+        },
+        'Mode for z-stack usage': {
+            'type': 'notes',
+            'value': 'If you want to segment in 3D, select "Z-Stack". Otherwise, if you just want to segment in each z-slice individually, select "Current Z". '
+                     'If you select "Z-Stack", then the model will be used to segment all z-slices at once, and it will ignore the "Batch Z" field.',
+            'displayOrder': 6,
         },
         'Mode': {
             'type': 'select',
             'items': ['Current Z', 'Z-Stack'],
-            'default': 'Current Z'
+            'default': 'Current Z',
+            'displayOrder': 7,
+        },
+        'Scale parameter': {
+            'type': 'notes',
+            'value': 'This parameter controls the size of the objects that are detected. '
+                     'It is a multiplier on the size of the objects in the model.',
+            'displayOrder': 8,
         },
         'Scale': {
             'type': 'number',
             'min': 0,
             'max': 5,
-            'default': 1
+            'default': 1,
+            'displayOrder': 9,
+        },
+        'Threshold note': {
+            'type': 'notes',
+            'value': 'The threshold parameter honestly does not change much; use a different model if you need to change specificity.',
+            'displayOrder': 10,
         },
         'Threshold': {
             'type': 'number',
             'min': 0,
             'max': 9,
-            'default': 1.0
+            'default': 1.0,
+            'displayOrder': 11,
         },
-        'Batch XY': {
-            'type': 'text'
-        },
-        'Batch Z': {
-            'type': 'text'
-        },
-        'Batch Time': {
-            'type': 'text'
+        'Notes on skipping frames': {
+            'type': 'notes',
+            'value': 'Sometimes you may want to skip processing frames that do not have any objects of a particular tag. '
+                     'If empty, all frames will be processed.',
+            'displayOrder': 12,
         },
         'Skip Frames Without': {
-        	'type': 'tags'
+            'type': 'tags',
+            'displayOrder': 13,
         }
     }
     # Send the interface object to the server

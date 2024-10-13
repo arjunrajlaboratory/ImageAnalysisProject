@@ -22,14 +22,24 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Blob Annulus Intensity': {
+            'type': 'notes',
+            'value': 'This tool computes the pixel intensity in an annulus around the objects in the specified channel. '
+                     'It will compute the mean, max, min, median, 25th percentile, and 75th percentile intensity, as well as the total intensity. '
+                     'The size of the annulus is defined by the radius.',
+            'displayOrder': 0,
+        },
         'Channel': {
             'type': 'channel',
+            'required': True,
+            'displayOrder': 1,
         },
         'Radius': {
             'type': 'number',
             'min': 0,
             'max': 200,
             'default': 10,
+            'displayOrder': 2,
         },
     }
     # Send the interface object to the server
