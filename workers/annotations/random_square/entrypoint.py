@@ -10,6 +10,8 @@ from operator import itemgetter
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
+from annotation_client.utils import sendProgress, sendError
+
 
 import imageio
 import numpy as np
@@ -18,7 +20,6 @@ from skimage import filters
 from skimage.feature import peak_local_max
 
 from shapely.geometry import Polygon
-import batch_argument_parser
 
 
 # REMOVE THE BELOW
@@ -120,23 +121,25 @@ def compute(datasetId, apiUrl, token, params):
 
     annotationSize = float(workerInterface['Square size'])
     annotationNumber = float(workerInterface['Number of random annotations'])
-    batch_xy = workerInterface.get('Batch XY', None)
-    batch_z = workerInterface.get('Batch Z', None)
-    batch_time = workerInterface.get('Batch Time', None)
+    # batch_xy = workerInterface.get('Batch XY', None)
+    # batch_z = workerInterface.get('Batch Z', None)
+    # batch_time = workerInterface.get('Batch Time', None)
 
-    batch_xy = batch_argument_parser.process_range_list(batch_xy)
-    batch_z = batch_argument_parser.process_range_list(batch_z)
-    batch_time = batch_argument_parser.process_range_list(batch_time)
+    # batch_xy = batch_argument_parser.process_range_list(batch_xy)
+    # batch_z = batch_argument_parser.process_range_list(batch_z)
+    # batch_time = batch_argument_parser.process_range_list(batch_time)
 
-    if batch_xy is None:
-        batch_xy = [tile['XY'] + 1]
-    if batch_z is None:
-        batch_z = [tile['Z'] + 1]
-    if batch_time is None:
-        batch_time = [tile['Time'] + 1]
+    # if batch_xy is None:
+    #     batch_xy = [tile['XY'] + 1]
+    # if batch_z is None:
+    #     batch_z = [tile['Z'] + 1]
+    # if batch_time is None:
+    #     batch_time = [tile['Time'] + 1]
 
     # Get the Gaussian sigma and threshold from interface values
     #annulus_size = float(workerInterface['Annulus size'])
+
+    sendProgress(0.1, "Starting worker", "Starting")
 
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
@@ -148,7 +151,7 @@ def compute(datasetId, apiUrl, token, params):
     tile_height = datasetClient.tiles['tileHeight']
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    #annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    # annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
 
     # Provided snippets
     annotationSize = float(workerInterface['Square size'])
@@ -159,18 +162,20 @@ def compute(datasetId, apiUrl, token, params):
 
     # Create a list to hold the generated annotations
     theAnnotations = []
+    
+    sendProgress(0.2, "Starting random square generation", "Generating annotations")
 
     # Generate random annotations
-    for _ in range(int(annotationNumber)):
+    for i in range(int(annotationNumber)):
         # Generate a random center point for the square, ensuring it won't go off the edge of the field
         x = random.uniform(annotationSize/2, tile_width - annotationSize/2)
         y = random.uniform(annotationSize/2, tile_height - annotationSize/2)
         
         # Generate the four corners of the square
         square_coords = [(x - annotationSize/2, y - annotationSize/2),
-                        (x + annotationSize/2, y - annotationSize/2),
-                        (x + annotationSize/2, y + annotationSize/2),
-                        (x - annotationSize/2, y + annotationSize/2)]
+                         (x + annotationSize/2, y - annotationSize/2),
+                         (x + annotationSize/2, y + annotationSize/2),
+                         (x - annotationSize/2, y + annotationSize/2)]
         
         # Define the new annotation
         new_annotation = {
@@ -188,11 +193,15 @@ def compute(datasetId, apiUrl, token, params):
         
         # Append the new annotation to the list
         theAnnotations.append(new_annotation)
+        fraction_done = (i + 1) / annotationNumber
+        sendProgress(fraction_done, "Generating random squares", f"Generated {i + 1} of {int(annotationNumber)} annotations")
+
+    sendError("test")
 
     start_time = timeit.default_timer()
     # Send the annotations to the server
-    #for annotation in theAnnotations:
-    #    annotationClient.createAnnotation(annotation)
+    # for annotation in theAnnotations:
+    #     annotationClient.createAnnotation(annotation)
     annotationClient.createMultipleAnnotations(theAnnotations)
     end_time = timeit.default_timer()
     execution_time = end_time - start_time
