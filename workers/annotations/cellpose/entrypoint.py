@@ -87,11 +87,6 @@ def interface(image, apiUrl, token):
                        'because the model is most accurate when the diameter is close to the actual cell diameter.',
             'displayOrder': 8
         },
-        'Padding and Smoothing': {
-            'type': 'notes',
-            'value': 'Padding will expand (or, if negative, subtract) from the polygon. Smoothing is used to simplify the polygons.',
-            'displayOrder': 9,
-        },
         'Smoothing': {
             'type': 'number',
             'min': 0,
@@ -107,13 +102,6 @@ def interface(image, apiUrl, token):
             'default': 0,
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
             'displayOrder': 11,
-        },
-        'Tiling': {
-            'type': 'notes',
-            'value': 'Tiling is used to speed up processing by breaking the image into smaller tiles. '
-                     'Make sure that the largest object is smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
-                     'then the largest object should be less than 102 pixels in its longest dimension.',
-            'displayOrder': 12,
         },
         'Tile Size': {
             'type': 'number',
