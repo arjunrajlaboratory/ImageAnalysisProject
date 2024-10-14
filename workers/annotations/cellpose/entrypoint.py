@@ -57,17 +57,13 @@ def interface(image, apiUrl, token):
             },
             'displayOrder': 3
         },
-        'Select a model': {
-            'type': 'notes',
-            'value': 'Select the model to use for segmenting cells. cyto3 is the most accurate for cells, whereas nuclei is best for finding nuclei. '
-                     'You will need to select a nuclei and cytoplasm channel in both cases. '
-                     'If you select nuclei, put the nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
-            'displayOrder': 4,
-        },
         'Model': {
             'type': 'select',
             'items': ['cyto', 'cyto2', 'cyto3', 'nuclei'],
             'default': 'cyto3',
+            'tooltip': 'cyto3 is the most accurate for cells, whereas nuclei is best for finding nuclei.\n'
+                       'You will need to select a nuclei and cytoplasm channel in both cases.\n'
+                       'If you select nuclei, put the nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
             'displayOrder': 5
         },
         'Nuclei Channel': {
@@ -87,6 +83,8 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 200,
             'default': 10,
+            'tooltip': 'The diameter of the cells in the image. Choose as close as you can\n'
+                       'because the model is most accurate when the diameter is close to the actual cell diameter.',
             'displayOrder': 8
         },
         'Padding and Smoothing': {
@@ -99,6 +97,7 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 10,
             'default': 0.3,
+            'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.3 is a good default.',
             'displayOrder': 10,
         },
         'Padding': {
@@ -106,6 +105,7 @@ def interface(image, apiUrl, token):
             'min': -20,
             'max': 20,
             'default': 0,
+            'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
             'displayOrder': 11,
         },
         'Tiling': {
@@ -120,6 +120,7 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 2048,
             'default': 1024,
+            'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the Cellpose model may not be able to run on them.',
             'displayOrder': 13
         },
         'Tile Overlap': {
@@ -127,6 +128,9 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 1,
             'default': 0.1,
+            'tooltip': 'The amount of overlap between tiles. A value of 0.1 means that the tiles will overlap by 10%, which is 102 pixels if the tile size is 1024.\n'
+                       'Make sure your objects are smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
+                       'then the largest object should be less than 102 pixels in its longest dimension.',
             'displayOrder': 14
         },
     }

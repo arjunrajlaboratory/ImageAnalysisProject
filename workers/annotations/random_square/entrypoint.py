@@ -86,7 +86,8 @@ def interface(image, apiUrl, token):
         },
         'Batch XY': {
             'type': 'text',
-            'required': True
+            'required': True,
+            'tooltip': 'hello tooltip'
         },
         'Batch Z': {
             'type': 'text',
@@ -105,7 +106,8 @@ def interface(image, apiUrl, token):
             'type': 'channel',
             'vueAttr': {
                 'title': 'test Channel information'
-            }
+            },
+            'tooltip': 'This is a test tooltip for the channel field. Pick the right channel for your data.\n A very very very very very very looooooooong tooltip here. What do you think about it?'
             # 'required': True
         }
     }
