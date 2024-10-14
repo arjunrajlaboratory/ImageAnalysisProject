@@ -125,25 +125,23 @@ def interface(image, apiUrl, token):
         },
         'Object to connect tag': {
             'type': 'tags',
+            'tooltip': 'Connect all objects that have this tag.',
             'displayOrder': 1,
         },
         'Connect sequentially across': {
             'type': 'select',
             'items': ['Time', 'Z'],
             'default': 'Time',
+            'tooltip': 'Connect objects sequentially across time or z-slices.',
             'displayOrder': 2,
-        },
-        'Max distance note': {
-            'type': 'notes',
-            'value': 'The maximum distance (in pixels) between the child and parent objects to be connected. Otherwise, objects will not be connected.',
-            'displayOrder': 3,
         },
         'Max distance (pixels)': {
             'type': 'number',
             'min': 0,
             'max': 5000,
             'default': 1000,
-            'displayOrder': 4,
+            'tooltip': 'The maximum distance (in pixels) between the child and\nparent objects to be connected. Otherwise, objects will not be connected.',
+            'displayOrder': 3,
         }
     }
     # Send the interface object to the server

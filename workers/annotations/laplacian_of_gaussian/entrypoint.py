@@ -99,18 +99,14 @@ def interface(image, apiUrl, token):
             },
             'displayOrder': 3,
         },
-        'Notes on mode': {
-            'type': 'notes',
-            'value': 'The mode tells you whether to process plane-by-plane or do a full 3D spot segmentation. '
-                     'Current Z: Process the current z-slice only. '
-                     'Z-Stack: Process all z-slices. '
-                     'If you are processing a z-stack, then you do NOT have to specify Batch Z. It will cover the whole stack automatically.',
-            'displayOrder': 4,
-        },
         'Mode': {
             'type': 'select',
             'items': ['Current Z', 'Z-Stack'],
             'default': 'Current Z',
+            'tooltip': 'The mode tells you whether to process plane-by-plane or do a full 3D spot segmentation.\n'
+                       'Current Z: Process the current z-slice only.\n'
+                       'Z-Stack: Process all z-slices.\n'
+                       'If you are processing a z-stack, then you do NOT have to specify Batch Z. It will cover the whole stack automatically.',
             'displayOrder': 5,
         },
         'Sigma': {
@@ -118,11 +114,14 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 5,
             'default': 2,
+            'tooltip': 'The sigma value for the Gaussian filter. Sets the size of the spots to detect.',
             'displayOrder': 6,
         },
         'Threshold': {
             'type': 'text',
             'default': 0.001,
+            'tooltip': 'The threshold value for the Laplacian of Gaussian filter. Sets the sensitivity of the spot detection.\n'
+                       'Use the Preview button to see how the threshold value affects the spots detected.',
             'displayOrder': 7,
         },
     }

@@ -62,53 +62,37 @@ def interface(image, apiUrl, token):
             },
             'displayOrder': 3,
         },
-        'Select a model': {
-            'type': 'notes',
-            'value': 'Select the model to use for segmentation. These can be pre-trained models or models you have generated yourself with Piscis Train. '
-                     'The model determines how sensitive the point detection is.',
-            'displayOrder': 4,
-        },
         'Model': {
             'type': 'select',
             'items': models,
             'default': '20230905',
+            'tooltip': 'Select the model to use for segmentation. These can be pre-trained models or\nmodels you have generated yourself with Piscis Train. '
+                       'The model determines how sensitive the point detection is.',
             'displayOrder': 5,
-        },
-        'Mode for z-stack usage': {
-            'type': 'notes',
-            'value': 'If you want to segment in 3D, select "Z-Stack". Otherwise, if you just want to segment in each z-slice individually, select "Current Z". '
-                     'If you select "Z-Stack", then the model will be used to segment all z-slices at once, and it will ignore the "Batch Z" field.',
-            'displayOrder': 6,
         },
         'Mode': {
             'type': 'select',
             'items': ['Current Z', 'Z-Stack'],
             'default': 'Current Z',
+            'tooltip': 'If you want to segment in 3D, select "Z-Stack". Otherwise, if you just want to segment in each z-slice individually, select "Current Z".\n'
+                       'If you select "Z-Stack", then the model will be used to segment all z-slices at once, and it will ignore the "Batch Z" field.',
             'displayOrder': 7,
-        },
-        'Scale parameter': {
-            'type': 'notes',
-            'value': 'This parameter controls the size of the objects that are detected. '
-                     'It is a multiplier on the size of the objects in the model.',
-            'displayOrder': 8,
         },
         'Scale': {
             'type': 'number',
             'min': 0,
             'max': 5,
             'default': 1,
+            'tooltip': 'This parameter controls the size of the objects that are detected.\n'
+                       'It is a multiplier on the size of the objects in the model.',
             'displayOrder': 9,
-        },
-        'Threshold note': {
-            'type': 'notes',
-            'value': 'The threshold parameter honestly does not change much; use a different model if you need to change specificity.',
-            'displayOrder': 10,
         },
         'Threshold': {
             'type': 'number',
             'min': 0,
             'max': 9,
             'default': 1.0,
+            'tooltip': 'The threshold parameter honestly does not change much.\nUse a different model if you need to change specificity.',
             'displayOrder': 11,
         },
         'Notes on skipping frames': {
@@ -119,6 +103,8 @@ def interface(image, apiUrl, token):
         },
         'Skip Frames Without': {
             'type': 'tags',
+            'tooltip': 'Sometimes you may want to skip processing frames that do not have any objects of a particular tag.\n'
+                       'If empty, all frames will be processed.',
             'displayOrder': 13,
         }
     }

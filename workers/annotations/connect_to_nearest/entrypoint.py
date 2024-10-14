@@ -125,22 +125,18 @@ def interface(image, apiUrl, token):
             'type': 'tags',
             'displayOrder': 2,
         },
-        'Connect across note': {
-            'type': 'notes',
-            'value': 'If you connect across Z or T, then the tool will ignore Z and T, respectively, when connecting.'
-                     'For instance, if you connect across Z, it will connect a parent in Z=1 to a child in Z=4.',
-            'displayOrder': 3,
-        },
         'Connect across Z': {
             'type': 'select',
             'items': ['Yes', 'No'],
             'default': 'No',
+            'tooltip': 'Connect objects regardless of their z-slice.\nFor example, it will connect a parent in Z=1 to a child in Z=4.',
             'displayOrder': 4,
         },
         'Connect across T': {
             'type': 'select',
             'items': ['Yes', 'No'],
             'default': 'No',
+            'tooltip': 'Connect objects regardless of their time point.\nFor example, it will connect a parent in T=1 to a child in T=4.',
             'displayOrder': 5,
         },
         'Max distance (pixels)': {
@@ -148,6 +144,7 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 5000,
             'default': 1000,
+            'tooltip': 'The maximum distance (in pixels) between the child and\nparent objects to be connected. Otherwise, objects will not be connected.',
             'displayOrder': 6,
         }
     }
