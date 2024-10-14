@@ -79,20 +79,33 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 10000,
-            'default': 100
+            'default': 100,
+            'vueAttr': {
+                'title': 'Number of random annotations'
+            }
         },
         'Batch XY': {
             'type': 'text',
             'required': True
         },
         'Batch Z': {
-            'type': 'text'
+            'type': 'text',
+            'vueAttrs': {
+               'placeholder': 'ex. 1-3, 5-8',
+               'label': 'Enter the frames you want to connect',
+               'persistentPlaceholder': True,
+               'filled': True,
+               'title': 'Frames to connect'
+            }
         },
         'Batch Time': {
             'type': 'text'
         },
         'Channel test': {
             'type': 'channel',
+            'vueAttr': {
+                'title': 'test Channel information'
+            }
             # 'required': True
         }
     }
