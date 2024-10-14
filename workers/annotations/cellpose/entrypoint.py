@@ -72,13 +72,13 @@ def interface(image, apiUrl, token):
         },
         'Nuclei Channel': {
             'type': 'channel',
-            'default': -1,
+            # 'default': -1,  # -1 means no channel
             'required': False,
             'displayOrder': 6
         },
         'Cytoplasm Channel': {
             'type': 'channel',
-            'default': -1,
+            # 'default': -1,  # -1 means no channel
             'required': False,
             'displayOrder': 7
         },

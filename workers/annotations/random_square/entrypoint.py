@@ -93,7 +93,7 @@ def interface(image, apiUrl, token):
         },
         'Channel test': {
             'type': 'channel',
-            'required': True
+            # 'required': True
         }
     }
     # Send the interface object to the server
