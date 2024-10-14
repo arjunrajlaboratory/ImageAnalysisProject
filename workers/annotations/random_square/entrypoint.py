@@ -82,13 +82,18 @@ def interface(image, apiUrl, token):
             'default': 100
         },
         'Batch XY': {
-            'type': 'text'
+            'type': 'text',
+            'required': True
         },
         'Batch Z': {
             'type': 'text'
         },
         'Batch Time': {
             'type': 'text'
+        },
+        'Channel test': {
+            'type': 'channel',
+            'required': True
         }
     }
     # Send the interface object to the server
