@@ -68,6 +68,7 @@ def interface(image, apiUrl, token):
             'default': '20230905',
             'tooltip': 'Select the model to use for segmentation. These can be pre-trained models or\nmodels you have generated yourself with Piscis Train. '
                        'The model determines how sensitive the point detection is.',
+            'noCache': True,
             'displayOrder': 5,
         },
         'Mode': {

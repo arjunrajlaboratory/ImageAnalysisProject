@@ -27,6 +27,8 @@ def interface(image, apiUrl, token):
         'Channel': {
             'type': 'channel',
             'required': True,
+            'tooltip': 'Compute pixel intensities in this channel.\n'
+                       'The channel does not have to be the same as the layer the annotations are on.',
             'displayOrder': 1,
         },
         'Percentile': {

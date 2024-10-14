@@ -82,6 +82,7 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 10000,
             'default': 100,
+            'unit': 'annotations',
             'vueAttr': {
                 'title': 'Number of random annotations'
             }

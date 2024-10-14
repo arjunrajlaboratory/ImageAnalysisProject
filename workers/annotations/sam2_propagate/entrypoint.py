@@ -97,17 +97,15 @@ def interface(image, apiUrl, token):
             'type': 'select',
             'items': models,
             'default': default_model,
+            'tooltip': 'The SAM2 model to use for propagation. The large model may give slightly better results,\n'
+                       'but is slower and uses more memory, and so may not work for large numbers of objects.',
             'displayOrder': 6
-        },
-        'Note on resegmentation': {
-            'type': 'notes',
-            'value': 'If resegmentation is selected, the tool will run the SAM2 model on the current image and create new annotations for the propagated objects.'
-                     'This maintains consistency between the propagated objects and the original objects.',
-            'displayOrder': 7,
         },
         'Resegment propagation objects': {
             'type': 'checkbox',
             'default': True,
+            'tooltip': 'If checked, the tool will run the SAM2 model on the current image and create new annotations for the propagated objects.\n'
+                       'This maintains consistency between the propagated objects and the original objects.',
             'displayOrder': 8
         },
         'Connect sequentially': {
@@ -115,23 +113,21 @@ def interface(image, apiUrl, token):
             'default': True,
             'displayOrder': 9
         },
-        'Padding and smoothing': {
-            'type': 'notes',
-            'value': 'Padding will expand (or, if negative, subtract) from the polygon. Smoothing is used to simplify the polygons.',
-            'displayOrder': 10,
-        },
         'Padding': {
             'type': 'number',
             'min': -20,
             'max': 20,
             'default': 0,
+            'unit': 'Pixels',
+            'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon.',
             'displayOrder': 11,
         },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 3,
-            'default': 0.3,
+            'default': 0.7,
+            'tooltip': 'Smoothing is used to simplify the polygons; a value of 0.7 is a good default.',
             'displayOrder': 12,
         },
     }

@@ -35,6 +35,7 @@ def interface(image, apiUrl, token):
             'type': 'select',
             'items': ['Yes', 'No'],
             'default': 'Yes',
+            'tooltip': 'If "Yes", the tool will count points across all z-slices.\n If "No", the tool will count points for the z-slice of the polygon annotations.',
             'displayOrder': 2,
         },
         'Exact tag match?': {
