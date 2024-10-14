@@ -95,12 +95,6 @@ def interface(image, apiUrl, token):
             'tooltip': 'The threshold parameter honestly does not change much.\nUse a different model if you need to change specificity.',
             'displayOrder': 11,
         },
-        'Notes on skipping frames': {
-            'type': 'notes',
-            'value': 'Sometimes you may want to skip processing frames that do not have any objects of a particular tag. '
-                     'If empty, all frames will be processed.',
-            'displayOrder': 12,
-        },
         'Skip Frames Without': {
             'type': 'tags',
             'tooltip': 'Sometimes you may want to skip processing frames that do not have any objects of a particular tag.\n'

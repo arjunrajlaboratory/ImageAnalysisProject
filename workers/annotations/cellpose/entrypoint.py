@@ -91,8 +91,8 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 10,
-            'default': 0.3,
-            'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.3 is a good default.',
+            'default': 0.7,
+            'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.7 is a good default.',
             'displayOrder': 10,
         },
         'Padding': {

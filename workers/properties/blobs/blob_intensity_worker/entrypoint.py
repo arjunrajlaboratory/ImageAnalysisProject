@@ -27,6 +27,8 @@ def interface(image, apiUrl, token):
         'Channel': {
             'type': 'channel',
             'required': True,
+            'tooltip': 'This tool computes the pixel intensity of objects in the specified channel.\n'
+                       'It will compute the mean, max, min, median, 25th percentile,\nand 75th percentile intensity, as well as the total intensity.',
             'displayOrder': 1,
         }
     }
