@@ -83,6 +83,7 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 200,
             'default': 10,
+            'unit': 'pixels',
             'tooltip': 'The diameter of the cells in the image. Choose as close as you can\n'
                        'because the model is most accurate when the diameter is close to the actual cell diameter.',
             'displayOrder': 8
@@ -100,6 +101,7 @@ def interface(image, apiUrl, token):
             'min': -20,
             'max': 20,
             'default': 0,
+            'unit': 'pixels',
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
             'displayOrder': 11,
         },
@@ -108,6 +110,7 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 2048,
             'default': 1024,
+            'unit': 'pixels',
             'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the Cellpose model may not be able to run on them.',
             'displayOrder': 13
         },
@@ -116,6 +119,7 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 1,
             'default': 0.1,
+            'unit': 'Fraction',
             'tooltip': 'The amount of overlap between tiles. A value of 0.1 means that the tiles will overlap by 10%, which is 102 pixels if the tile size is 1024.\n'
                        'Make sure your objects are smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
                        'then the largest object should be less than 102 pixels in its longest dimension.',

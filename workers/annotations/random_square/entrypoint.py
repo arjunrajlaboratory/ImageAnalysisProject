@@ -73,7 +73,9 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 30,
-            'default': 10
+            'default': 10,
+            'tooltip': 'The size of the square annotations to generate.',
+            'unit': 'Pixels'
         },
         'Number of random annotations': {
             'type': 'number',
