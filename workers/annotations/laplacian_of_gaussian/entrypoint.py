@@ -62,30 +62,68 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Laplacian of Gaussian': {
+            'type': 'notes',
+            'value': 'This tool finds spots in an image using the Laplacian of Gaussian method.'
+                     'It uses a filter to enhance spots, then uses a threshold to find the spots.'
+                     'It can work in 2D (current z-slice) or 3D (z-stack).',
+            'displayOrder': 0,
+        },
+        'Batch XY': {
+            'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the XY positions you want to process',
+                'persistentPlaceholder': True,
+                'filled': True,
+            },
+            'displayOrder': 1,
+        },
+        'Batch Z': {
+            'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Z positions you want to process',
+                'persistentPlaceholder': True,
+                'filled': True,
+            },
+            'displayOrder': 2,
+        },
+        'Batch Time': {
+            'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Time positions you want to process',
+                'persistentPlaceholder': True,
+                'filled': True,
+            },
+            'displayOrder': 3,
+        },
         'Mode': {
             'type': 'select',
             'items': ['Current Z', 'Z-Stack'],
-            'default': 'Current Z'
+            'default': 'Current Z',
+            'tooltip': 'The mode tells you whether to process plane-by-plane or do a full 3D spot segmentation.\n'
+                       'Current Z: Process the current z-slice only.\n'
+                       'Z-Stack: Process all z-slices.\n'
+                       'If you are processing a z-stack, then you do NOT have to specify Batch Z. It will cover the whole stack automatically.',
+            'displayOrder': 5,
         },
         'Sigma': {
             'type': 'number',
             'min': 0,
             'max': 5,
-            'default': 2
+            'default': 2,
+            'tooltip': 'The sigma value for the Gaussian filter. Sets the size of the spots to detect.',
+            'displayOrder': 6,
         },
         'Threshold': {
             'type': 'text',
-            'default': 0.001
+            'default': 0.001,
+            'tooltip': 'The threshold value for the Laplacian of Gaussian filter. Sets the sensitivity of the spot detection.\n'
+                       'Use the Preview button to see how the threshold value affects the spots detected.',
+            'displayOrder': 7,
         },
-        'Batch XY': {
-            'type': 'text'
-        },
-        'Batch Z': {
-            'type': 'text'
-        },
-        'Batch Time': {
-            'type': 'text'
-        }
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
@@ -124,7 +162,7 @@ def compute(datasetId, apiUrl, token, params):
 
     worker = WorkerClient(datasetId, apiUrl, token, params)
 
-   # Get the Gaussian sigma and threshold from interface values
+    # Get the Gaussian sigma and threshold from interface values
     stack = worker.workerInterface['Mode'] == 'Z-Stack'
     threshold = float(worker.workerInterface['Threshold'])
     sigma = float(worker.workerInterface['Sigma'])

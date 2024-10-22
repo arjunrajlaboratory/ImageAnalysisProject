@@ -40,21 +40,31 @@ def interface(image, apiUrl, token):
     interface = {
         'Output JSON filename': {
             'type': 'text',
-            'default': 'output.json'
+            'default': 'output.json',
+            'displayOrder': 3
         },
         'Query': {
             'type': 'text',
+            'tooltip': 'Input your natural language query here. You can ask Claude to do things like:\n'
+                       'Randomly color all "cell" objects.\n'
+                       'Color all "cell" objects red that are in the top 25 percentile by area.\n'
+                       'Connect all GFP spots to the nearest nucleolus.',
+            'displayOrder': 1
         },
         'AI Property Name': {
             'type': 'text',
-            'default': 'AI properties'
+            'default': 'AI properties',
+            'tooltip': 'This is the name of the property that will be created by the AI.\n'
+                       'For example, if you ask it to calculate the distance to the nearest cell boundary,\nit will be created under "AI properties/distance to cell boundary".',
+            'displayOrder': 2
         }
     }
 
     # Only add the API key field if the environment variable is not set
     if not os.getenv('ANTHROPIC_API_KEY'):
         interface['Claude API key'] = {
-            'type': 'text'
+            'type': 'text',
+            'displayOrder': 0
         }
 
     # Send the interface object to the server

@@ -18,8 +18,18 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Blob Intensity': {
+            'type': 'notes',
+            'value': 'This tool computes the pixel intensity of objects in the specified channel. '
+                     'It will compute the mean, max, min, median, 25th percentile, and 75th percentile intensity, as well as the total intensity.',
+            'displayOrder': 0,
+        },
         'Channel': {
-            'type': 'channel'
+            'type': 'channel',
+            'required': True,
+            'tooltip': 'Compute pixel intensities in this channel.\n'
+                       'The channel does not have to be the same as the layer the annotations are on.',
+            'displayOrder': 1,
         }
     }
     # Send the interface object to the server

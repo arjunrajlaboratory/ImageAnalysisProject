@@ -28,9 +28,6 @@ docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:late
 echo "Building Stardist worker"
 docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stardist" --label "interfaceCategory=Stardist" --label "annotationShape=polygon" $NO_CACHE
 
-echo "Building Laplacian of Gaussian worker"
-docker build ./workers/annotations/laplacian_of_gaussian/ -t annotations/laplacian_of_gaussian:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Laplacian of Gaussian" --label "interfaceCategory=Laplacian of Gaussian" $NO_CACHE
-
 echo "Building SAM2 automatic mask generator worker"
 docker build ./workers/annotations/sam2_automatic_mask_generator/ -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
 

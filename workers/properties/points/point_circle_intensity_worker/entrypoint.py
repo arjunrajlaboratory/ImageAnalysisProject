@@ -16,14 +16,28 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Point Intensity': {
+            'type': 'notes',
+            'value': 'This tool computes the average, maximum, minimum, median, total, 25th percentile, and 75th percentile intensities for all pixels in a circle around point annotations in the specified channel. '
+                     'If you set the radius to 1 or smaller, then the intensity will be the pixel value at the point location. '
+                     'If you set the radius to greater than 1, then the intensity will be the average of all pixels in the circle. '
+                     'This can be helpful if you want to compute the background intensity in a region around the point, for instance.',
+            'displayOrder': 0,
+        },
         'Channel': {
-            'type': 'channel'
+            'type': 'channel',
+            'required': True,
+            'tooltip': 'Compute pixel intensities in this channel.\n'
+                       'The channel does not have to be the same as the layer the annotations are on.',
+            'displayOrder': 1,
         },
         'Radius': {
             'type': 'number',
             'min': 0.5,
             'max': 10,
             'default': 1,
+            'unit': 'pixels',
+            'displayOrder': 2,
         },
     }
     # Send the interface object to the server

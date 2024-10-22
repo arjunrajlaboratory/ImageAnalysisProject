@@ -10,6 +10,23 @@ import annotation_utilities.annotation_tools as annotation_tools
 from shapely.geometry import Polygon
 import numpy as np
 
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Blob Metrics': {
+            'type': 'notes',
+            'value': 'This tool computes a variety of metrics for the objects in the specified channel. '
+                     'The metrics computed are: area, perimeter, centroid, compactness, elongation, convexity, solidity, '
+                     'rectangularity, circularity, fractal dimension, and eccentricity.',
+            'displayOrder': 0,
+        },
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
+
+
 def compute(datasetId, apiUrl, token, params):
     """
     Params is a dict containing the following parameters:
@@ -107,3 +124,5 @@ if __name__ == '__main__':
     match args.request:
         case 'compute':
             compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)

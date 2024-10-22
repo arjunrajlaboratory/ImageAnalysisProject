@@ -10,7 +10,15 @@ import annotation_client.workers as workers
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
-    interface = {}
+    interface = {
+        'Connection IDs': {
+            'type': 'notes',
+            'value': 'This tool adds a property to the objects to document the connections between them, which is helpful for time-lapse analysis. '
+                     'It gives each object an ID, and then shows the ID for each object\'s parent and child. '
+                     'If there is no parent or child, it assigns -1.',
+            'displayOrder': 0,
+        }
+    }
     client.setWorkerImageInterface(image, interface)
 
 

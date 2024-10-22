@@ -13,13 +13,21 @@ def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     interface = {
+        'Count connected objects': {
+            'type': 'notes',
+            'value': 'This tool counts the number of children objects that are connected to a parent polygon. '
+                     'It can be helpful for counting, for instance, the number of spots connected to a nucleus.',
+            'displayOrder': 0,
+        },
         'Child Tags': {
-            'type': 'tags'
+            'type': 'tags',
+            'displayOrder': 1,
         },
         'Child Tags Exclusive': {
             'type': 'select',
             'items': ['Yes', 'No'],
-            'default': 'No'
+            'default': 'No',
+            'displayOrder': 2,
         },
     }
     client.setWorkerImageInterface(image, interface)

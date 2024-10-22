@@ -17,6 +17,18 @@ def total_length(line):
     coordinates = line['coordinates']
     return sum(calculate_distance(coordinates[i], coordinates[i+1]) for i in range(len(coordinates)-1))
 
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    interface = {
+        'Line Length': {
+            'type': 'notes',
+            'value': 'Computes the length of lines.',
+            'displayOrder': 0,
+        }
+    }
+    client.setWorkerImageInterface(image, interface)
+
+
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -69,3 +81,5 @@ if __name__ == '__main__':
     match args.request:
         case 'compute':
             compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)
