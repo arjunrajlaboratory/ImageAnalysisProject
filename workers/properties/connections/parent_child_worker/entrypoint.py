@@ -74,14 +74,21 @@ def compute(datasetId, apiUrl, token, params):
 
         if time_lapse and id_to_time_mapping[connection['parentId']] >= id_to_time_mapping[connection['childId']]:
             continue
+
         child_tags = annotation_tags.get(connection['childId'], set())
         parent_tags = annotation_tags.get(connection['parentId'], set())
 
         if (exclusive and child_tags == tags) or (not exclusive and child_tags & tags):
-            annotationConnectionList[connection['childId']]['parentId'] = connection['parentId']
+            if time_lapse and id_to_time_mapping[connection['childId']] <= id_to_time_mapping[connection['parentId']]:
+                annotationConnectionList[connection['childId']]['childId'] = connection['parentId']
+            else:
+                annotationConnectionList[connection['childId']]['parentId'] = connection['parentId']
 
         if (exclusive and parent_tags == tags) or (not exclusive and parent_tags & tags):
-            annotationConnectionList[connection['parentId']]['childId'] = connection['childId']
+            if time_lapse and id_to_time_mapping[connection['childId']] <= id_to_time_mapping[connection['parentId']]:
+                annotationConnectionList[connection['parentId']]['parentId'] = connection['childId']
+            else:
+                annotationConnectionList[connection['parentId']]['childId'] = connection['childId']
 
         if i % 1000 == 0:  # Update progress every 1000 connections
             sendProgress(i / total_connections, 'Processing connections', f"Processed {i}/{total_connections} connections")
