@@ -33,6 +33,8 @@ def extract_spatial_annotation_data(obj_list):
         if shape == 'point':
             x, y = coords[0]['x'], coords[0]['y']
         elif shape == 'polygon':
+            if len(coords) < 3:
+                continue
             polygon = Polygon([(pt['x'], pt['y']) for pt in coords])
             centroid = polygon.centroid
             x, y = centroid.x, centroid.y

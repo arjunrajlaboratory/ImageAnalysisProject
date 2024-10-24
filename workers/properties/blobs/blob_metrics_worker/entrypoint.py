@@ -61,6 +61,8 @@ def compute(datasetId, apiUrl, token, params):
     for i, annotation in enumerate(annotationList):
 
         polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
+        if len(polygon_coords) < 3:
+            continue
         poly = Polygon(polygon_coords)
         convex_hull = poly.convex_hull
         min_rect = poly.minimum_rotated_rectangle
