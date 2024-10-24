@@ -17,6 +17,18 @@ def interface(image, apiUrl, token):
                      'It gives each object an ID, and then shows the ID for each object\'s parent and child. '
                      'If there is no parent or child, it assigns -1.',
             'displayOrder': 0,
+        },
+        'Ignore self-connections': {
+            'type': 'checkbox',
+            'tooltip': 'If checked, self-connections will be ignored.\nThis is useful if you want to find all connections in the dataset,\nbut not connections between the same object.',
+            'default': True,
+            'displayOrder': 1
+        },
+        'Time lapse': {
+            'type': 'checkbox',
+            'tooltip': 'If checked, keeps parent as earlier time and child as later time.\nOtherwise, it will parse multiple connections, including reverse connections.',
+            'default': True,
+            'displayOrder': 2
         }
     }
     client.setWorkerImageInterface(image, interface)
@@ -29,6 +41,9 @@ def compute(datasetId, apiUrl, token, params):
 
     annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+
+    ignore_self_connections = params.get('Ignore self-connections', True)
+    time_lapse = params.get('Time lapse', True)
     
     # Fetch all connections and annotations in one go
     connectionList = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
@@ -40,16 +55,25 @@ def compute(datasetId, apiUrl, token, params):
     # Create integer mapping for annotation IDs
     id_to_integer_mapping = {-1: -1}
     current_integer = 0
+    if time_lapse:
+        id_to_time_mapping = {}
     for ann in allAnnotations:
         if ann['_id'] not in id_to_integer_mapping:
             id_to_integer_mapping[ann['_id']] = current_integer
             current_integer += 1
+            if time_lapse:
+                id_to_time_mapping[ann['_id']] = ann['location']['Time']
 
     # Initialize annotationConnectionList with all annotations
     annotationConnectionList = {ann['_id']: {'parentId': -1, 'childId': -1} for ann in allAnnotations if (exclusive and set(ann.get('tags', [])) == tags) or (not exclusive and set(ann.get('tags', [])) & tags)}
     
     total_connections = len(connectionList)
     for i, connection in enumerate(connectionList):
+        if ignore_self_connections and connection['parentId'] == connection['childId']:
+            continue
+
+        if time_lapse and id_to_time_mapping[connection['parentId']] >= id_to_time_mapping[connection['childId']]:
+            continue
         child_tags = annotation_tags.get(connection['childId'], set())
         parent_tags = annotation_tags.get(connection['parentId'], set())
 
