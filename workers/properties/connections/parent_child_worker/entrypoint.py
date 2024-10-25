@@ -107,6 +107,7 @@ def compute(datasetId, apiUrl, token, params):
 
     # Batch upload all property values
     sendProgress(0.9, 'Uploading property values', "Sending data to server")
+    annotationClient.deleteAnnotationPropertyValues(propertyId, datasetId)  # First delete the old property values.
     workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
     sendProgress(1.0, 'Completed', "Worker finished successfully")
 
