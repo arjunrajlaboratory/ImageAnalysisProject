@@ -7,6 +7,8 @@ import annotation_client.annotations as annotations
 from annotation_client.utils import sendProgress
 import annotation_client.workers as workers
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
@@ -48,9 +50,11 @@ def compute(datasetId, apiUrl, token, params):
     # Fetch all connections and annotations in one go
     connectionList = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
     allAnnotations = annotationClient.getAnnotationsByDatasetId(datasetId, limit=10000000)
+    allAnnotations = annotation_tools.get_annotations_with_tags(allAnnotations, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
 
+    # This whole thing could be faster if we filtered the annotation list by the tags first.
     # Create a mapping of annotation IDs to their tags
-    annotation_tags = {ann['_id']: set(ann.get('tags', [])) for ann in allAnnotations}
+    # annotation_tags = {ann['_id']: set(ann.get('tags', [])) for ann in allAnnotations}
 
     # Create integer mapping for annotation IDs
     id_to_integer_mapping = {-1: -1}
@@ -69,26 +73,22 @@ def compute(datasetId, apiUrl, token, params):
     
     total_connections = len(connectionList)
     for i, connection in enumerate(connectionList):
+        
+        # Ignore self-connections
         if ignore_self_connections and connection['parentId'] == connection['childId']:
             continue
 
-        if time_lapse and id_to_time_mapping[connection['parentId']] >= id_to_time_mapping[connection['childId']]:
+        # Skip if either the parent or child is not in the annotation list
+        if connection['childId'] not in annotationConnectionList or connection['parentId'] not in annotationConnectionList:
             continue
 
-        child_tags = annotation_tags.get(connection['childId'], set())
-        parent_tags = annotation_tags.get(connection['parentId'], set())
-
-        if (exclusive and child_tags == tags) or (not exclusive and child_tags & tags):
-            if time_lapse and id_to_time_mapping[connection['childId']] <= id_to_time_mapping[connection['parentId']]:
-                annotationConnectionList[connection['childId']]['childId'] = connection['parentId']
-            else:
-                annotationConnectionList[connection['childId']]['parentId'] = connection['parentId']
-
-        if (exclusive and parent_tags == tags) or (not exclusive and parent_tags & tags):
-            if time_lapse and id_to_time_mapping[connection['childId']] <= id_to_time_mapping[connection['parentId']]:
-                annotationConnectionList[connection['parentId']]['parentId'] = connection['childId']
-            else:
-                annotationConnectionList[connection['parentId']]['childId'] = connection['childId']
+        # If time lapse is checked, ensure that the child is always later than the parent
+        if time_lapse and id_to_time_mapping[connection['childId']] <= id_to_time_mapping[connection['parentId']]:
+            annotationConnectionList[connection['childId']]['childId'] = connection['parentId']
+            annotationConnectionList[connection['parentId']]['parentId'] = connection['childId']
+        else:
+            annotationConnectionList[connection['childId']]['parentId'] = connection['parentId']
+            annotationConnectionList[connection['parentId']]['childId'] = connection['childId']
 
         if i % 1000 == 0:  # Update progress every 1000 connections
             sendProgress(i / total_connections, 'Processing connections', f"Processed {i}/{total_connections} connections")
