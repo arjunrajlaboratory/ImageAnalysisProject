@@ -89,6 +89,8 @@ def compute(datasetId, apiUrl, token, params):
             polygon = np.array([list(coordinate.values())[1::-1] for coordinate in annotation['coordinates']])
             mask = draw.polygon2mask(image.shape, polygon)
             intensities = image[mask]
+            if len(intensities) == 0:  # Skip if there are no pixels in the mask
+                continue
 
             # Calculating the desired metrics
             mean_intensity = np.mean(intensities)
