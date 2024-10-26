@@ -57,6 +57,7 @@ def compute(datasetId, apiUrl, token, params):
     
     sendProgress(0.1, 'Fetching data', 'Getting polygon annotations')
     blobAnnotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    blobAnnotationList = annotation_tools.get_annotations_with_tags(blobAnnotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
     
     sendProgress(0.3, 'Fetching data', 'Getting point annotations')
     pointList = workerClient.get_annotation_list_by_shape('point', limit=0)
