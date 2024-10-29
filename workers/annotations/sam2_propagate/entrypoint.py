@@ -392,12 +392,15 @@ def compute(datasetId, apiUrl, token, params):
             boxes = [polygon.bounds for polygon in polygons]
             input_boxes = np.array(boxes)
 
-            masks, _, _ = predictor.predict(
-                point_coords=None,
-                point_labels=None,
-                box=input_boxes,
-                multimask_output=False,
-            )
+            masks = []
+            for input_box in input_boxes:
+                temp_masks, _, _ = predictor.predict(
+                    point_coords=None,
+                    point_labels=None,
+                    box=input_box,
+                    multimask_output=False,
+                )
+                masks.append(temp_masks[0])
             
             # Find contours in the mask
             temp_polygons = sam2_masks_to_polygons(masks, smoothing, padding)
