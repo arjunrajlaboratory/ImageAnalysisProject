@@ -10,7 +10,7 @@ from operator import itemgetter
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress, sendError
+from annotation_client.utils import sendProgress #, sendError
 
 
 import imageio
@@ -219,7 +219,21 @@ def compute(datasetId, apiUrl, token, params):
         fraction_done = (i + 1) / annotationNumber
         sendProgress(fraction_done, "Generating random squares", f"Generated {i + 1} of {int(annotationNumber)} annotations")
 
-    sendError("test")
+    # sendError("test")
+
+    # print(json.dumps({"error": "test", "title": "testError", "info": "testMessage"}))
+    print(json.dumps({"error": "test", "title": "testError", "info": "This is just a test error message. May in future include some information on how to resolve it.", "type": "error"}))
+    sys.stdout.flush()
+
+    # Below is a test without adding the "info" field
+    print(json.dumps({"error": "test", "title": "testError2", "type": "error"}))
+    sys.stdout.flush()
+
+    print(json.dumps({"warning": "test", "title": "testWarning", "type": "warning"}))
+    sys.stdout.flush()
+
+    print(json.dumps({"warning": "test", "title": "testWarning", "info": "This is just a test warning message. May in future include some information on how to resolve it.", "type": "warning"}))
+    sys.stdout.flush()
 
     start_time = timeit.default_timer()
     # Send the annotations to the server
