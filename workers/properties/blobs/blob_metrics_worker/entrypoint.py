@@ -82,17 +82,25 @@ def compute(datasetId, apiUrl, token, params):
         eigenvalues = np.linalg.eigvals(inertia_tensor)
         eccentricity = np.sqrt(1 - (min(eigenvalues) / max(eigenvalues)))
 
+        # Helper function to safely compute ratios
+        def safe_compute(calculation):
+            try:
+                result = float(calculation)
+                return result if np.isfinite(result) else None
+            except:
+                return None
+
         prop = {
             'Area': float(poly.area),
             'Perimeter': float(poly.length),
             'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)},
-            'Compactness': 4 * np.pi * poly.area / (poly.length ** 2),
+            'Compactness': safe_compute(4 * np.pi * poly.area / (poly.length ** 2)),
             'Elongation': elongation,
-            'Convexity': poly.area / convex_hull.area,
-            'Solidity': poly.length / convex_hull.length,
-            'Rectangularity': poly.area / (length * width),
-            'Circularity': 4 * np.pi * poly.area / (poly.length ** 2),
-            'Fractal_Dimension': 2 * np.log(poly.length) / np.log(poly.area),
+            'Convexity': safe_compute(poly.area / convex_hull.area),
+            'Solidity': safe_compute(poly.length / convex_hull.length),
+            'Rectangularity': safe_compute(poly.area / (length * width)),
+            'Circularity': safe_compute(4 * np.pi * poly.area / (poly.length ** 2)),
+            'Fractal_Dimension': safe_compute(2 * np.log(poly.length) / np.log(poly.area)),
             'Eccentricity': eccentricity
         }
         # Add prop to the dictionary with annotation['_id'] as the key
