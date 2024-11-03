@@ -220,7 +220,9 @@ def compute(datasetId, apiUrl, token, params):
     if model in BASE_MODELS:
         cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
     else:
-        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'pretrained_model': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
+        # Get the full path to the model
+        model_path = str(MODELS_DIR / model)
+        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'pretrained_model': model_path}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
     f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size, tile_overlap=tile_overlap, padding=padding, smoothing=smoothing)
 
     worker.process(f_process, f_annotation='polygon', stack_channels=stack_channels, progress_text='Running Cellpose')
