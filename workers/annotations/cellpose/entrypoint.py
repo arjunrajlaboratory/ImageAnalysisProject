@@ -12,6 +12,8 @@ import deeptile
 from deeptile.extensions.segmentation import cellpose_segmentation
 from deeptile.extensions.stitch import stitch_polygons
 
+import girder_utils
+
 from shapely.geometry import Polygon
 
 from worker_client import WorkerClient
@@ -19,6 +21,11 @@ from worker_client import WorkerClient
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+
+    # models = sorted(path.stem for path in MODELS_DIR.glob('*'))
+    models = ['cyto', 'cyto2', 'cyto3', 'nuclei']
+    girder_models = [model['name'] for model in girder_utils.list_girder_models(client.client)[0]]
+    models = sorted(list(set(models + girder_models)))
 
     # Available types: number, text, tags, layer
     interface = {
@@ -59,7 +66,7 @@ def interface(image, apiUrl, token):
         },
         'Model': {
             'type': 'select',
-            'items': ['cyto', 'cyto2', 'cyto3', 'nuclei'],
+            'items': models,
             'default': 'cyto3',
             'tooltip': 'cyto3 is the most accurate for cells, whereas nuclei is best for finding nuclei.\n'
                        'You will need to select a nuclei and cytoplasm channel in both cases.\n'
