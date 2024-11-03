@@ -1,7 +1,7 @@
 import argparse
 import json
 import sys
-
+from pathlib import Path
 from functools import partial
 from itertools import product
 
@@ -13,17 +13,20 @@ from deeptile.extensions.segmentation import cellpose_segmentation
 from deeptile.extensions.stitch import stitch_polygons
 
 import girder_utils
+from girder_utils import CELLPOSE_DIR, MODELS_DIR
 
 from shapely.geometry import Polygon
 
 from worker_client import WorkerClient
+
+BASE_MODELS = ['cyto', 'cyto2', 'cyto3', 'nuclei']
 
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     # models = sorted(path.stem for path in MODELS_DIR.glob('*'))
-    models = ['cyto', 'cyto2', 'cyto3', 'nuclei']
+    models = BASE_MODELS
     girder_models = [model['name'] for model in girder_utils.list_girder_models(client.client)[0]]
     models = sorted(list(set(models + girder_models)))
 
@@ -71,6 +74,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'cyto3 is the most accurate for cells, whereas nuclei is best for finding nuclei.\n'
                        'You will need to select a nuclei and cytoplasm channel in both cases.\n'
                        'If you select nuclei, put the nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
+            'noCache': True,
             'displayOrder': 5
         },
         'Nuclei Channel': {
@@ -193,6 +197,13 @@ def compute(datasetId, apiUrl, token, params):
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
 
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    if model not in BASE_MODELS:
+        girder_utils.download_girder_model(client.client, model)
+
+    # Print the contents of the models directory
+    print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
+
     stack_channels = []
     if model in ['cyto', 'cyto2', 'cyto3']:
         if (cytoplasm_channel is not None) and (cytoplasm_channel > -1):
@@ -206,7 +217,10 @@ def compute(datasetId, apiUrl, token, params):
     else:
         raise ValueError("No cytoplasmic or nuclei channels selected.")
 
-    cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
+    if model in BASE_MODELS:
+        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
+    else:
+        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'pretrained_model': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
     f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size, tile_overlap=tile_overlap, padding=padding, smoothing=smoothing)
 
     worker.process(f_process, f_annotation='polygon', stack_channels=stack_channels, progress_text='Running Cellpose')

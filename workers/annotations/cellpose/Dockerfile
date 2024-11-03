@@ -36,7 +36,7 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/arjunrajlaboratory/DeepTile
+RUN git clone -b fix-cellpose https://github.com/arjunrajlaboratory/DeepTile
 RUN pip install -e /DeepTile
 RUN pip install rtree shapely
 

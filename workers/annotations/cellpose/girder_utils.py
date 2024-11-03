@@ -1,7 +1,7 @@
 from pathlib import Path
 
 # Assuming these are defined elsewhere in your cellpose worker
-CELLPOSE_DIR = Path.home() / '.cellpose'
+CELLPOSE_DIR = Path('/root/.cellpose')
 MODELS_DIR = CELLPOSE_DIR / 'models'
 
 def mkdir(gc, parent_id, folder_name):
