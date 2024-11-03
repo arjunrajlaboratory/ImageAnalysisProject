@@ -24,8 +24,8 @@ def mkdir(gc, parent_id, folder_name):
 def get_cellpose_dir(gc):
 
     user_id = gc.get('user/me')['_id']
-    public_folder_id = gc.get('folder', parameters={'parentId': user_id, 'parentType': 'user', 'name': 'Public'})[0]['_id']
-    cellpose_folder_id = mkdir(gc, public_folder_id, '.cellpose')
+    private_folder_id = gc.get('folder', parameters={'parentId': user_id, 'parentType': 'user', 'name': 'Private'})[0]['_id']
+    cellpose_folder_id = mkdir(gc, private_folder_id, '.cellpose')
 
     return cellpose_folder_id
 
