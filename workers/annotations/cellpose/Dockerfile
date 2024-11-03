@@ -49,6 +49,7 @@ COPY ./download_models.py /
 RUN python /download_models.py
 
 COPY ./utils.py /
+COPY ./girder_utils.py /
 COPY ./entrypoint.py /
 
 RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
