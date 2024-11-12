@@ -1,0 +1,9 @@
+name: worker
+dependencies:
+- python=3.10
+- pip
+- imageio
+- rasterio
+- shapely
+- pip:
+  - cellpose
