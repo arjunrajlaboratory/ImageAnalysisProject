@@ -21,8 +21,6 @@ import annotation_utilities.annotation_tools as annotation_tools
 import girder_utils
 from girder_utils import CELLPOSE_DIR, MODELS_DIR
 
-from worker_client import WorkerClient
-
 BASE_MODELS = ['cyto', 'cyto2', 'cyto3', 'nuclei']
 
 
@@ -130,18 +128,18 @@ def compute(datasetId, apiUrl, token, params):
         connectTo: how new annotations should be connected
     """
 
-    worker = WorkerClient(datasetId, apiUrl, token, params)
+    workerInterface = params['workerInterface']
 
     # Get the model and diameter from interface values
-    model = worker.workerInterface['Base Model']
-    output_model_name = worker.workerInterface['Output Model Name']
-    nuclei_channel = worker.workerInterface.get('Nuclei Channel', None)
-    cytoplasm_channel = worker.workerInterface.get('Cytoplasm Channel', None)
-    training_tag = worker.workerInterface.get('Training Tag', None)
-    training_regions = worker.workerInterface.get('Training Region', None)
-    learning_rate = float(worker.workerInterface['Learning Rate'])
-    epochs = int(worker.workerInterface['Epochs'])
-    weight_decay = float(worker.workerInterface['Weight Decay'])
+    model = workerInterface['Base Model']
+    output_model_name = workerInterface['Output Model Name']
+    nuclei_channel = workerInterface.get('Nuclei Channel', None)
+    cytoplasm_channel = workerInterface.get('Cytoplasm Channel', None)
+    training_tag = workerInterface.get('Training Tag', None)
+    training_regions = workerInterface.get('Training Region', None)
+    learning_rate = float(workerInterface['Learning Rate'])
+    epochs = int(workerInterface['Epochs'])
+    weight_decay = float(workerInterface['Weight Decay'])
 
     if training_tag is None:
         # TODO: Add an error message here.
@@ -154,8 +152,8 @@ def compute(datasetId, apiUrl, token, params):
         apiUrl=apiUrl, token=token)
     annotationClient = annotations.UPennContrastAnnotationClient(
         apiUrl=apiUrl, token=token)
-    tileClient = tiles.UPennContrastTileClient(
-        apiUrl=apiUrl, token=token)
+    tileClient = tiles.UPennContrastDataset(
+        apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     if model not in BASE_MODELS:
         girder_utils.download_girder_model(client.client, model)
@@ -203,23 +201,23 @@ def compute(datasetId, apiUrl, token, params):
 
     # Group the training annotations by location so that we can batch the image loading.
     grouped_training_annotations = defaultdict(list)
-    for annotation in trainingAnnotationList:
-        location_key = (annotation['location']['Time'],
-                        annotation['location']['Z'], annotation['location']['XY'])
-        grouped_training_annotations[location_key].append(annotation)
+    for current_annotation in trainingAnnotationList:
+        location_key = (current_annotation['location']['Time'],
+                        current_annotation['location']['Z'], current_annotation['location']['XY'])
+        grouped_training_annotations[location_key].append(current_annotation)
 
     # Group the region annotations by location so that we can batch the image loading.
     grouped_region_annotations = defaultdict(list)
-    for annotation in regionAnnotationList:
-        location_key = (annotation['location']['Time'],
-                        annotation['location']['Z'], annotation['location']['XY'])
-        grouped_region_annotations[location_key].append(annotation)
+    for current_annotation in regionAnnotationList:
+        location_key = (current_annotation['location']['Time'],
+                        current_annotation['location']['Z'], current_annotation['location']['XY'])
+        grouped_region_annotations[location_key].append(current_annotation)
 
     training_images = []
     label_images = []
 
     # Loop through each location and load the image for the training.
-    for location_key, annotations in grouped_training_annotations.items():
+    for location_key, training_annotations in grouped_training_annotations.items():
         time, z, xy = location_key
         # TODO: Handle all channel cases in some sort of general way.
         frame = tileClient.coordinatesToFrameIndex(xy, z, time, nuclei_channel)
@@ -232,9 +230,9 @@ def compute(datasetId, apiUrl, token, params):
         cytoplasm_image = cytoplasm_image.squeeze()
 
         label_image = np.zeros(nucleus_image.shape[:2], dtype=np.uint16)
-        for i, annotation in enumerate(annotations):
+        for i, current_annotation in enumerate(training_annotations):
             polygon = np.array([list(coordinate.values())[1::-1]
-                               for coordinate in annotation['coordinates']])
+                               for coordinate in current_annotation['coordinates']])
             mask = draw.polygon2mask(nucleus_image.shape, polygon)
             label_image[mask] = i + 1
 
