@@ -10,7 +10,7 @@ import numpy as np
 
 from shapely.geometry import Polygon, box
 
-from cellpose import io, models, train
+from cellpose import io, models, train, core
 
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
@@ -263,6 +263,8 @@ def compute(datasetId, apiUrl, token, params):
             training_images.append(training_image)
             label_images.append(label_image)
 
+    using_gpu = core.use_gpu()
+    print(f"Using GPU: {using_gpu}")
     # TODO: Allow different models.
     model = models.CellposeModel(model_type="cyto3")
 
@@ -272,7 +274,7 @@ def compute(datasetId, apiUrl, token, params):
                                                             train_data=training_images, train_labels=label_images,
                                                             channels=[1, 2], normalize=True,
                                                             weight_decay=weight_decay, SGD=True, learning_rate=learning_rate,
-                                                            n_epochs=epochs, model_name=output_model_name)
+                                                            n_epochs=epochs, model_name=MODELS_DIR / output_model_name)
 
     # Upload the trained model to Girder
     girder_utils.upload_girder_model(client.client, output_model_name)
