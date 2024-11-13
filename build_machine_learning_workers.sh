@@ -25,6 +25,9 @@ docker compose -f ./workers/annotations/piscis/docker-compose.yaml build $NO_CAC
 echo "Building Cellpose worker"
 docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose" --label "annotationShape=polygon" $NO_CACHE
 
+echo "Building Cellpose train worker"
+docker build ./workers/annotations/cellpose_train/ -t annotations/cellpose_train_worker:latest $NO_CACHE
+
 echo "Building Stardist worker"
 docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stardist" --label "interfaceCategory=Stardist" --label "annotationShape=polygon" $NO_CACHE
 
