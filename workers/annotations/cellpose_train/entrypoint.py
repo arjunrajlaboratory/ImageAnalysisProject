@@ -15,7 +15,7 @@ from cellpose import io, models, train, core
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
 import annotation_client.annotations as annotations
-from annotation_client.utils import sendProgress, sendError
+from annotation_client.utils import sendProgress, sendError, sendWarning
 import annotation_utilities.annotation_tools as annotation_tools
 
 import girder_utils
@@ -50,6 +50,12 @@ def interface(image, apiUrl, token):
                        'You will need to select a nuclei and cytoplasm channel in both cases.\n'
                        'If you select nuclei, put the nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
             'noCache': True,
+            'displayOrder': 4
+        },
+        'Nuclear Model?': {
+            'type': 'checkbox',
+            'default': False,
+            'tooltip': 'If you are training a nuclear model, check this box.',
             'displayOrder': 5
         },
         'Output Model Name': {
@@ -57,17 +63,22 @@ def interface(image, apiUrl, token):
             'tooltip': 'The name of the retrained model (to be saved to your .cellpose/models folder).',
             'displayOrder': 6
         },
-        'Nuclei Channel': {
+        'Primary Channel': {
             'type': 'channel',
             # 'default': -1,  # -1 means no channel
+            'tooltip': 'The channel to use for the primary segmentation.\n'
+                       'If you are segmenting cytoplasm, put your cytoplasm channel here.\n'
+                       'If you are segmenting nuclei, put your nucleus channel here.',
             'required': False,
             'displayOrder': 7
         },
-        'Cytoplasm Channel': {
+        'Secondary Channel': {
             'type': 'channel',
-            # 'default': -1,  # -1 means no channel
+            'default': -1,  # -1 means no channel
             'required': False,
-            'tooltip': 'If you are segmenting nuclei, put your nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
+            'tooltip': 'The channel to use for the secondary segmentation.\n'
+                       'If you are segmenting cytoplasm, put your nuclei channel here.\n'
+                       'If you are segmenting nuclei, leave this blank (it will be ignored if filled).',
             'displayOrder': 8
         },
         'Training Tag': {
@@ -131,21 +142,27 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
 
     # Get the model and diameter from interface values
-    model = workerInterface['Base Model']
+    base_model = workerInterface['Base Model']
     output_model_name = workerInterface['Output Model Name']
-    nuclei_channel = workerInterface.get('Nuclei Channel', None)
-    cytoplasm_channel = workerInterface.get('Cytoplasm Channel', None)
+    nuclear_model = workerInterface['Nuclear Model?']
+    primary_channel = workerInterface.get('Primary Channel', None)
+    secondary_channel = workerInterface.get('Secondary Channel', None)
     training_tag = workerInterface.get('Training Tag', None)
     training_regions = workerInterface.get('Training Region', None)
     learning_rate = float(workerInterface['Learning Rate'])
     epochs = int(workerInterface['Epochs'])
     weight_decay = float(workerInterface['Weight Decay'])
 
-    if training_tag is None:
-        # TODO: Add an error message here.
+    print(f"Training tag: {training_tag}")
+    print(f"Training regions: {training_regions}")
+
+    if training_tag is None or len(training_tag) == 0:
+        sendError("No training tag selected.",
+                  info="Choose a tag for training annotations.")
         raise ValueError("No training tag selected.")
-    if training_regions is None:
-        # TODO: Add an warning message here.
+    if training_regions is None or len(training_regions) == 0:
+        sendWarning("No training regions selected.",
+                    info="Training will be performed on entire image that the annotations are in.")
         print("No training regions selected. Training will be performed on entire image that the annotations are in.")
 
     client = workers.UPennContrastWorkerPreviewClient(
@@ -155,50 +172,54 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-    if model not in BASE_MODELS:
-        girder_utils.download_girder_model(client.client, model)
+    if base_model not in BASE_MODELS:
+        girder_utils.download_girder_model(client.client, base_model)
 
     # Print the contents of the models directory
     print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
 
-    stack_channels = []
-    if model in ['cyto', 'cyto2', 'cyto3']:
-        if (cytoplasm_channel is not None) and (cytoplasm_channel > -1):
-            stack_channels.append(cytoplasm_channel)
-    if (nuclei_channel is not None) and (nuclei_channel > -1):
-        stack_channels.append(nuclei_channel)
-    if len(stack_channels) == 2:
-        channels = (0, 1)
-    elif len(stack_channels) == 1:
-        channels = (0, 0)
+    # Need to have a primary channel to do anything.
+    if primary_channel is None or primary_channel == -1:
+        sendError("No primary channel selected for nuclear model training.",
+                  info="Please select a primary channel for the nuclei.")
+        raise ValueError(
+            "No primary channel selected for nuclear model training.")
+
+    if nuclear_model:
+        channels = [1, 0]
     else:
-        # TODO: Add an error message here.
-        raise ValueError("No cytoplasmic or nuclei channels selected.")
+        if secondary_channel is None or secondary_channel == -1:
+            sendWarning("No secondary (nucleus) channel selected for cytoplasm model training.",
+                        info="Proceeding using primary channel only.")
+            channels = [1, 0]
+        else:
+            channels = [1, 2]
 
-    # if model in BASE_MODELS:
-    #     cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={
-    #                                      'diameter': diameter, 'channels': channels}, output_format='polygons')
-    # else:
-    #     # Get the full path to the model
-    #     model_path = str(MODELS_DIR / model)
-    #     cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'pretrained_model': model_path}, eval_parameters={
-    #                                      'diameter': diameter, 'channels': channels}, output_format='polygons')
-    # f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size,
-    #                     tile_overlap=tile_overlap, padding=padding, smoothing=smoothing)
-
-    # worker.process(f_process, f_annotation='polygon',
-    #                stack_channels=stack_channels, progress_text='Running Cellpose')
-
+    # Initial loading phase
+    sendProgress(0.1, "Loading annotations",
+                 "Retrieving annotations from server")
     blobAnnotationList = annotationClient.getAnnotationsByDatasetId(
         datasetId, limit=1000000, shape='polygon')
 
     trainingAnnotationList = annotation_tools.get_annotations_with_tags(
         blobAnnotationList, training_tag, exclusive=False)
-    regionAnnotationList = annotation_tools.get_annotations_with_tags(
-        blobAnnotationList, training_regions, exclusive=False)
+    if training_regions is None or len(training_regions) == 0:
+        regionAnnotationList = []
+    else:
+        regionAnnotationList = annotation_tools.get_annotations_with_tags(
+            blobAnnotationList, training_regions, exclusive=False)
 
-    # TODO: If these are empty, given an error message.
+    if len(trainingAnnotationList) == 0:
+        sendError("No training annotations found.",
+                  info="No annotations with the training tag were found.")
+        raise ValueError("No training annotations found.")
+    if len(regionAnnotationList) == 0 and len(training_regions) > 0:
+        sendWarning("No region annotations found.",
+                    info="No annotations with the training region tag were found.")
+        print("No region annotations found. Training will be performed on entire image that the annotations are in.")
 
+    sendProgress(0.2, "Processing annotations",
+                 "Grouping annotations by location")
     # Group the training annotations by location so that we can batch the image loading.
     grouped_training_annotations = defaultdict(list)
     for current_annotation in trainingAnnotationList:
@@ -216,67 +237,79 @@ def compute(datasetId, apiUrl, token, params):
     training_images = []
     label_images = []
 
+    sendProgress(0.3, "Loading training data", "Loading training images")
     # Loop through each location and load the image for the training.
     for location_key, training_annotations in grouped_training_annotations.items():
         time, z, xy = location_key
         # TODO: Handle all channel cases in some sort of general way.
-        frame = tileClient.coordinatesToFrameIndex(xy, z, time, nuclei_channel)
-        nucleus_image = tileClient.getRegion(datasetId, frame=frame)
-        nucleus_image = nucleus_image.squeeze()
-
+        # TODO: If there are no region annotations and there is no region tag, then skip the image loading for efficiency.
         frame = tileClient.coordinatesToFrameIndex(
-            xy, z, time, cytoplasm_channel)
-        cytoplasm_image = tileClient.getRegion(datasetId, frame=frame)
-        cytoplasm_image = cytoplasm_image.squeeze()
+            xy, z, time, primary_channel)
+        primary_image = tileClient.getRegion(datasetId, frame=frame)
+        primary_image = primary_image.squeeze()
 
-        label_image = np.zeros(nucleus_image.shape[:2], dtype=np.uint16)
+        if secondary_channel is not None and secondary_channel != -1:
+            frame = tileClient.coordinatesToFrameIndex(
+                xy, z, time, secondary_channel)
+            secondary_image = tileClient.getRegion(datasetId, frame=frame)
+            secondary_image = secondary_image.squeeze()
+        else:
+            secondary_image = np.zeros_like(primary_image)
+
+        label_image = np.zeros(primary_image.shape[:2], dtype=np.uint16)
         for i, current_annotation in enumerate(training_annotations):
             polygon = np.array([list(coordinate.values())[1::-1]
                                for coordinate in current_annotation['coordinates']])
-            mask = draw.polygon2mask(nucleus_image.shape, polygon)
+            mask = draw.polygon2mask(primary_image.shape, polygon)
             label_image[mask] = i + 1
 
-        # TODO: Handle the case where there are no region annotations.
-        region_annotations = grouped_region_annotations[location_key]
-        for region_annotation in region_annotations:
-            region_polygon = np.array([list(coordinate.values())[1::-1]
-                                      for coordinate in region_annotation['coordinates']])
-            region_polygon = Polygon([(coordinate['x'], coordinate['y'])
-                                     for coordinate in region_annotation['coordinates']])
-
-            # Use shapely to get the bounding box
-            min_x, min_y, max_x, max_y = region_polygon.bounds
-
-            # Crop the all images to the bounding box
-            nucleus_image = nucleus_image[int(
-                min_y):int(max_y), int(min_x):int(max_x)]
-            cytoplasm_image = cytoplasm_image[int(
-                min_y):int(max_y), int(min_x):int(max_x)]
-            label_image = label_image[int(min_y):int(
-                max_y), int(min_x):int(max_x)]
-
-            # Assemble the nucleus and cytoplasm images into a single RGB image.
+        if training_regions is None or len(training_regions) == 0:
             training_image = np.stack(
-                [nucleus_image, cytoplasm_image, np.zeros_like(nucleus_image)], axis=-1)
-
-            # Add to the list of training images and label images.
+                [primary_image, secondary_image, np.zeros_like(primary_image)], axis=-1)
             training_images.append(training_image)
             label_images.append(label_image)
+        else:
+            region_annotations = grouped_region_annotations[location_key]
+            for region_annotation in region_annotations:
+                region_polygon = Polygon([(coordinate['x'], coordinate['y'])
+                                         for coordinate in region_annotation['coordinates']])
+
+                # Use shapely to get the bounding box
+                min_x, min_y, max_x, max_y = region_polygon.bounds
+
+                # Crop the all images to the bounding box
+                primary_image_crop = primary_image[int(
+                    min_y):int(max_y), int(min_x):int(max_x)]
+                secondary_image_crop = secondary_image[int(
+                    min_y):int(max_y), int(min_x):int(max_x)]
+                label_image_crop = label_image[int(min_y):int(
+                    max_y), int(min_x):int(max_x)]
+
+                # Assemble the nucleus and cytoplasm images into a single RGB image.
+                training_image_crop = np.stack(
+                    [primary_image_crop, secondary_image_crop, np.zeros_like(primary_image_crop)], axis=-1)
+
+                # Add to the list of training images and label images.
+                training_images.append(training_image_crop)
+                label_images.append(label_image_crop)
 
     using_gpu = core.use_gpu()
     print(f"Using GPU: {using_gpu}")
-    # TODO: Allow different models.
-    model = models.CellposeModel(model_type="cyto3")
+    # TODO: Allow different models. Not sure if this will work for pre-trained models as a base, might need the whole path.
+    model = models.CellposeModel(model_type=base_model)
 
     print(f"Training with {len(training_images)} images.")
+    sendProgress(0.4, "Training model",
+                 f"Training with {len(training_images)} images, be patient...")
 
     model_path, train_losses, test_losses = train.train_seg(model.net,
                                                             train_data=training_images, train_labels=label_images,
-                                                            channels=[1, 2], normalize=True,
+                                                            channels=channels, normalize=True,
                                                             weight_decay=weight_decay, SGD=True, learning_rate=learning_rate,
                                                             n_epochs=epochs, model_name=MODELS_DIR / output_model_name)
 
     # Upload the trained model to Girder
+    sendProgress(0.95, "Saving model", f"Uploading model {output_model_name}")
     girder_utils.upload_girder_model(client.client, output_model_name)
 
 

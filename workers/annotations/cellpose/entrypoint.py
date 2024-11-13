@@ -6,6 +6,7 @@ from functools import partial
 from itertools import product
 
 import annotation_client.workers as workers
+from annotation_client.utils import sendError, sendWarning, sendProgress
 
 import numpy as np  # library for array manipulation
 import deeptile
@@ -23,11 +24,13 @@ BASE_MODELS = ['cyto', 'cyto2', 'cyto3', 'nuclei']
 
 
 def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
 
     # models = sorted(path.stem for path in MODELS_DIR.glob('*'))
     models = BASE_MODELS
-    girder_models = [model['name'] for model in girder_utils.list_girder_models(client.client)[0]]
+    girder_models = [model['name']
+                     for model in girder_utils.list_girder_models(client.client)[0]]
     models = sorted(list(set(models + girder_models)))
 
     # Available types: number, text, tags, layer
@@ -40,30 +43,30 @@ def interface(image, apiUrl, token):
         'Batch XY': {
             'type': 'text',
             'vueAttrs': {
-               'placeholder': 'ex. 1-3, 5-8',
-               'label': 'Enter the XY positions you want to iterate over',
-               'persistentPlaceholder': True,
-               'filled': True,
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the XY positions you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
             },
             'displayOrder': 1
         },
         'Batch Z': {
             'type': 'text',
             'vueAttrs': {
-               'placeholder': 'ex. 1-3, 5-8',
-               'label': 'Enter the Z slices you want to iterate over',
-               'persistentPlaceholder': True,
-               'filled': True,
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Z slices you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
             },
             'displayOrder': 2
         },
         'Batch Time': {
             'type': 'text',
             'vueAttrs': {
-               'placeholder': 'ex. 1-3, 5-8',
-               'label': 'Enter the Time points you want to iterate over',
-               'persistentPlaceholder': True,
-               'filled': True,
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Time points you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
             },
             'displayOrder': 3
         },
@@ -79,13 +82,13 @@ def interface(image, apiUrl, token):
         },
         'Nuclei Channel': {
             'type': 'channel',
-            # 'default': -1,  # -1 means no channel
+            'default': -1,  # -1 means no channel
             'required': False,
             'displayOrder': 6
         },
         'Cytoplasm Channel': {
             'type': 'channel',
-            # 'default': -1,  # -1 means no channel
+            'default': -1,  # -1 means no channel
             'required': False,
             'displayOrder': 7
         },
@@ -144,7 +147,8 @@ def interface(image, apiUrl, token):
 def run_model(image, cellpose, tile_size, tile_overlap, padding, smoothing):
 
     dt = deeptile.load(image)
-    image = dt.get_tiles(tile_size=(tile_size, tile_size), overlap=(tile_overlap, tile_overlap))
+    image = dt.get_tiles(tile_size=(tile_size, tile_size),
+                         overlap=(tile_overlap, tile_overlap))
 
     polygons = cellpose(image)
     polygons = stitch_polygons(polygons)
@@ -197,7 +201,8 @@ def compute(datasetId, apiUrl, token, params):
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
 
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
     if model not in BASE_MODELS:
         girder_utils.download_girder_model(client.client, model)
 
@@ -215,17 +220,23 @@ def compute(datasetId, apiUrl, token, params):
     elif len(stack_channels) == 1:
         channels = (0, 0)
     else:
+        sendError("No cytoplasmic or nuclei channels selected.",
+                  info="No cytoplasmic or nuclei channels selected.")
         raise ValueError("No cytoplasmic or nuclei channels selected.")
 
     if model in BASE_MODELS:
-        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
+        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={
+                                         'diameter': diameter, 'channels': channels}, output_format='polygons')
     else:
         # Get the full path to the model
         model_path = str(MODELS_DIR / model)
-        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'pretrained_model': model_path}, eval_parameters={'diameter': diameter, 'channels': channels}, output_format='polygons')
-    f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size, tile_overlap=tile_overlap, padding=padding, smoothing=smoothing)
+        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'pretrained_model': model_path}, eval_parameters={
+                                         'diameter': diameter, 'channels': channels}, output_format='polygons')
+    f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size,
+                        tile_overlap=tile_overlap, padding=padding, smoothing=smoothing)
 
-    worker.process(f_process, f_annotation='polygon', stack_channels=stack_channels, progress_text='Running Cellpose')
+    worker.process(f_process, f_annotation='polygon',
+                   stack_channels=stack_channels, progress_text='Running Cellpose')
 
 
 if __name__ == '__main__':
@@ -233,7 +244,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
