@@ -33,8 +33,10 @@ from scipy import stats, optimize, interpolate
 
 import property_handling
 
+
 def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
 
     # Available types: number, text, tags, layer
     interface = {
@@ -70,6 +72,7 @@ def interface(image, apiUrl, token):
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
 
+
 def get_all_dataset_properties(annotation_client, datasetId):
     """
     Get all the properties for the dataset.
@@ -89,7 +92,7 @@ def get_all_dataset_properties(annotation_client, datasetId):
     # Fetch details for each property
     for prop_id in property_ids:
         prop = annotation_client.getPropertyById(prop_id)
-        
+
         detail = {
             "_id": prop["_id"],
             "name": prop["name"],
@@ -102,6 +105,7 @@ def get_all_dataset_properties(annotation_client, datasetId):
         property_info.append(detail)
 
     return property_info
+
 
 def get_ai_property_id(annotation_client, property_info, ai_property_name):
     """
@@ -131,6 +135,7 @@ def get_ai_property_id(annotation_client, property_info, ai_property_name):
     # Return the _id of the newly created property
     return new_prop['_id']
 
+
 def add_ai_property_to_all_configurations(annotation_client, datasetId, ai_property_id):
     # Get all configurations for the dataset
     configurationList = annotation_client.getDatasetViewsByDatasetId(datasetId)
@@ -147,9 +152,11 @@ def add_ai_property_to_all_configurations(annotation_client, datasetId, ai_prope
             # Add the AI property to the configuration
             properties['meta']['propertyIds'].append(ai_property_id)
             # Update the configuration with the new property
-            annotation_client.setPropertiesByConfigurationId(configId, properties['meta']['propertyIds'])
+            annotation_client.setPropertiesByConfigurationId(
+                configId, properties['meta']['propertyIds'])
         else:
             print(f"AI property already in configuration {configId}")
+
 
 def save_dataset_to_JSON_file(annotationClient, json_filename, dictionary_data, datasetId):
     # Temporarily remove the 'df' key-value pair
@@ -169,10 +176,10 @@ def save_dataset_to_JSON_file(annotationClient, json_filename, dictionary_data, 
 
         # Upload JSON content to the file
         annotationClient.client.uploadStreamToFolder(
-            folder['_id'], 
-            json_stream, 
-            json_filename, 
-            json_size, 
+            folder['_id'],
+            json_stream,
+            json_filename,
+            json_size,
             mimeType="application/json"
         )
 
@@ -182,6 +189,7 @@ def save_dataset_to_JSON_file(annotationClient, json_filename, dictionary_data, 
         # Always put the 'df' key-value pair back, even if an exception occurs
         if df is not None:
             dictionary_data['df'] = df
+
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -201,14 +209,17 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     # roughly validate params
-    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
+    keys = ["assignment", "channel", "connectTo",
+            "tags", "tile", "workerInterface"]
     if not all(key in params for key in keys):
-        print ("Invalid worker parameters", params)
+        print("Invalid worker parameters", params)
         return
-    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(
+        *keys)(params)
 
     # Use the environment variable if set, otherwise use the provided key
-    api_key = os.getenv('ANTHROPIC_API_KEY') or workerInterface['Claude API key']
+    api_key = os.getenv(
+        'ANTHROPIC_API_KEY') or workerInterface['Claude API key']
     output_json_filename = workerInterface['Output JSON filename']
     query = workerInterface['Query']
     ai_property_name = workerInterface['AI Property Name']
@@ -219,20 +230,24 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-
     print("Input parameters: ", api_key, output_json_filename, query)
 
-    sendProgress(0.1, 'Getting information', 'Getting annotations, connections, and property values from the dataset')
+    sendProgress(0.1, 'Getting information',
+                 'Getting annotations, connections, and property values from the dataset')
     annotationList = annotationClient.getAnnotationsByDatasetId(datasetId)
     connectionList = annotationClient.getAnnotationConnections(datasetId)
     propertyValueList = annotationClient.getPropertyValuesForDataset(datasetId)
     propertyList = get_all_dataset_properties(annotationClient, datasetId)
     # Using the propertyValueList, we can get the property names and make a dataframe that is easier for the AI to reason about.
-    property_descriptions = property_handling.get_property_info(annotationClient, propertyValueList)
-    property_id_to_name, property_name_to_id = property_handling.create_property_mappings(property_descriptions)
-    df = property_handling.create_dataframe_from_annotations(propertyValueList, property_id_to_name, annotationList)
+    property_descriptions = property_handling.get_property_info(
+        annotationClient, propertyValueList)
+    property_id_to_name, property_name_to_id = property_handling.create_property_mappings(
+        property_descriptions)
+    df = property_handling.create_dataframe_from_annotations(
+        propertyValueList, property_id_to_name, annotationList)
 
-    dictionary_data = convert_nimbus_objects_to_dictionary(annotationList, connectionList, propertyValueList)
+    dictionary_data = convert_nimbus_objects_to_dictionary(
+        annotationList, connectionList, propertyValueList)
     dictionary_data['annotationProperties'] = propertyList
     dictionary_data['df'] = df
 
@@ -248,24 +263,31 @@ def compute(datasetId, apiUrl, token, params):
     user_message = query + "\n\n" + tag_string
 
     # Give the tag to column and column to tag mappings.
-    tag_to_columns, column_to_tags = property_handling.create_tag_column_mappings(df)
-    user_message = user_message + "\n\n" + "The tag to column mapping of property values is: " + pprint.pformat(tag_to_columns, indent=2)
-    user_message = user_message + "\n\n" + "The column to tag mapping of property values is: " + pprint.pformat(column_to_tags, indent=2)
+    tag_to_columns, column_to_tags = property_handling.create_tag_column_mappings(
+        df)
+    user_message = user_message + "\n\n" + "The tag to column mapping of property values is: " + \
+        pprint.pformat(tag_to_columns, indent=2)
+    user_message = user_message + "\n\n" + "The column to tag mapping of property values is: " + \
+        pprint.pformat(column_to_tags, indent=2)
 
     # Give the head of the dataframe.
-    user_message = user_message + "\n\n" + "The head of the dataframe is: \n" + df.head().to_string()
+    user_message = user_message + "\n\n" + \
+        "The head of the dataframe is: \n" + df.head().to_string()
 
     # Give the column names of the dataframe.
-    user_message = user_message + "\n\n" + "The column names of the dataframe are: " + ", ".join(df.columns)
+    user_message = user_message + "\n\n" + \
+        "The column names of the dataframe are: " + ", ".join(df.columns)
 
-    original_columns = df.columns.tolist()  # We will need this later to distinguish between the old columns and the new ones.
+    # We will need this later to distinguish between the old columns and the new ones.
+    original_columns = df.columns.tolist()
 
     print("User message: ", user_message)
 
-    sendProgress(0.5, 'Generating code', 'Generating analysis code from Claude')
+    sendProgress(0.5, 'Generating code',
+                 'Generating analysis code from Claude')
 
     message = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
+        model="claude-3-5-sonnet-20241022",
         max_tokens=1103,
         temperature=0,
         system=SYSTEM_PROMPT,
@@ -286,8 +308,10 @@ def compute(datasetId, apiUrl, token, params):
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     input_json_filename = f"Claude input before {current_time}.json"
 
-    sendProgress(0.4, 'Saving input data', f"Saving {input_json_filename} to dataset folder")
-    save_dataset_to_JSON_file(annotationClient, input_json_filename, dictionary_data, datasetId)
+    sendProgress(0.4, 'Saving input data',
+                 f"Saving {input_json_filename} to dataset folder")
+    save_dataset_to_JSON_file(
+        annotationClient, input_json_filename, dictionary_data, datasetId)
 
     # Extract the Python code from the message and run it
     code = extract_python_code_from_string(message.content[0].text)
@@ -310,13 +334,15 @@ def compute(datasetId, apiUrl, token, params):
     doc_size = len(documentation)
     doc_stream.seek(0)
 
-    sendProgress(0.60, 'Creating documentation', f"Saving {doc_filename} to dataset folder")
+    sendProgress(0.60, 'Creating documentation',
+                 f"Saving {doc_filename} to dataset folder")
 
     # Upload documentation content to the file
     # Get the dataset folder
     folder = annotationClient.client.getFolder(datasetId)
-    annotationClient.client.uploadStreamToFolder(folder['_id'], doc_stream, doc_filename, doc_size, mimeType="text/plain")
-                                                 
+    annotationClient.client.uploadStreamToFolder(
+        folder['_id'], doc_stream, doc_filename, doc_size, mimeType="text/plain")
+
     sendProgress(0.75, 'Executing code', 'Executing the AI model code')
 
     # Use a copy of the current globals and add/override as needed
@@ -342,15 +368,18 @@ def compute(datasetId, apiUrl, token, params):
 
     # Let's add the AI property to all configurations.
     all_properties = get_all_dataset_properties(annotationClient, datasetId)
-    ai_property_id = get_ai_property_id(annotationClient, all_properties, ai_property_name)
-    add_ai_property_to_all_configurations(annotationClient, datasetId, ai_property_id)
+    ai_property_id = get_ai_property_id(
+        annotationClient, all_properties, ai_property_name)
+    add_ai_property_to_all_configurations(
+        annotationClient, datasetId, ai_property_id)
 
     # Create a new DataFrame with only the new columns so the new ones can be processed for upload.
     new_columns = [col for col in df.columns if col not in original_columns]
     new_df = df[new_columns]
 
     # Update the annotations, connections, and property values in the database
-    sendProgress(0.80, 'Updating annotations, connections, and property values', 'Updating the annotations, connections, and property values in the database')
+    sendProgress(0.80, 'Updating annotations, connections, and property values',
+                 'Updating the annotations, connections, and property values in the database')
     update_annotations_connections_propertyvalues(
         annotationClient,
         dictionary_data['annotations'],
@@ -369,8 +398,11 @@ def compute(datasetId, apiUrl, token, params):
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     output_json_filename = f"Claude output after {current_time}.json"
 
-    sendProgress(0.85, 'Saving output data', f"Saving {output_json_filename} to dataset folder")
-    save_dataset_to_JSON_file(annotationClient, output_json_filename, dictionary_data, datasetId)
+    sendProgress(0.85, 'Saving output data',
+                 f"Saving {output_json_filename} to dataset folder")
+    save_dataset_to_JSON_file(
+        annotationClient, output_json_filename, dictionary_data, datasetId)
+
 
 def update_annotations_connections_propertyvalues(
     annotationClient, new_annotation_list, new_connection_list,
@@ -394,60 +426,72 @@ def update_annotations_connections_propertyvalues(
     annotationClient.deleteMultipleAnnotations(existingAnnotationIds)
 
     # 4. Upload new annotations and keep the return value
-    new_annotations = annotationClient.createMultipleAnnotations(new_annotation_list)
+    new_annotations = annotationClient.createMultipleAnnotations(
+        new_annotation_list)
 
     # 5. Map initial _ids to newly generated _ids from server
-    id_mapping = {new_ann_id: new_ann['_id'] for new_ann_id, new_ann in zip(new_annotation_ids, new_annotations)}
+    id_mapping = {new_ann_id: new_ann['_id'] for new_ann_id, new_ann in zip(
+        new_annotation_ids, new_annotations)}
 
     # 6. Update parentId and childId in connections to match the new _ids from the server
     for conn in new_connection_list:
         new_parent_id = id_mapping.get(conn['parentId'])
         new_child_id = id_mapping.get(conn['childId'])
-        
+
         if new_parent_id is None:
-            print(f"Error: No matching ID in new connections for parentId {conn['parentId']}")
+            print(
+                f"Error: No matching ID in new connections for parentId {conn['parentId']}")
         else:
             conn['parentId'] = new_parent_id
-        
+
         if new_child_id is None:
-            print(f"Error: No matching ID in new connections for childId {conn['childId']}")
+            print(
+                f"Error: No matching ID in new connections for childId {conn['childId']}")
         else:
             conn['childId'] = new_child_id
 
     # 7. Upload new connections
-    new_connections = annotationClient.createMultipleConnections(new_connection_list)
+    new_connections = annotationClient.createMultipleConnections(
+        new_connection_list)
 
     # 8. Update property values
     for prop_value in new_property_value_list:
         # Remove the '_id' field
         prop_value.pop('_id', None)
-        
+
         # Remap the 'annotationId'
         old_annotation_id = prop_value['annotationId']
         new_annotation_id = id_mapping.get(old_annotation_id)
-        
+
         if new_annotation_id is None:
-            print(f"Error: No matching ID in new annotations for annotationId {old_annotation_id}")
+            print(
+                f"Error: No matching ID in new annotations for annotationId {old_annotation_id}")
         else:
             prop_value['annotationId'] = new_annotation_id
 
     # 9. Upload new versions of the original property values
-    new_property_values = annotationClient.addMultipleAnnotationPropertyValues(new_property_value_list)
+    new_property_values = annotationClient.addMultipleAnnotationPropertyValues(
+        new_property_value_list)
 
     # 10. Now let's collect the new dataframe property values, make them into a list of propertyValues, and upload them.
     # First, we need to convert the annotationIds to the new ids in the df.
     df = property_handling.convert_annotation_ids_to_new_ids(df, id_mapping)
-    prop_vals = property_handling.convert_columns_to_property_values(df, datasetId, ai_property_id)
-    annotationClient.deleteAnnotationPropertyValues(ai_property_id,datasetId)  # First delete the old property values.
-    prop_vals = annotationClient.addMultipleAnnotationPropertyValues(prop_vals)  # Then add the new property values.
+    prop_vals = property_handling.convert_columns_to_property_values(
+        df, datasetId, ai_property_id)
+    # First delete the old property values.
+    annotationClient.deleteAnnotationPropertyValues(ai_property_id, datasetId)
+    # Then add the new property values.
+    prop_vals = annotationClient.addMultipleAnnotationPropertyValues(prop_vals)
 
     return new_annotations, new_connections, new_property_values
 
-def convert_nimbus_objects_to_dictionary(annotationList: List[Dict], 
-                                   connectionList: Optional[List[Dict]] = None, 
-                                   propertyValueList: Optional[List[Dict]] = None, 
-                                   filename: str = "output.json") -> None:
-    output = {"annotations": [], "annotationConnections": [], "annotationPropertyValues": {}}
+
+def convert_nimbus_objects_to_dictionary(annotationList: List[Dict],
+                                         connectionList: Optional[List[Dict]] = None,
+                                         propertyValueList: Optional[List[Dict]] = None,
+                                         filename: str = "output.json") -> None:
+    output = {"annotations": [], "annotationConnections": [],
+              "annotationPropertyValues": {}}
 
     for annotation in annotationList:
         ann_output = {
@@ -488,6 +532,7 @@ def convert_nimbus_objects_to_dictionary(annotationList: List[Dict],
         output["annotationPropertyValues"] = propertyValueList
 
     return output
+
 
 def convert_JSON_to_nimbus_objects(filename: str) -> tuple:
     with open(filename, 'r') as f:
@@ -530,28 +575,30 @@ def convert_JSON_to_nimbus_objects(filename: str) -> tuple:
 
     return annotationList, connectionList, propertyValueList
 
+
 def JSON_data_tags_to_prompt_string(data):
     # Extract unique tags from annotations
     unique_tags = set()
     for annotation in data.get('annotations', []):
         unique_tags.update(annotation.get('tags', []))
-    
+
     # Sort the tags alphabetically
     sorted_tags = sorted(unique_tags)
-    
+
     # Create the formatted string
     if sorted_tags:
         tags_string = ', '.join(f'"{tag}"' for tag in sorted_tags)
         result = f"The list of tags available to you in the JSON is: {tags_string}"
     else:
         result = "There are no tags in the annotations."
-    
+
     return result
+
 
 def extract_python_code_from_string(text):
     # Split the text into lines
     lines = text.splitlines()
-    
+
     # Extract the Python code
     code_lines = []
     in_code_block = False
@@ -564,10 +611,10 @@ def extract_python_code_from_string(text):
             in_code_block = True
         else:
             continue
-    
+
     # Join the code lines into a single string
     code = '\n'.join(code_lines)
-    
+
     return code
 
 
@@ -576,7 +623,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Generate random point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
@@ -589,7 +637,6 @@ if __name__ == '__main__':
     datasetId = args.datasetId
     apiUrl = args.apiUrl
     token = args.token
-
 
     if args.request == 'compute':
         compute(datasetId, apiUrl, token, params)
