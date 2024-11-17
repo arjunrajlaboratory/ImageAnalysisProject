@@ -13,7 +13,7 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 
-#import annotation_tools
+# import annotation_tools
 import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
@@ -23,91 +23,10 @@ import geopandas as gpd
 from shapely.geometry import Point, Polygon
 from scipy.spatial import cKDTree
 
-def extract_spatial_annotation_data(obj_list):
-    data = []
-    for obj in obj_list:
-        x, y = None, None
-        shape = obj['shape']
-        coords = obj['coordinates']
-        
-        if shape == 'point':
-            x, y = coords[0]['x'], coords[0]['y']
-        elif shape == 'polygon':
-            polygon = Polygon([(pt['x'], pt['y']) for pt in coords])
-            centroid = polygon.centroid
-            x, y = centroid.x, centroid.y
-        
-        data.append({
-            '_id': obj['_id'],
-            'x': x,
-            'y': y,
-            'Time': obj['location']['Time'],
-            'XY': obj['location']['XY'],
-            'Z': obj['location']['Z']
-        })
-    return data
-
-def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', 'XY', 'Z'], max_distance=None):
-    # Empty DataFrame to store results
-    child_to_parent = pd.DataFrame(columns=['child_id', 'nearest_parent_id'])
-
-    # Get all the groups (this operation does not actually compute the groups yet, but prepares the grouping)
-    grouped = child_df.groupby(groupby_cols)
-    
-    # Determine the total number of groups
-    total_groups = len(grouped)
-    
-    # Start the counter for processed groups
-    processed_groups = 0
-
-    # Group by unique location combinations
-    for values, group in grouped:
-        
-        # Build a dynamic query string
-        query_str = ' & '.join([f"{col} == {val}" for col, val in zip(groupby_cols, values)])
-        
-        # Filter parent dataframe by the same location values
-        parent_group = parent_df.query(query_str)
-        
-        # Ensure there are parents in the group to compare to
-        if parent_group.empty:
-            continue
-        
-        # Create a cKDTree for the parent group
-        tree = cKDTree(np.array(list(zip(parent_group.geometry.x, parent_group.geometry.y))))
-        
-        # Compute distance and index for the nearest parent for each child within this group
-        distances, indices = tree.query(np.array(list(zip(group.geometry.x, group.geometry.y))))
-        
-        # If max_distance is provided, filter out entries beyond that distance
-        if max_distance is not None:
-            valid_indices = distances <= max_distance
-            distances = distances[valid_indices]
-            indices = indices[valid_indices]
-            group = group.iloc[valid_indices]  # Update the group DataFrame to only contain valid entries
-        
-        # Map child IDs to nearest parent IDs for this group
-        temp_df = pd.DataFrame({
-            'child_id': group['_id'].values,
-            'nearest_parent_id': parent_group.iloc[indices]['_id'].values
-        })
-        
-        # Append the results to the main DataFrame
-        child_to_parent = pd.concat([child_to_parent, temp_df], ignore_index=True)
-
-        # Increment the counter of processed groups
-        processed_groups += 1
-
-        # Compute the fraction of work done
-        fraction_done = processed_groups / total_groups
-
-        # Send the progress update
-        sendProgress(fraction_done, "Computing connections", f"{processed_groups} of {total_groups} groups processed")
-
-    return child_to_parent
 
 def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
 
     # Available types: number, text, tags, layer
     interface = {
@@ -139,17 +58,131 @@ def interface(image, apiUrl, token):
             'tooltip': 'Connect objects regardless of their time point.\nFor example, it will connect a parent in T=1 to a child in T=4.',
             'displayOrder': 5,
         },
+        'Connect to closest centroid or edge': {
+            'type': 'select',
+            'items': ['Centroid', 'Edge'],
+            'default': 'Centroid',
+            'tooltip': 'Connect to the parent with either the closest centroid or closest edge.',
+            'displayOrder': 7,
+        },
+        'Restrict connection': {
+            'type': 'select',
+            'items': ['None', 'Touching parent', 'Within parent'],
+            'default': 'None',
+            'tooltip': 'Only connect if the child is either touching the parent or completely within the parent.',
+            'displayOrder': 8,
+        },
         'Max distance (pixels)': {
             'type': 'number',
             'min': 0,
             'max': 5000,
             'default': 1000,
             'tooltip': 'The maximum distance (in pixels) between the child and\nparent objects to be connected. Otherwise, objects will not be connected.',
-            'displayOrder': 6,
+            'displayOrder': 9,
+        },
+        'Connect up to N children': {
+            'type': 'number',
+            'min': 1,
+            'max': 10000,
+            'default': 10000,
+            'tooltip': 'The maximum number of children to connect to each parent.',
+            'displayOrder': 10,
         }
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
+
+
+def extract_spatial_annotation_data(obj_list):
+    data = []
+    for obj in obj_list:
+        x, y = None, None
+        shape = obj['shape']
+        coords = obj['coordinates']
+
+        if shape == 'point':
+            x, y = coords[0]['x'], coords[0]['y']
+        elif shape == 'polygon':
+            polygon = Polygon([(pt['x'], pt['y']) for pt in coords])
+            centroid = polygon.centroid
+            x, y = centroid.x, centroid.y
+
+        data.append({
+            '_id': obj['_id'],
+            'x': x,
+            'y': y,
+            'Time': obj['location']['Time'],
+            'XY': obj['location']['XY'],
+            'Z': obj['location']['Z']
+        })
+    return data
+
+
+def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', 'XY', 'Z'], max_distance=None):
+    # Empty DataFrame to store results
+    child_to_parent = pd.DataFrame(columns=['child_id', 'nearest_parent_id'])
+
+    # Get all the groups (this operation does not actually compute the groups yet, but prepares the grouping)
+    grouped = child_df.groupby(groupby_cols)
+
+    # Determine the total number of groups
+    total_groups = len(grouped)
+
+    # Start the counter for processed groups
+    processed_groups = 0
+
+    # Group by unique location combinations
+    for values, group in grouped:
+
+        # Build a dynamic query string
+        query_str = ' & '.join(
+            [f"{col} == {val}" for col, val in zip(groupby_cols, values)])
+
+        # Filter parent dataframe by the same location values
+        parent_group = parent_df.query(query_str)
+
+        # Ensure there are parents in the group to compare to
+        if parent_group.empty:
+            continue
+
+        # Create a cKDTree for the parent group
+        tree = cKDTree(
+            np.array(list(zip(parent_group.geometry.x, parent_group.geometry.y))))
+
+        # Compute distance and index for the nearest parent for each child within this group
+        distances, indices = tree.query(
+            np.array(list(zip(group.geometry.x, group.geometry.y))))
+
+        # If max_distance is provided, filter out entries beyond that distance
+        if max_distance is not None:
+            valid_indices = distances <= max_distance
+            distances = distances[valid_indices]
+            indices = indices[valid_indices]
+            # Update the group DataFrame to only contain valid entries
+            group = group.iloc[valid_indices]
+
+        # Map child IDs to nearest parent IDs for this group
+        temp_df = pd.DataFrame({
+            'child_id': group['_id'].values,
+            'nearest_parent_id': parent_group.iloc[indices]['_id'].values
+        })
+
+        # Append the results to the main DataFrame
+        child_to_parent = pd.concat(
+            [child_to_parent, temp_df], ignore_index=True)
+
+        # Increment the counter of processed groups
+        processed_groups += 1
+
+        # Compute the fraction of work done
+        fraction_done = processed_groups / total_groups
+
+        # Send the progress update
+        sendProgress(fraction_done, "Computing connections",
+                     f"{processed_groups} of {total_groups} groups processed")
+
+    return child_to_parent
+
 
 def compute(datasetId, apiUrl, token, params):
     """
@@ -169,45 +202,54 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     # roughly validate params
-    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
+    keys = ["assignment", "channel", "connectTo",
+            "tags", "tile", "workerInterface"]
     if not all(key in params for key in keys):
-        print ("Invalid worker parameters", params)
+        print("Invalid worker parameters", params)
         return
-    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(
+        *keys)(params)
 
     parent_tag = list(set(workerInterface.get('Parent tag', None)))
     child_tag = list(set(workerInterface.get('Child tag', None)))
     max_distance = float(workerInterface['Max distance (pixels)'])
     connect_across_z = workerInterface['Connect across Z'] == 'Yes'
     connect_across_t = workerInterface['Connect across T'] == 'Yes'
+    connect_to_closest = workerInterface['Connect to closest centroid or edge']
+    restrict_connection = workerInterface['Restrict connection']
+    max_children = int(workerInterface['Connect up to N children'])
 
-    print(parent_tag, child_tag, max_distance, connect_across_z, connect_across_t)
-    
+    print(parent_tag, child_tag, max_distance,
+          connect_across_z, connect_across_t)
+
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
         apiUrl=apiUrl, token=token)
-    datasetClient = tiles.UPennContrastDataset(
+    tileClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
-    
-    # May need to change the limit for large numbers of annotations. Default is 50.
-    # TODO: A new update will allow for getting all annotations in a single call.
-    # Also, currently, we do not handle line annotations.
-    pointAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 1000000, shape='point')
-    blobAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 1000000, shape='polygon')
-    #lineAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 1000000, shape='line')
-    #allAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 1000000)
-    allAnnotationList = pointAnnotationList + blobAnnotationList# + lineAnnotationList
-    
-    parentList = annotation_tools.get_annotations_with_tags(allAnnotationList,parent_tag,exclusive=False)
-    childList = annotation_tools.get_annotations_with_tags(allAnnotationList,child_tag,exclusive=False)
+
+    # TODO: Currently, we do not handle line annotations.
+    pointAnnotationList = annotationClient.getAnnotationsByDatasetId(
+        datasetId, limit=10000000, shape='point')
+    blobAnnotationList = annotationClient.getAnnotationsByDatasetId(
+        datasetId, limit=10000000, shape='polygon')
+    # lineAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 10000000, shape='line')
+    allAnnotationList = pointAnnotationList + blobAnnotationList
+
+    parentList = annotation_tools.get_annotations_with_tags(
+        allAnnotationList, parent_tag, exclusive=False)
+    childList = annotation_tools.get_annotations_with_tags(
+        allAnnotationList, child_tag, exclusive=False)
     child_data = extract_spatial_annotation_data(childList)
     parent_data = extract_spatial_annotation_data(parentList)
 
     child_df = pd.DataFrame(child_data)
     parent_df = pd.DataFrame(parent_data)
 
-    gdf_child = gpd.GeoDataFrame(child_df, geometry=gpd.points_from_xy(child_df.x, child_df.y))
-    gdf_parent = gpd.GeoDataFrame(parent_df, geometry=gpd.points_from_xy(parent_df.x, parent_df.y))
+    gdf_child = gpd.GeoDataFrame(
+        child_df, geometry=gpd.points_from_xy(child_df.x, child_df.y))
+    gdf_parent = gpd.GeoDataFrame(
+        parent_df, geometry=gpd.points_from_xy(parent_df.x, parent_df.y))
 
     # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
     groupby_cols = ['XY']
@@ -219,17 +261,18 @@ def compute(datasetId, apiUrl, token, params):
         groupby_cols.append('Z')
 
     # Compute the child to parent mapping
-    child_to_parent = compute_nearest_child_to_parent(gdf_child, gdf_parent, groupby_cols=groupby_cols, max_distance=max_distance)
-    
+    child_to_parent = compute_nearest_child_to_parent(
+        gdf_child, gdf_parent, groupby_cols=groupby_cols, max_distance=max_distance)
+
     myNewConnections = []
     combined_tags = list(set(parent_tag + child_tag))
 
     for index, row in child_to_parent.iterrows():
         child_id = row['child_id']
         parent_id = row['nearest_parent_id']
-        
+
         myNewConnections.append({
-            'datasetId': datasetId,  # assuming you've already set this variable elsewhere in your code
+            'datasetId': datasetId,
             'parentId': parent_id,
             'childId': child_id,
             'tags': combined_tags
@@ -237,25 +280,14 @@ def compute(datasetId, apiUrl, token, params):
 
     annotationClient.createMultipleConnections(myNewConnections)
 
-    
-    # Make a loop from 1 to 1000 and send progress updates
-    # n = 1000
-    # for i in range(1, n+1):
-    #     sendProgress((i+1)/n, "Computing connections", f"{i+1} of {n}")
-    #     time.sleep(0.003)
-
-    start_time = timeit.default_timer()
-    end_time = timeit.default_timer()
-    execution_time = end_time - start_time
-    print(f"Executed the code in: {execution_time} seconds")
-
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
         description='Generate random point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
@@ -268,7 +300,6 @@ if __name__ == '__main__':
     datasetId = args.datasetId
     apiUrl = args.apiUrl
     token = args.token
-
 
     if args.request == 'compute':
         compute(datasetId, apiUrl, token, params)
