@@ -118,7 +118,15 @@ def extract_spatial_annotation_data(obj_list):
     return data
 
 
-def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', 'XY', 'Z'], max_distance=None):
+def compute_nearest_child_to_parent(
+    child_df,
+    parent_df,
+    groupby_cols=['Time', 'XY', 'Z'],
+    max_distance=None,
+    connect_to_closest=None,
+    restrict_connection=None,
+    max_children=None
+):
     # Empty DataFrame to store results
     child_to_parent = pd.DataFrame(columns=['child_id', 'nearest_parent_id'])
 
@@ -262,7 +270,13 @@ def compute(datasetId, apiUrl, token, params):
 
     # Compute the child to parent mapping
     child_to_parent = compute_nearest_child_to_parent(
-        gdf_child, gdf_parent, groupby_cols=groupby_cols, max_distance=max_distance)
+        gdf_child,
+        gdf_parent,
+        groupby_cols=groupby_cols,
+        max_distance=max_distance,
+        connect_to_closest=connect_to_closest,
+        restrict_connection=restrict_connection,
+        max_children=max_children)
 
     myNewConnections = []
     combined_tags = list(set(parent_tag + child_tag))
