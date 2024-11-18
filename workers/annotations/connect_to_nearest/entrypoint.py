@@ -96,26 +96,25 @@ def interface(image, apiUrl, token):
 def extract_spatial_annotation_data(obj_list):
     data = []
     for obj in obj_list:
-        x, y = None, None
         shape = obj['shape']
         coords = obj['coordinates']
 
         if shape == 'point':
-            x, y = coords[0]['x'], coords[0]['y']
+            geometry = Point(coords[0]['x'], coords[0]['y'])
         elif shape == 'polygon':
-            polygon = Polygon([(pt['x'], pt['y']) for pt in coords])
-            centroid = polygon.centroid
-            x, y = centroid.x, centroid.y
+            geometry = Polygon([(pt['x'], pt['y']) for pt in coords])
 
         data.append({
             '_id': obj['_id'],
-            'x': x,
-            'y': y,
+            'geometry': geometry,
             'Time': obj['location']['Time'],
             'XY': obj['location']['XY'],
             'Z': obj['location']['Z']
         })
-    return data
+
+    # Create GeoDataFrame directly
+    gdf = gpd.GeoDataFrame(data, geometry='geometry')
+    return gdf
 
 
 def compute_nearest_child_to_parent(
@@ -123,69 +122,89 @@ def compute_nearest_child_to_parent(
     parent_df,
     groupby_cols=['Time', 'XY', 'Z'],
     max_distance=None,
-    connect_to_closest=None,
-    restrict_connection=None,
+    connect_to_closest='Centroid',
+    restrict_connection='None',
     max_children=None
 ):
     # Empty DataFrame to store results
     child_to_parent = pd.DataFrame(columns=['child_id', 'nearest_parent_id'])
 
-    # Get all the groups (this operation does not actually compute the groups yet, but prepares the grouping)
+    # Get all the groups
     grouped = child_df.groupby(groupby_cols)
-
-    # Determine the total number of groups
     total_groups = len(grouped)
-
-    # Start the counter for processed groups
     processed_groups = 0
 
     # Group by unique location combinations
     for values, group in grouped:
-
-        # Build a dynamic query string
+        # Build query string and filter parent dataframe
         query_str = ' & '.join(
             [f"{col} == {val}" for col, val in zip(groupby_cols, values)])
-
-        # Filter parent dataframe by the same location values
         parent_group = parent_df.query(query_str)
 
-        # Ensure there are parents in the group to compare to
         if parent_group.empty:
             continue
 
-        # Create a cKDTree for the parent group
-        tree = cKDTree(
-            np.array(list(zip(parent_group.geometry.x, parent_group.geometry.y))))
+        # Handle different connection restrictions
+        valid_children = group.copy()
+        if restrict_connection != 'None':
+            if restrict_connection == 'Touching parent':
+                # Find children that intersect with any parent
+                mask = valid_children.geometry.intersects(
+                    parent_group.geometry.unary_union)
+            elif restrict_connection == 'Within parent':
+                # Find children that are within any parent
+                mask = valid_children.geometry.within(
+                    parent_group.geometry.unary_union)
+            valid_children = valid_children[mask]
 
-        # Compute distance and index for the nearest parent for each child within this group
-        distances, indices = tree.query(
-            np.array(list(zip(group.geometry.x, group.geometry.y))))
+        if valid_children.empty:
+            continue
 
-        # If max_distance is provided, filter out entries beyond that distance
+        if connect_to_closest == 'Edge':
+            # Use sjoin_nearest to find closest parents for each child
+            joined = gpd.sjoin_nearest(
+                valid_children,
+                parent_group,
+                how='left',
+                distance_col='distance'
+            )
+
+            # Extract distances and indices
+            distances = joined['distance'].values
+            indices = joined.index_right.values
+        else:  # Centroid
+            parent_centroids = parent_group.geometry.centroid
+            child_centroids = valid_children.geometry.centroid
+            tree = cKDTree(
+                np.array(list(zip(parent_centroids.x, parent_centroids.y))))
+            distances, indices = tree.query(
+                np.array(list(zip(child_centroids.x, child_centroids.y))))
+
+        # Apply max_distance filter if specified
         if max_distance is not None:
             valid_indices = distances <= max_distance
             distances = distances[valid_indices]
             indices = indices[valid_indices]
-            # Update the group DataFrame to only contain valid entries
-            group = group.iloc[valid_indices]
+            valid_children = valid_children.iloc[valid_indices]
 
-        # Map child IDs to nearest parent IDs for this group
+        # Create connections with distances
         temp_df = pd.DataFrame({
-            'child_id': group['_id'].values,
-            'nearest_parent_id': parent_group.iloc[indices]['_id'].values
+            'child_id': valid_children['_id'].values,
+            'nearest_parent_id': parent_group.iloc[indices]['_id'].values,
+            'distance': distances
         })
 
-        # Append the results to the main DataFrame
+        # Apply max_children filter if specified, taking closest children first
+        if max_children is not None:
+            temp_df = (temp_df.sort_values('distance')  # Sort by distance
+                       .groupby('nearest_parent_id')
+                       .head(max_children))
+
         child_to_parent = pd.concat(
             [child_to_parent, temp_df], ignore_index=True)
 
-        # Increment the counter of processed groups
         processed_groups += 1
-
-        # Compute the fraction of work done
         fraction_done = processed_groups / total_groups
-
-        # Send the progress update
         sendProgress(fraction_done, "Computing connections",
                      f"{processed_groups} of {total_groups} groups processed")
 
@@ -248,16 +267,11 @@ def compute(datasetId, apiUrl, token, params):
         allAnnotationList, parent_tag, exclusive=False)
     childList = annotation_tools.get_annotations_with_tags(
         allAnnotationList, child_tag, exclusive=False)
-    child_data = extract_spatial_annotation_data(childList)
+
     parent_data = extract_spatial_annotation_data(parentList)
-
-    child_df = pd.DataFrame(child_data)
-    parent_df = pd.DataFrame(parent_data)
-
-    gdf_child = gpd.GeoDataFrame(
-        child_df, geometry=gpd.points_from_xy(child_df.x, child_df.y))
-    gdf_parent = gpd.GeoDataFrame(
-        parent_df, geometry=gpd.points_from_xy(parent_df.x, parent_df.y))
+    child_data = extract_spatial_annotation_data(childList)
+    print(parent_data)
+    print(child_data)
 
     # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
     groupby_cols = ['XY']
@@ -270,29 +284,29 @@ def compute(datasetId, apiUrl, token, params):
 
     # Compute the child to parent mapping
     child_to_parent = compute_nearest_child_to_parent(
-        gdf_child,
-        gdf_parent,
+        child_data,
+        parent_data,
         groupby_cols=groupby_cols,
         max_distance=max_distance,
         connect_to_closest=connect_to_closest,
         restrict_connection=restrict_connection,
         max_children=max_children)
 
-    myNewConnections = []
+    new_connections = []
     combined_tags = list(set(parent_tag + child_tag))
 
     for index, row in child_to_parent.iterrows():
         child_id = row['child_id']
         parent_id = row['nearest_parent_id']
 
-        myNewConnections.append({
+        new_connections.append({
             'datasetId': datasetId,
             'parentId': parent_id,
             'childId': child_id,
             'tags': combined_tags
         })
 
-    annotationClient.createMultipleConnections(myNewConnections)
+    annotationClient.createMultipleConnections(new_connections)
 
 
 if __name__ == '__main__':
