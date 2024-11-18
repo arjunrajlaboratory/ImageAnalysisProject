@@ -246,9 +246,6 @@ def compute(datasetId, apiUrl, token, params):
     restrict_connection = workerInterface['Restrict connection']
     max_children = int(workerInterface['Connect up to N children'])
 
-    print(parent_tag, child_tag, max_distance,
-          connect_across_z, connect_across_t)
-
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
         apiUrl=apiUrl, token=token)
@@ -270,8 +267,6 @@ def compute(datasetId, apiUrl, token, params):
 
     parent_data = extract_spatial_annotation_data(parentList)
     child_data = extract_spatial_annotation_data(childList)
-    print(parent_data)
-    print(child_data)
 
     # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
     groupby_cols = ['XY']
