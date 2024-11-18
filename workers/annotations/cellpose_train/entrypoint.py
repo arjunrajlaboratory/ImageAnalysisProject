@@ -200,6 +200,10 @@ def compute(datasetId, apiUrl, token, params):
                  "Retrieving annotations from server")
     blobAnnotationList = annotationClient.getAnnotationsByDatasetId(
         datasetId, limit=1000000, shape='polygon')
+    rectangleAnnotationList = annotationClient.getAnnotationsByDatasetId(
+        datasetId, limit=1000000, shape='rectangle')
+    # Add the rectangle annotations to the blob annotations
+    blobAnnotationList.extend(rectangleAnnotationList)
 
     trainingAnnotationList = annotation_tools.get_annotations_with_tags(
         blobAnnotationList, training_tag, exclusive=False)
@@ -208,6 +212,7 @@ def compute(datasetId, apiUrl, token, params):
     else:
         regionAnnotationList = annotation_tools.get_annotations_with_tags(
             blobAnnotationList, training_regions, exclusive=False)
+        print(f"Training on {len(regionAnnotationList)} region annotations.")
 
     if len(trainingAnnotationList) == 0:
         sendError("No training annotations found.",
