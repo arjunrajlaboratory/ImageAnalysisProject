@@ -80,16 +80,22 @@ def interface(image, apiUrl, token):
             'noCache': True,
             'displayOrder': 5
         },
-        'Nuclei Channel': {
+        'Primary Channel': {
             'type': 'channel',
-            'default': -1,  # -1 means no channel
+            # 'default': -1,  # -1 means no channel
+            'tooltip': 'The channel to use for the primary segmentation.\n'
+                       'If you are segmenting cytoplasm, put your cytoplasm channel here.\n'
+                       'If you are segmenting nuclei, put your nucleus channel here.',
             'required': False,
             'displayOrder': 6
         },
-        'Cytoplasm Channel': {
+        'Secondary Channel': {
             'type': 'channel',
             'default': -1,  # -1 means no channel
             'required': False,
+            'tooltip': 'The secondary channel to use for segmentation.\n'
+                       'If you are segmenting cytoplasm, you can put your nuclei channel here.\n'
+                       'If you are segmenting nuclei, leave this blank (it will be ignored if filled).',
             'displayOrder': 7
         },
         'Diameter': {
@@ -193,8 +199,8 @@ def compute(datasetId, apiUrl, token, params):
 
     # Get the model and diameter from interface values
     model = worker.workerInterface['Model']
-    nuclei_channel = worker.workerInterface.get('Nuclei Channel', None)
-    cytoplasm_channel = worker.workerInterface.get('Cytoplasm Channel', None)
+    primary_channel = worker.workerInterface.get('Primary Channel', None)
+    secondary_channel = worker.workerInterface.get('Secondary Channel', None)
     diameter = float(worker.workerInterface['Diameter'])
     tile_size = int(worker.workerInterface['Tile Size'])
     tile_overlap = float(worker.workerInterface['Tile Overlap'])
@@ -210,19 +216,19 @@ def compute(datasetId, apiUrl, token, params):
     print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
 
     stack_channels = []
-    if model in ['cyto', 'cyto2', 'cyto3']:
-        if (cytoplasm_channel is not None) and (cytoplasm_channel > -1):
-            stack_channels.append(cytoplasm_channel)
-    if (nuclei_channel is not None) and (nuclei_channel > -1):
-        stack_channels.append(nuclei_channel)
-    if len(stack_channels) == 2:
-        channels = (0, 1)
-    elif len(stack_channels) == 1:
-        channels = (0, 0)
+    if primary_channel is not None and primary_channel > -1:
+        stack_channels.append(primary_channel)
+        channels = [0, 0]
     else:
-        sendError("No cytoplasmic or nuclei channels selected.",
-                  info="No cytoplasmic or nuclei channels selected.")
-        raise ValueError("No cytoplasmic or nuclei channels selected.")
+        sendError("No primary channel selected.",
+                  info="No primary channel selected.")
+        raise ValueError("No primary channel selected.")
+    if secondary_channel is not None and secondary_channel > -1:
+        stack_channels.append(secondary_channel)
+        channels = [1, 2]
+    else:
+        sendWarning("No secondary channel selected.",
+                    info="No secondary nucleus channel selected.")
 
     if model in BASE_MODELS:
         cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={
