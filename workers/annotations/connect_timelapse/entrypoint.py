@@ -6,7 +6,7 @@ from operator import itemgetter
 
 import annotation_client.annotations as annotations
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendError
 
 import annotation_utilities.annotation_tools as annotation_tools
 
@@ -38,7 +38,7 @@ def interface(image, apiUrl, token):
         'Connect across gaps': {
             'type': 'number',
             'min': 0,
-            'max': 8,
+            'max': 10,
             'default': 0,
             'unit': 'Time pt',
             'tooltip': 'The size of the time gap that will be\nbridged when connecting objects across time.',
@@ -147,6 +147,10 @@ def compute(datasetId, apiUrl, token, params):
     object_tag = list(set(workerInterface.get('Object to connect tag', None)))
     max_distance = float(workerInterface['Max distance'])
     gap_size = int(workerInterface['Connect across gaps'])
+
+    if not object_tag or len(object_tag) == 0:
+        sendError("No object tag specified")
+        raise ValueError("No object tag specified")
 
     print(
         f"Connecting {object_tag} objects across {gap_size} time slices "
