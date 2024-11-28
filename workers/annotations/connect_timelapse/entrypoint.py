@@ -181,32 +181,28 @@ def compute(datasetId, apiUrl, token, params):
 
     sendProgress(0.2, "Objects loaded", "")
 
-    # Group by time and sort in descending order
-    time_groups = gdf_object.groupby('Time', sort=True)
-    time_points = sorted(time_groups.groups.keys(), reverse=True)
+    # Group by all spatial dimensions first
+    spatial_groups = gdf_object.groupby(['XY', 'Z'])
 
     my_new_connections = []
-    total_times = len(time_points) - 1
+    total_groups = len(spatial_groups)
 
-    # Process each time slice
-    for idx, current_time in enumerate(time_points[:-1]):
-        # Get objects for current and previous time points
-        current_objects = time_groups.get_group(current_time)
-        previous_time = time_points[idx + 1]
-        previous_objects = time_groups.get_group(previous_time)
+    # Process each spatial group
+    for group_idx, ((xy, z), spatial_group) in enumerate(spatial_groups):
+        # Sort time points within this spatial group
+        time_groups = spatial_group.groupby('Time', sort=True)
+        time_points = sorted(time_groups.groups.keys(), reverse=True)
 
-        # Further group by XY and Z within each time slice
-        for (xy, z), current_group in current_objects.groupby(['XY', 'Z']):
-            # Get potential parents with same XY and Z
-            previous_group = previous_objects[
-                (previous_objects['XY'] == xy) &
-                (previous_objects['Z'] == z)
-            ]
+        # Process each time slice within this spatial group
+        for current_time in time_points[:-1]:
+            current_objects = time_groups.get_group(current_time)
+            previous_time = time_points[time_points.index(current_time) + 1]
+            previous_objects = time_groups.get_group(previous_time)
 
-            # Find connections for this spatial group
+            # Find connections for this group
             connections = compute_nearest_child_to_parent(
-                current_group,
-                previous_group,
+                current_objects,
+                previous_objects,
                 max_distance=max_distance
             )
 
@@ -219,9 +215,9 @@ def compute(datasetId, apiUrl, token, params):
                     'tags': ["Time lapse connection"]
                 })
 
-        sendProgress((idx + 1) / total_times,
-                     "Processing time points",
-                     f"Processed {idx + 1} of {total_times} time pairs")
+        sendProgress((group_idx + 1) / total_groups,
+                     "Processing XY, Z groups",
+                     f"Processed {group_idx + 1} of {total_groups} groups")
 
     sendProgress(0.9, "Sending connections to server", "")
     annotationClient.createMultipleConnections(my_new_connections)
