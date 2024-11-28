@@ -40,14 +40,16 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 8,
             'default': 0,
+            'unit': 'Time pt',
             'tooltip': 'The size of the time gap that will be\nbridged when connecting objects across time.',
             'displayOrder': 2,
         },
-        'Max distance (pixels)': {
+        'Max distance': {
             'type': 'number',
             'min': 0,
             'max': 1000,
             'default': 20,
+            'unit': 'pixels',
             'tooltip': 'The maximum distance (in pixels) between the child and\nparent objects to be connected. Otherwise, objects will not be connected.',
             'displayOrder': 3,
         }
@@ -83,68 +85,31 @@ def extract_spatial_annotation_data(obj_list):
     return data
 
 
-def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', 'XY', 'Z'], max_distance=None):
-    # Empty DataFrame to store results
-    child_to_parent = pd.DataFrame(columns=['child_id', 'nearest_parent_id'])
+def compute_nearest_child_to_parent(child_df, parent_df, max_distance=None):
+    """Compute nearest parents for children, assuming all grouping is done externally"""
+    if child_df.empty or parent_df.empty:
+        return pd.DataFrame()
 
-    # Get all the groups (this operation does not actually compute the groups yet, but prepares the grouping)
-    grouped = child_df.groupby(groupby_cols)
+    # Create KDTree for all parents
+    tree = cKDTree(
+        np.array(list(zip(parent_df.geometry.x, parent_df.geometry.y))))
 
-    # Determine the total number of groups
-    total_groups = len(grouped)
+    # Find nearest parent for each child
+    distances, indices = tree.query(
+        np.array(list(zip(child_df.geometry.x, child_df.geometry.y))))
 
-    # Start the counter for processed groups
-    processed_groups = 0
+    # Filter by max_distance if specified
+    if max_distance is not None:
+        valid_indices = distances <= max_distance
+        distances = distances[valid_indices]
+        indices = indices[valid_indices]
+        child_df = child_df.iloc[valid_indices]
 
-    # Group by unique location combinations
-    for values, group in grouped:
-
-        # Build a dynamic query string
-        query_str = ' & '.join(
-            [f"{col} == {val}" for col, val in zip(groupby_cols, values)])
-
-        # Filter parent dataframe by the same location values
-        parent_group = parent_df.query(query_str)
-
-        # Ensure there are parents in the group to compare to
-        if parent_group.empty:
-            continue
-
-        # Create a cKDTree for the parent group
-        tree = cKDTree(
-            np.array(list(zip(parent_group.geometry.x, parent_group.geometry.y))))
-
-        # Compute distance and index for the nearest parent for each child within this group
-        distances, indices = tree.query(
-            np.array(list(zip(group.geometry.x, group.geometry.y))))
-
-        # If max_distance is provided, filter out entries beyond that distance
-        if max_distance is not None:
-            valid_indices = distances <= max_distance
-            distances = distances[valid_indices]
-            indices = indices[valid_indices]
-            # Update the group DataFrame to only contain valid entries
-            group = group.iloc[valid_indices]
-
-        # Map child IDs to nearest parent IDs for this group
-        temp_df = pd.DataFrame({
-            'child_id': group['_id'].values,
-            'nearest_parent_id': parent_group.iloc[indices]['_id'].values
-        })
-
-        # Append the results to the main DataFrame
-        child_to_parent = pd.concat(
-            [child_to_parent, temp_df], ignore_index=True)
-
-        # Increment the counter of processed groups
-        processed_groups += 1
-
-        # Compute the fraction of work done
-        fraction_done = processed_groups / total_groups
-
-        # Send the progress update
-        sendProgress(fraction_done, "Computing connections",
-                     f"{processed_groups} of {total_groups} groups processed")
+    # Create result DataFrame
+    child_to_parent = pd.DataFrame({
+        'child_id': child_df['_id'].values,
+        'nearest_parent_id': parent_df.iloc[indices]['_id'].values
+    })
 
     return child_to_parent
 
@@ -180,7 +145,7 @@ def compute(datasetId, apiUrl, token, params):
         *keys)(params)
 
     object_tag = list(set(workerInterface.get('Object to connect tag', None)))
-    max_distance = float(workerInterface['Max distance (pixels)'])
+    max_distance = float(workerInterface['Max distance'])
     gap_size = int(workerInterface['Connect across gaps'])
 
     print(
@@ -212,37 +177,47 @@ def compute(datasetId, apiUrl, token, params):
 
     sendProgress(0.2, "Objects loaded", "")
 
-    # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
-    # We are also doing Z because we don't want to connect across Z slices.
-    groupby_cols = ['XY', 'Z']
-
-    # Sort the gdf_object based on the connect_across column in descending order
-    gdf_object = gdf_object.sort_values(by='Time', ascending=False)
+    # Group by time and sort in descending order
+    time_groups = gdf_object.groupby('Time', sort=True)
+    time_points = sorted(time_groups.groups.keys(), reverse=True)
 
     my_new_connections = []
-    combined_tags = list(set(object_tag))
+    total_times = len(time_points) - 1
 
-    for index, current_object in gdf_object.iterrows():
-        previous_objects = get_previous_objects(
-            current_object, gdf_object, 1)  # gap_size = 1
-        if not previous_objects.empty:
-            # Use the compute_nearest_child_to_parent function to find the nearest previous object
-            nearest_object_df = compute_nearest_child_to_parent(
-                gdf_object.loc[[index]], previous_objects, groupby_cols=groupby_cols, max_distance=max_distance)
+    # Process each time slice
+    for idx, current_time in enumerate(time_points[:-1]):
+        # Get objects for current and previous time points
+        current_objects = time_groups.get_group(current_time)
+        previous_time = time_points[idx + 1]
+        previous_objects = time_groups.get_group(previous_time)
 
-            for _, row in nearest_object_df.iterrows():
-                # the current object is the child (in later time)
-                child_id = row['child_id']
-                # the nearest previous object is the parent (in earlier time)
-                parent_id = row['nearest_parent_id']
+        # Further group by XY and Z within each time slice
+        for (xy, z), current_group in current_objects.groupby(['XY', 'Z']):
+            # Get potential parents with same XY and Z
+            previous_group = previous_objects[
+                (previous_objects['XY'] == xy) &
+                (previous_objects['Z'] == z)
+            ]
 
+            # Find connections for this spatial group
+            connections = compute_nearest_child_to_parent(
+                current_group,
+                previous_group,
+                max_distance=max_distance
+            )
+
+            # Add connections to results
+            for _, row in connections.iterrows():
                 my_new_connections.append({
-                    # assuming you've already set this variable elsewhere in your code
                     'datasetId': datasetId,
-                    'parentId': parent_id,
-                    'childId': child_id,
-                    'tags': combined_tags
+                    'parentId': row['nearest_parent_id'],
+                    'childId': row['child_id'],
+                    'tags': ["Time lapse connection"]
                 })
+
+        sendProgress((idx + 1) / total_times,
+                     "Processing time points",
+                     f"Processed {idx + 1} of {total_times} time pairs")
 
     sendProgress(0.9, "Sending connections to server", "")
     annotationClient.createMultipleConnections(my_new_connections)
