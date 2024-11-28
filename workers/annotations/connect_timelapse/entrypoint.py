@@ -94,24 +94,49 @@ def compute_nearest_child_to_parent(child_df, parent_df, max_distance=None):
     tree = cKDTree(
         np.array(list(zip(parent_df.geometry.x, parent_df.geometry.y))))
 
-    # Find nearest parent for each child
-    distances, indices = tree.query(
-        np.array(list(zip(child_df.geometry.x, child_df.geometry.y))))
-
-    # Filter by max_distance if specified
+    # Find all parents within max_distance for each child
     if max_distance is not None:
-        valid_indices = distances <= max_distance
-        distances = distances[valid_indices]
-        indices = indices[valid_indices]
-        child_df = child_df.iloc[valid_indices]
+        indices_list = tree.query_ball_point(
+            np.array(list(zip(child_df.geometry.x, child_df.geometry.y))),
+            max_distance
+        )
+    else:
+        # If no max_distance, get all parents
+        indices_list = tree.query_ball_point(
+            np.array(list(zip(child_df.geometry.x, child_df.geometry.y))),
+            np.inf
+        )
 
-    # Create result DataFrame
-    child_to_parent = pd.DataFrame({
-        'child_id': child_df['_id'].values,
-        'nearest_parent_id': parent_df.iloc[indices]['_id'].values
-    })
+    connections = []
+    # Process each child
+    for child_idx, parent_indices in enumerate(indices_list):
+        if not parent_indices:  # Skip if no parents within distance
+            continue
 
-    return child_to_parent
+        # Get candidate parents
+        candidate_parents = parent_df.iloc[parent_indices]
+
+        # Find the maximum time among candidates
+        max_time = candidate_parents['Time'].max()
+        latest_parents = candidate_parents[candidate_parents['Time'] == max_time]
+
+        # Calculate distances to latest parents
+        child_point = np.array([child_df.iloc[child_idx].geometry.x,
+                                child_df.iloc[child_idx].geometry.y])
+        parent_points = np.array(list(zip(latest_parents.geometry.x,
+                                          latest_parents.geometry.y)))
+        distances = np.sqrt(np.sum((parent_points - child_point)**2, axis=1))
+
+        # Get the closest parent among the latest ones
+        closest_parent_idx = distances.argmin()
+        closest_parent = latest_parents.iloc[closest_parent_idx]
+
+        connections.append({
+            'child_id': child_df.iloc[child_idx]['_id'],
+            'nearest_parent_id': closest_parent['_id']
+        })
+
+    return pd.DataFrame(connections)
 
 
 def get_previous_objects(current_object, dataframe, gap_size):
