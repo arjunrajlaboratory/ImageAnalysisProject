@@ -1,19 +1,13 @@
-import base64
 import argparse
 import json
 import sys
-import random
-import time
-import timeit
 
 from operator import itemgetter
 
 import annotation_client.annotations as annotations
-import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 
-# import annotation_tools
 import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
@@ -22,6 +16,44 @@ import geopandas as gpd
 
 from shapely.geometry import Point, Polygon
 from scipy.spatial import cKDTree
+
+
+def interface(image, apiUrl, token):
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
+
+    # Available types: number, text, tags, layer
+    interface = {
+        'Using connect time lapse': {
+            'type': 'notes',
+            'value': 'This tool connects objects across time slices.'
+                     'It allows you to connect objects even if there are gaps in time.',
+            'displayOrder': 0,
+        },
+        'Object to connect tag': {
+            'type': 'tags',
+            'tooltip': 'Connect all objects that have this tag.',
+            'displayOrder': 1,
+        },
+        'Connect across gaps': {
+            'type': 'number',
+            'min': 0,
+            'max': 8,
+            'default': 0,
+            'tooltip': 'The size of the time gap that will be\nbridged when connecting objects across time.',
+            'displayOrder': 2,
+        },
+        'Max distance (pixels)': {
+            'type': 'number',
+            'min': 0,
+            'max': 1000,
+            'default': 20,
+            'tooltip': 'The maximum distance (in pixels) between the child and\nparent objects to be connected. Otherwise, objects will not be connected.',
+            'displayOrder': 3,
+        }
+    }
+    # Send the interface object to the server
+    client.setWorkerImageInterface(image, interface)
 
 
 def extract_spatial_annotation_data(obj_list):
@@ -117,48 +149,8 @@ def compute_nearest_child_to_parent(child_df, parent_df, groupby_cols=['Time', '
     return child_to_parent
 
 
-def get_previous_objects(current_object, dataframe, connect_across):
-    if connect_across == 'Time':
-        return dataframe[dataframe['Time'] == current_object['Time'] - 1]
-    elif connect_across == 'Z':
-        return dataframe[dataframe['Z'] == current_object['Z'] - 1]
-
-
-def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(
-        apiUrl=apiUrl, token=token)
-
-    # Available types: number, text, tags, layer
-    interface = {
-        'Using connect sequential': {
-            'type': 'notes',
-            'value': 'This tool connects objects sequentially across time or z-slices.'
-                     'It is useful for connecting objects that are moving or changing over time or z-slices.',
-            'displayOrder': 0,
-        },
-        'Object to connect tag': {
-            'type': 'tags',
-            'tooltip': 'Connect all objects that have this tag.',
-            'displayOrder': 1,
-        },
-        'Connect sequentially across': {
-            'type': 'select',
-            'items': ['Time', 'Z'],
-            'default': 'Time',
-            'tooltip': 'Connect objects sequentially across time or z-slices.',
-            'displayOrder': 2,
-        },
-        'Max distance (pixels)': {
-            'type': 'number',
-            'min': 0,
-            'max': 5000,
-            'default': 1000,
-            'tooltip': 'The maximum distance (in pixels) between the child and\nparent objects to be connected. Otherwise, objects will not be connected.',
-            'displayOrder': 3,
-        }
-    }
-    # Send the interface object to the server
-    client.setWorkerImageInterface(image, interface)
+def get_previous_objects(current_object, dataframe, gap_size):
+    return dataframe[dataframe['Time'] == current_object['Time'] - gap_size]
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -189,28 +181,25 @@ def compute(datasetId, apiUrl, token, params):
 
     object_tag = list(set(workerInterface.get('Object to connect tag', None)))
     max_distance = float(workerInterface['Max distance (pixels)'])
-    connect_across = workerInterface['Connect sequentially across']
+    gap_size = int(workerInterface['Connect across gaps'])
 
     print(
-        f"Connecting {object_tag} objects across {connect_across} with a max distance of {max_distance} pixels")
+        f"Connecting {object_tag} objects across {gap_size} time slices "
+        f"with a max distance of {max_distance} pixels")
 
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
         apiUrl=apiUrl, token=token)
-    datasetClient = tiles.UPennContrastDataset(
-        apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-    # May need to change the limit for large numbers of annotations. Default is 50.
-    # TODO: A new update will allow for getting all annotations in a single call.
-    # Also, currently, we do not handle line annotations.
+    sendProgress(0, "Loadingobjects", "")
+
+    # May need to change the limit for large numbers of annotations. Default is 1000000.
+    # TODO: Currently, we do not handle line annotations.
     pointAnnotationList = annotationClient.getAnnotationsByDatasetId(
         datasetId, limit=1000000, shape='point')
     blobAnnotationList = annotationClient.getAnnotationsByDatasetId(
         datasetId, limit=1000000, shape='polygon')
-    # lineAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 1000000, shape='line')
-    # allAnnotationList = annotationClient.getAnnotationsByDatasetId(datasetId, limit = 1000000)
-    allAnnotationList = pointAnnotationList + \
-        blobAnnotationList  # + lineAnnotationList
+    allAnnotationList = pointAnnotationList + blobAnnotationList
 
     objectList = annotation_tools.get_annotations_with_tags(
         allAnnotationList, object_tag, exclusive=False)
@@ -221,30 +210,25 @@ def compute(datasetId, apiUrl, token, params):
     gdf_object = gpd.GeoDataFrame(
         object_df, geometry=gpd.points_from_xy(object_df.x, object_df.y))
 
-    # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
-    groupby_cols = ['XY']
+    sendProgress(0.2, "Objects loaded", "")
 
-    # Add the 'Time' and 'Z' columns based on the boolean flags
-    if connect_across == 'Time':
-        groupby_cols.append('Z')
-    elif connect_across == 'Z':
-        groupby_cols.append('Time')
+    # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
+    # We are also doing Z because we don't want to connect across Z slices.
+    groupby_cols = ['XY', 'Z']
 
     # Sort the gdf_object based on the connect_across column in descending order
-    gdf_object = gdf_object.sort_values(by=connect_across, ascending=False)
+    gdf_object = gdf_object.sort_values(by='Time', ascending=False)
 
-    myNewConnections = []
+    my_new_connections = []
     combined_tags = list(set(object_tag))
 
-    # TODO: This is very inefficient. Right now, we are making the spatial index for every object.
-    # We should be batching over all objects in a given time slice so that we aren't making the spatial index every time.
     for index, current_object in gdf_object.iterrows():
         previous_objects = get_previous_objects(
-            current_object, gdf_object, connect_across)
+            current_object, gdf_object, 1)  # gap_size = 1
         if not previous_objects.empty:
             # Use the compute_nearest_child_to_parent function to find the nearest previous object
-            nearest_object_df = compute_nearest_child_to_parent(gdf_object.loc[[
-                                                                index]], previous_objects, groupby_cols=groupby_cols, max_distance=max_distance)
+            nearest_object_df = compute_nearest_child_to_parent(
+                gdf_object.loc[[index]], previous_objects, groupby_cols=groupby_cols, max_distance=max_distance)
 
             for _, row in nearest_object_df.iterrows():
                 # the current object is the child (in later time)
@@ -252,7 +236,7 @@ def compute(datasetId, apiUrl, token, params):
                 # the nearest previous object is the parent (in earlier time)
                 parent_id = row['nearest_parent_id']
 
-                myNewConnections.append({
+                my_new_connections.append({
                     # assuming you've already set this variable elsewhere in your code
                     'datasetId': datasetId,
                     'parentId': parent_id,
@@ -260,7 +244,8 @@ def compute(datasetId, apiUrl, token, params):
                     'tags': combined_tags
                 })
 
-    annotationClient.createMultipleConnections(myNewConnections)
+    sendProgress(0.9, "Sending connections to server", "")
+    annotationClient.createMultipleConnections(my_new_connections)
 
 
 if __name__ == '__main__':
