@@ -221,8 +221,16 @@ def compute(datasetId, apiUrl, token, params):
         # Process each time slice within this spatial group
         for current_time in time_points[:-1]:
             current_objects = time_groups.get_group(current_time)
-            previous_time = time_points[time_points.index(current_time) + 1]
-            previous_objects = time_groups.get_group(previous_time)
+            current_idx = time_points.index(current_time)
+
+            # Get all previous times within gap_size range
+            end_idx = min(current_idx + gap_size + 2, len(time_points))
+            previous_times = time_points[current_idx + 1:end_idx]
+
+            # Combine all previous objects within the gap range
+            previous_objects = pd.concat([
+                time_groups.get_group(t) for t in previous_times
+            ])
 
             # Find connections for this group
             connections = compute_nearest_child_to_parent(
