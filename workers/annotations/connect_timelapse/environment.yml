@@ -1,0 +1,9 @@
+name: worker
+dependencies:
+- python=3.9
+- pip
+- numpy
+- pandas
+- geopandas
+- scipy
+- shapely
