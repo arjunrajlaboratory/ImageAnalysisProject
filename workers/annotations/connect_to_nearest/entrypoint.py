@@ -161,6 +161,11 @@ def compute_nearest_child_to_parent(
             continue
 
         if connect_to_closest == 'Edge':
+
+            # Reset index of both DataFrames before joining
+            valid_children = valid_children.reset_index(drop=True)
+            parent_group = parent_group.reset_index(drop=True)
+
             # Use sjoin_nearest to find closest parents for each child
             joined = gpd.sjoin_nearest(
                 valid_children,
@@ -168,6 +173,11 @@ def compute_nearest_child_to_parent(
                 how='left',
                 distance_col='distance'
             )
+
+            # If we have duplicates, keep the closest match for each child
+            if len(joined) > len(valid_children):
+                joined = joined.sort_values('distance').groupby(
+                    joined.index).first().reset_index()
 
             # Extract distances and indices
             distances = joined['distance'].values
