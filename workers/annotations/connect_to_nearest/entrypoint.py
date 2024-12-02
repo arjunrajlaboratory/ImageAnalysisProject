@@ -136,10 +136,12 @@ def compute_nearest_child_to_parent(
 
     # Group by unique location combinations
     for values, group in grouped:
-        # Build query string and filter parent dataframe
-        query_str = ' & '.join(
-            [f"{col} == {val}" for col, val in zip(groupby_cols, values)])
-        parent_group = parent_df.query(query_str)
+
+        # Create boolean mask for each column
+        mask = pd.Series(True, index=parent_df.index)
+        for col, val in zip(groupby_cols, values):
+            mask &= (parent_df[col] == val)
+        parent_group = parent_df[mask]
 
         if parent_group.empty:
             continue
@@ -174,14 +176,28 @@ def compute_nearest_child_to_parent(
                 distance_col='distance'
             )
 
-            # If we have duplicates, keep the closest match for each child
+            # If we have duplicates, as in multiple parents for the same child,
+            # keep the closest match for each child
             if len(joined) > len(valid_children):
-                joined = joined.sort_values('distance').groupby(
-                    joined.index).first().reset_index()
+                # First sort by distance to get shortest distances first
+                joined = joined.sort_values('distance')
+
+                # Then drop duplicates based on the DataFrame's index
+                # (which corresponds to the child points)
+                joined = joined[~joined.index.duplicated(keep='first')]
 
             # Extract distances and indices
             distances = joined['distance'].values
             indices = joined.index_right.values
+
+            # Apply max_distance filter if specified
+            if max_distance is not None:
+                valid_indices = joined['distance'] <= max_distance
+                joined = joined[valid_indices]
+                distances = joined['distance'].values
+                indices = joined['index_right'].values
+                valid_children = valid_children.loc[joined.index]
+
         else:  # Centroid
             parent_centroids = parent_group.geometry.centroid
             child_centroids = valid_children.geometry.centroid
@@ -190,12 +206,12 @@ def compute_nearest_child_to_parent(
             distances, indices = tree.query(
                 np.array(list(zip(child_centroids.x, child_centroids.y))))
 
-        # Apply max_distance filter if specified
-        if max_distance is not None:
-            valid_indices = distances <= max_distance
-            distances = distances[valid_indices]
-            indices = indices[valid_indices]
-            valid_children = valid_children.iloc[valid_indices]
+            # Apply max_distance filter if specified
+            if max_distance is not None:
+                valid_indices = distances <= max_distance
+                distances = distances[valid_indices]
+                indices = indices[valid_indices]
+                valid_children = valid_children.iloc[valid_indices]
 
         # Create connections with distances
         temp_df = pd.DataFrame({
