@@ -23,7 +23,7 @@ echo "Building Piscis worker"
 docker compose -f ./workers/annotations/piscis/docker-compose.yaml build $NO_CACHE
 
 echo "Building Cellpose worker"
-docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose" --label "annotationShape=polygon" $NO_CACHE
+docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose" --label "annotationShape=polygon" --label "description=Uses Cellpose to find cells and nuclei" \$NO_CACHE
 
 echo "Building Cellpose train worker"
 docker build ./workers/annotations/cellpose_train/ -t annotations/cellpose_train_worker:latest $NO_CACHE

@@ -95,8 +95,8 @@ def interface(image, apiUrl, token):
             'required': False,
             'tooltip': 'The secondary channel to use for segmentation.\n'
                        'If you are segmenting cytoplasm, you can put your nuclei channel here.\n'
-                       'If you are segmenting nuclei, leave this blank.\n',
-                       'If you segment nuclei and have a secondary channel, it will not work as well.'
+                       'If you are segmenting nuclei, leave this blank.\n'
+                       'If you segment nuclei and have a secondary channel, it will not work as well.',
             'displayOrder': 6,
         },
         'Diameter': {
