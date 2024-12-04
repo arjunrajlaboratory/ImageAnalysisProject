@@ -75,14 +75,14 @@ def interface(image, apiUrl, token):
             'items': models,
             'default': 'cyto3',
             'tooltip': 'cyto3 is the most accurate for cells, whereas nuclei is best for finding nuclei.\n'
-                       'You will need to select a nuclei and cytoplasm channel in both cases.\n'
-                       'If you select nuclei, put the nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
+                       'For cyto3 and derivatives, you can put the cytoplasm channel in the primary channel field.\n'
+                       'For nuclei and derivatives, put the nucleus channel in the primary channel field.\n'
+                       'For cyto3, you can optionally add a secondary channel in which you put the nucleus channel.',
             'noCache': True,
             'displayOrder': 5
         },
         'Primary Channel': {
             'type': 'channel',
-            # 'default': -1,  # -1 means no channel
             'tooltip': 'The channel to use for the primary segmentation.\n'
                        'If you are segmenting cytoplasm, put your cytoplasm channel here.\n'
                        'If you are segmenting nuclei, put your nucleus channel here.',
@@ -95,7 +95,8 @@ def interface(image, apiUrl, token):
             'required': False,
             'tooltip': 'The secondary channel to use for segmentation.\n'
                        'If you are segmenting cytoplasm, you can put your nuclei channel here.\n'
-                       'If you are segmenting nuclei, leave this blank (it will be ignored if filled).',
+                       'If you are segmenting nuclei, leave this blank.\n',
+                       'If you segment nuclei and have a secondary channel, it will not work as well.'
             'displayOrder': 7
         },
         'Diameter': {
@@ -226,9 +227,6 @@ def compute(datasetId, apiUrl, token, params):
     if secondary_channel is not None and secondary_channel > -1:
         stack_channels.append(secondary_channel)
         channels = [1, 2]
-    else:
-        sendWarning("No secondary channel selected.",
-                    info="No secondary nucleus channel selected.")
 
     if model in BASE_MODELS:
         cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={
