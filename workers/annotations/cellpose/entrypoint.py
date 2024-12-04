@@ -48,7 +48,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 1
+            'displayOrder': 1,
         },
         'Batch Z': {
             'type': 'text',
@@ -58,7 +58,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 2
+            'displayOrder': 2,
         },
         'Batch Time': {
             'type': 'text',
@@ -68,7 +68,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 3
+            'displayOrder': 3,
         },
         'Model': {
             'type': 'select',
@@ -79,7 +79,7 @@ def interface(image, apiUrl, token):
                        'For nuclei and derivatives, put the nucleus channel in the primary channel field.\n'
                        'For cyto3, you can optionally add a secondary channel in which you put the nucleus channel.',
             'noCache': True,
-            'displayOrder': 5
+            'displayOrder': 4,
         },
         'Primary Channel': {
             'type': 'channel',
@@ -87,7 +87,7 @@ def interface(image, apiUrl, token):
                        'If you are segmenting cytoplasm, put your cytoplasm channel here.\n'
                        'If you are segmenting nuclei, put your nucleus channel here.',
             'required': False,
-            'displayOrder': 6
+            'displayOrder': 5,
         },
         'Secondary Channel': {
             'type': 'channel',
@@ -97,7 +97,7 @@ def interface(image, apiUrl, token):
                        'If you are segmenting cytoplasm, you can put your nuclei channel here.\n'
                        'If you are segmenting nuclei, leave this blank.\n',
                        'If you segment nuclei and have a secondary channel, it will not work as well.'
-            'displayOrder': 7
+            'displayOrder': 6,
         },
         'Diameter': {
             'type': 'number',
@@ -107,7 +107,7 @@ def interface(image, apiUrl, token):
             'unit': 'pixels',
             'tooltip': 'The diameter of the cells in the image. Choose as close as you can\n'
                        'because the model is most accurate when the diameter is close to the actual cell diameter.',
-            'displayOrder': 8
+            'displayOrder': 7,
         },
         'Smoothing': {
             'type': 'number',
@@ -115,7 +115,7 @@ def interface(image, apiUrl, token):
             'max': 10,
             'default': 0.7,
             'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.7 is a good default.',
-            'displayOrder': 10,
+            'displayOrder': 8,
         },
         'Padding': {
             'type': 'number',
@@ -124,7 +124,7 @@ def interface(image, apiUrl, token):
             'default': 0,
             'unit': 'pixels',
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
-            'displayOrder': 11,
+            'displayOrder': 9,
         },
         'Tile Size': {
             'type': 'number',
@@ -133,7 +133,7 @@ def interface(image, apiUrl, token):
             'default': 1024,
             'unit': 'pixels',
             'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the Cellpose model may not be able to run on them.',
-            'displayOrder': 13
+            'displayOrder': 10,
         },
         'Tile Overlap': {
             'type': 'number',
@@ -144,7 +144,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'The amount of overlap between tiles. A value of 0.1 means that the tiles will overlap by 10%, which is 102 pixels if the tile size is 1024.\n'
                        'Make sure your objects are smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
                        'then the largest object should be less than 102 pixels in its longest dimension.',
-            'displayOrder': 14
+            'displayOrder': 11,
         },
     }
     # Send the interface object to the server
