@@ -48,7 +48,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 1
+            'displayOrder': 1,
         },
         'Batch Z': {
             'type': 'text',
@@ -58,7 +58,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 2
+            'displayOrder': 2,
         },
         'Batch Time': {
             'type': 'text',
@@ -68,26 +68,26 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 3
+            'displayOrder': 3,
         },
         'Model': {
             'type': 'select',
             'items': models,
             'default': 'cyto3',
             'tooltip': 'cyto3 is the most accurate for cells, whereas nuclei is best for finding nuclei.\n'
-                       'You will need to select a nuclei and cytoplasm channel in both cases.\n'
-                       'If you select nuclei, put the nucleus channel in both the Nuclei Channel and Cytoplasm Channel fields.',
+                       'For cyto3 and derivatives, you can put the cytoplasm channel in the primary channel field.\n'
+                       'For nuclei and derivatives, put the nucleus channel in the primary channel field.\n'
+                       'For cyto3, you can optionally add a secondary channel in which you put the nucleus channel.',
             'noCache': True,
-            'displayOrder': 5
+            'displayOrder': 4,
         },
         'Primary Channel': {
             'type': 'channel',
-            # 'default': -1,  # -1 means no channel
             'tooltip': 'The channel to use for the primary segmentation.\n'
                        'If you are segmenting cytoplasm, put your cytoplasm channel here.\n'
                        'If you are segmenting nuclei, put your nucleus channel here.',
             'required': False,
-            'displayOrder': 6
+            'displayOrder': 5,
         },
         'Secondary Channel': {
             'type': 'channel',
@@ -95,8 +95,9 @@ def interface(image, apiUrl, token):
             'required': False,
             'tooltip': 'The secondary channel to use for segmentation.\n'
                        'If you are segmenting cytoplasm, you can put your nuclei channel here.\n'
-                       'If you are segmenting nuclei, leave this blank (it will be ignored if filled).',
-            'displayOrder': 7
+                       'If you are segmenting nuclei, leave this blank.\n'
+                       'If you segment nuclei and have a secondary channel, it will not work as well.',
+            'displayOrder': 6,
         },
         'Diameter': {
             'type': 'number',
@@ -106,7 +107,7 @@ def interface(image, apiUrl, token):
             'unit': 'pixels',
             'tooltip': 'The diameter of the cells in the image. Choose as close as you can\n'
                        'because the model is most accurate when the diameter is close to the actual cell diameter.',
-            'displayOrder': 8
+            'displayOrder': 7,
         },
         'Smoothing': {
             'type': 'number',
@@ -114,7 +115,7 @@ def interface(image, apiUrl, token):
             'max': 10,
             'default': 0.7,
             'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.7 is a good default.',
-            'displayOrder': 10,
+            'displayOrder': 8,
         },
         'Padding': {
             'type': 'number',
@@ -123,7 +124,7 @@ def interface(image, apiUrl, token):
             'default': 0,
             'unit': 'pixels',
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
-            'displayOrder': 11,
+            'displayOrder': 9,
         },
         'Tile Size': {
             'type': 'number',
@@ -132,7 +133,7 @@ def interface(image, apiUrl, token):
             'default': 1024,
             'unit': 'pixels',
             'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the Cellpose model may not be able to run on them.',
-            'displayOrder': 13
+            'displayOrder': 10,
         },
         'Tile Overlap': {
             'type': 'number',
@@ -143,7 +144,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'The amount of overlap between tiles. A value of 0.1 means that the tiles will overlap by 10%, which is 102 pixels if the tile size is 1024.\n'
                        'Make sure your objects are smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
                        'then the largest object should be less than 102 pixels in its longest dimension.',
-            'displayOrder': 14
+            'displayOrder': 11,
         },
     }
     # Send the interface object to the server
@@ -226,9 +227,6 @@ def compute(datasetId, apiUrl, token, params):
     if secondary_channel is not None and secondary_channel > -1:
         stack_channels.append(secondary_channel)
         channels = [1, 2]
-    else:
-        sendWarning("No secondary channel selected.",
-                    info="No secondary nucleus channel selected.")
 
     if model in BASE_MODELS:
         cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'model_type': model}, eval_parameters={
