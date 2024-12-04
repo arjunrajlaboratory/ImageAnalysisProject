@@ -46,6 +46,10 @@ echo "Building property worker: blob_metrics_worker"
 docker build -f ./workers/properties/blobs/blob_metrics_worker/$DOCKERFILE -t properties/blob_metrics:latest ./workers/properties/blobs/blob_metrics_worker/ $NO_CACHE
 # docker build -f ./workers/properties/blobs/blob_metrics_worker/Dockerfile_M1 -t properties/blob_metrics:latest ./workers/properties/blobs/blob_metrics_worker/
 
+echo "Building property worker: blob_overlap_worker"
+docker build -f ./workers/properties/blobs/blob_overlap_worker/$DOCKERFILE -t properties/blob_overlap:latest ./workers/properties/blobs/blob_overlap_worker/ $NO_CACHE
+# docker build -f ./workers/properties/blobs/blob_overlap_worker/Dockerfile_M1 -t properties/blob_overlap:latest ./workers/properties/blobs/blob_overlap_worker/
+
 echo "Building property worker: blob_intensity_worker"
 docker build -f ./workers/properties/blobs/blob_intensity_worker/$DOCKERFILE -t properties/blob_intensity:latest ./workers/properties/blobs/blob_intensity_worker/ $NO_CACHE
 # docker build -f ./workers/properties/blobs/blob_intensity_worker/Dockerfile_M1 -t properties/blob_intensity:latest ./workers/properties/blobs/blob_intensity_worker/
