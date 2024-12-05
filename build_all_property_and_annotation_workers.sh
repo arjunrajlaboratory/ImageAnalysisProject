@@ -36,6 +36,10 @@ echo "Building annotation worker: connect_time_lapse"
 docker build -f ./workers/annotations/connect_timelapse/$DOCKERFILE -t annotations/connect_time_lapse:latest ./workers/annotations/connect_timelapse/ $NO_CACHE
 # docker build -f ./workers/annotations/connect_timelapse/Dockerfile_M1 -t annotations/connect_time_lapse:latest ./workers/annotations/connect_timelapse/
 
+echo "Building annotation worker: points_to_blobs"
+docker build -f ./workers/annotations/points_to_blobs/$DOCKERFILE -t annotations/points_to_blobs:latest ./workers/annotations/points_to_blobs/ $NO_CACHE
+# docker build -f ./workers/annotations/points_to_blobs/Dockerfile_M1 -t annotations/points_to_blobs:latest ./workers/annotations/points_to_blobs/
+
 echo "Building annotation worker: laplacian_of_gaussian"
 docker build -f ./workers/annotations/laplacian_of_gaussian/$DOCKERFILE -t annotations/laplacian_of_gaussian:latest ./workers/annotations/laplacian_of_gaussian/ $NO_CACHE
 # docker build -f ./workers/annotations/laplacian_of_gaussian/Dockerfile_M1 -t annotations/laplacian_of_gaussian:latest ./workers/annotations/laplacian_of_gaussian/
