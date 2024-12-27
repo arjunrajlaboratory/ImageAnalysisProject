@@ -5,5 +5,3 @@ dependencies:
 - imageio
 - opencv
 - shapely
-# - pip:
-#   - 
