@@ -12,11 +12,8 @@ from annotation_client.utils import sendProgress, sendError
 import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
-import pandas as pd
-import geopandas as gpd
 
 from shapely.geometry import Point, Polygon
-from scipy.spatial import cKDTree
 
 from skimage import draw, filters, segmentation, measure
 
@@ -172,6 +169,12 @@ def compute(datasetId, apiUrl, token, params):
     point_tuples = set([(p['location']['Time'], p['location']
                        ['XY'], p['location']['Z']) for p in pointAnnotationList])
 
+    blob_annotations = []
+
+    sendProgress(0.3, "Creating blobs", "")
+    total_tuples = len(point_tuples)
+    processed_tuples = 0
+
     # Iterate over each tuple
     for time, xy, z in point_tuples:
         # Just get points with this (time, xy, z)
@@ -186,8 +189,13 @@ def compute(datasetId, apiUrl, token, params):
         labels, polygons = create_condensate_polygons_intensity(
             np.squeeze(image), np.squeeze(binary_mask), points, smoothing)
 
-        blob_annotations = annotation_tools.polygons_to_annotations(
-            polygons, datasetId, XY=xy, Time=time, Z=z, tags=tags, channel=channel)
+        blob_annotations.extend(annotation_tools.polygons_to_annotations(
+            polygons, datasetId, XY=xy, Time=time, Z=z, tags=tags, channel=channel))
+
+        processed_tuples += 1
+        fraction_done = processed_tuples / total_tuples
+        sendProgress(0.3 + 0.6 * fraction_done, "Creating blobs",
+                     f"{processed_tuples} of {total_tuples} frames processed")
 
     sendProgress(0.9, "Sending new blobs to server", "")
 

@@ -53,7 +53,8 @@ LABEL isUPennContrastWorker="" \
       interfaceName="Convert Points to Blobs" \
       interfaceCategory="Conversion" \
       description="Converts points to blobs within a specified radius" \
-      defaultToolName="Convert Points to Blobs"
+      defaultToolName="Convert Points to Blobs" \
+      annotationShape="polygon"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
 

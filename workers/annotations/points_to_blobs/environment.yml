@@ -1,10 +1,10 @@
 name: worker
+channels:
+- conda-forge
+- defaults
 dependencies:
-- python=3.9
+- python=3.12
 - pip
-- numpy
-- pandas
-- geopandas
-- scipy
-- shapely
+- numpy>=2.0
+- shapely>=2.0.6
 - scikit-image
