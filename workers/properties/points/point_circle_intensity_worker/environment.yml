@@ -4,5 +4,3 @@ dependencies:
 - pip
 - imageio
 - scikit-image
-# - pip:
-#   - 
