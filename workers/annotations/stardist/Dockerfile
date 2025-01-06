@@ -55,4 +55,12 @@ RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 RUN pip install /ImageAnalysisProject/worker_client
 
+LABEL isUPennContrastWorker=True \
+      isAnnotationWorker=True \
+      interfaceName="Stardist" \
+      interfaceCategory="Stardist" \
+      annotationShape="polygon" \
+      description="Uses Stardist to find cells and nuclei" \
+      defaultToolName="Stardist"
+
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

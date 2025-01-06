@@ -23,13 +23,13 @@ echo "Building Piscis worker"
 docker compose -f ./workers/annotations/piscis/docker-compose.yaml build $NO_CACHE
 
 echo "Building Cellpose worker"
-docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellpose" --label "interfaceCategory=Cellpose" --label "annotationShape=polygon" --label "description=Uses Cellpose to find cells and nuclei" \$NO_CACHE
+docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest $NO_CACHE
 
 echo "Building Cellpose train worker"
 docker build ./workers/annotations/cellpose_train/ -t annotations/cellpose_train_worker:latest $NO_CACHE
 
 echo "Building Stardist worker"
-docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Stardist" --label "interfaceCategory=Stardist" --label "annotationShape=polygon" $NO_CACHE
+docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest $NO_CACHE
 
 echo "Building SAM2 automatic mask generator worker"
 docker build ./workers/annotations/sam2_automatic_mask_generator/ -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
