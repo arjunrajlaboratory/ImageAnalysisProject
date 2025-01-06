@@ -58,4 +58,11 @@ RUN python /download_models.py
 COPY ./utils.py /
 COPY ./train/entrypoint.py /
 
+LABEL isUPennContrastWorker=True \
+      isAnnotationWorker=True \
+      interfaceName="Piscis spot training" \
+      interfaceCategory="Piscis" \
+      description="Retrain Piscis to detect your particular spots" \
+      defaultToolName="Piscis training"
+
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

@@ -58,4 +58,11 @@ RUN python /download_models.py
 COPY ./utils.py /
 COPY ./predict/entrypoint.py /
 
+LABEL isUPennContrastWorker=True \
+      isAnnotationWorker=True \
+      interfaceName="Piscis spot detection" \
+      interfaceCategory="Piscis" \
+      description="Uses Piscis to find spots" \
+      defaultToolName="Spots"
+
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
