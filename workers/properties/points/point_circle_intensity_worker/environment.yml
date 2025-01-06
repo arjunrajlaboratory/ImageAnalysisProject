@@ -1,6 +1,10 @@
 name: worker
+channels:
+- conda-forge
+- defaults
 dependencies:
-- python
+- python=3.12
 - pip
-- imageio
+- numpy>=2.0
+- shapely>=2.0.6
 - scikit-image
