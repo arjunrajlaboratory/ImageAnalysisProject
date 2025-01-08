@@ -83,5 +83,8 @@ def upload_girder_cache(gc, mode):
     girder_cache = [c['name'] for c in girder_cache]
 
     for cache_path in CACHE_DIR.glob('*'):
+        if cache_path.is_dir():
+            continue
+        
         if cache_path.stem not in girder_cache:
             gc.uploadFileToFolder(cache_folder_id, cache_path)
