@@ -54,7 +54,7 @@ def upload_girder_model(gc, model_name):
     gc.uploadFileToFolder(models_folder_id, MODELS_DIR / model_name)
 
 
-def list_girder_cache(gc, mode):
+def get_girder_cache_dir(gc, mode):
 
     piscis_folder_id = get_piscis_dir(gc)
     
@@ -64,24 +64,23 @@ def list_girder_cache(gc, mode):
         cache_folder_id = mkdir(gc, piscis_folder_id, 'train_cache')
     else:
         cache_folder_id = None
-    
-    girder_cache = list(gc.listItem(cache_folder_id))
 
-    return girder_cache, cache_folder_id
+    return cache_folder_id
 
 
 def download_girder_cache(gc, mode):
     
-    girder_cache, _ = list_girder_cache(gc, mode)
+    cache_folder_id = get_girder_cache_dir(gc, mode)
+    girder_cache = list(gc.listItem(cache_folder_id))
     for c in girder_cache:
         gc.downloadItem(c['_id'], CACHE_DIR, c['name'])
 
 
 def upload_girder_cache(gc, mode):
     
-    girder_cache, cache_folder_id = list_girder_cache(gc, mode)
-    girder_cache = [c['name'] for c in girder_cache]
+    cache_folder_id = get_girder_cache_dir(gc, mode)
 
-    for cache_path in CACHE_DIR.glob('*'):
-        if cache_path.stem not in girder_cache:
-            gc.upload(CACHE_DIR.glob('*'), cache_folder_id)
+    cache_files = [str(p) for p in CACHE_DIR.glob('*')]
+
+    if cache_files:
+        gc.upload(cache_files, cache_folder_id)
