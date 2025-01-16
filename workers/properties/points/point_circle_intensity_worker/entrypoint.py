@@ -12,7 +12,8 @@ import annotation_utilities.annotation_tools as annotation_tools
 
 
 def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
 
     # Available types: number, text, tags, layer
     interface = {
@@ -60,20 +61,19 @@ def compute(datasetId, apiUrl, token, params):
 
     # Constants
     radius = float(params['workerInterface']['Radius'])
-    
-    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('point', limit=0)
-    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
+
+    workerClient = workers.UPennContrastWorkerClient(
+        datasetId, apiUrl, token, params)
+    annotationList = workerClient.get_annotation_list_by_shape(
+        'point', limit=0)
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get(
+        'tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
 
     # We need at least one annotation
     if len(annotationList) == 0:
         return
 
     number_annotations = len(annotationList)
-
-
-    # For reporting progress
-    processed_annotations = 0
 
     property_value_dict = {}  # Initialize as a dictionary
 
@@ -90,7 +90,7 @@ def compute(datasetId, apiUrl, token, params):
 
         rr, cc = draw.disk(point, radius, shape=image.shape)
         # Code below seems very inefficient. Probably could just go straight from rr,cc to the calculation. But whatever.
-        if rr.size > 0: # If the circle catches at least one pixel
+        if rr.size > 0:  # If the circle catches at least one pixel
             mask = np.zeros(image.shape, dtype=bool)
             mask[rr, cc] = 1
             intensities = image[mask]
@@ -113,15 +113,19 @@ def compute(datasetId, apiUrl, token, params):
                 'TotalIntensity': float(total_intensity),
             }
 
-
             property_value_dict[annotation['_id']] = prop
-            processed_annotations += 1
-            sendProgress(processed_annotations / number_annotations, 'Computing point intensities', f"Processing annotation {processed_annotations}/{number_annotations}")
+
+            # Only send progress every number_annotations / 100
+            if i % int(number_annotations / 100) == 0:
+                sendProgress(i / number_annotations, 'Computing point intensities',
+                             f"Processing annotation {i}/{number_annotations}")
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 
-    sendProgress(0.5,'Done computing', 'Sending computed metrics to the server')
-    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
+    sendProgress(0.5, 'Done computing',
+                 'Sending computed metrics to the server')
+    workerClient.add_multiple_annotation_property_values(
+        dataset_property_value_dict)
 
 
 if __name__ == '__main__':
@@ -129,7 +133,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
