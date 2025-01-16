@@ -109,6 +109,7 @@ docker build -f ./workers/properties/lines/line_scan_worker/$DOCKERFILE -t prope
 # docker build -f ./workers/properties/lines/test_file_creation_worker/$DOCKERFILE -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
 # docker build -f ./workers/properties/lines/test_file_creation_worker/Dockerfile_M1 -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
 # docker build -f ./workers/annotations/random_square/Dockerfile_M1 -t annotations/random_square:latest ./workers/annotations/random_square/
+# docker build -f ./workers/annotations/gaussian_blur/Dockerfile_M1 -t annotations/gaussian_blur:latest ./workers/annotations/gaussian_blur/
 
 
 # AI workers
