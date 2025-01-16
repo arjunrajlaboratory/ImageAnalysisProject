@@ -7,9 +7,9 @@ from annotation_client.utils import sendProgress
 import annotation_utilities.annotation_tools as annotation_tools
 
 
-
 def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
     interface = {
         'Point Metrics': {
             'type': 'notes',
@@ -35,9 +35,12 @@ def compute(datasetId, apiUrl, token, params):
         tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
     """
 
-    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    annotationList = workerClient.get_annotation_list_by_shape('point', limit=0)
-    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
+    workerClient = workers.UPennContrastWorkerClient(
+        datasetId, apiUrl, token, params)
+    annotationList = workerClient.get_annotation_list_by_shape(
+        'point', limit=0)
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get(
+        'tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
 
     # We need at least one annotation
     if len(annotationList) == 0:
@@ -56,19 +59,26 @@ def compute(datasetId, apiUrl, token, params):
         }
         # Add prop to the dictionary with annotation['_id'] as the key
         property_value_dict[annotation['_id']] = prop
-        sendProgress((i+1)/number_annotations, 'Computing point metrics', f"Processing annotation {i+1}/{number_annotations}")
+        # Only send progress every number_annotations / 100
+        if i % int(number_annotations / 100) == 0:
+            sendProgress((i+1)/number_annotations, 'Computing point metrics',
+                         f"Processing annotation {i+1}/{number_annotations}")
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 
-    sendProgress(0.5, 'Done computing', 'Sending computed metrics to the server')
-    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
+    sendProgress(0.5, 'Done computing',
+                 'Sending computed metrics to the server')
+    workerClient.add_multiple_annotation_property_values(
+        dataset_property_value_dict)
+
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
