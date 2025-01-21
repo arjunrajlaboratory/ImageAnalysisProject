@@ -123,8 +123,12 @@ def compute(datasetId, apiUrl, token, params):
     sink = li.new()
 
     dtype = tileClient.tiles['dtype']
-    dtype_info = np.iinfo(dtype)
-    max_val = dtype_info.max
+    # If dtype is an integer type, get the max value
+    if np.issubdtype(dtype, np.integer):
+        dtype_info = np.iinfo(dtype)
+        max_val = dtype_info.max
+    else:
+        max_val = 1
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
