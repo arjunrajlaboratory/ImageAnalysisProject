@@ -162,7 +162,12 @@ def compute(datasetId, apiUrl, token, params):
     sink.write('/tmp/output.tiff')
     print("Wrote to file")
 
-    gc.uploadFileToFolder(datasetId, '/tmp/output.tiff')
+    item = gc.uploadFileToFolder(datasetId, '/tmp/output.tiff')
+    gc.addMetadataToItem(item['itemId'], {
+        'tool': 'Gaussian blur',
+        'sigma': sigma,
+        'channel': channel,
+    })
     print("Uploaded file")
 
 
