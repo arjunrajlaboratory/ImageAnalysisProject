@@ -53,6 +53,10 @@ LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Gaussian Blur" \
       interfaceCategory="Image Processing" \
-      description="Blurs images using a Gaussian kernel"
+      description="Blurs images using a Gaussian kernel" \
+      hasPreview="True" \
+      advancedOptionsPanel="False" \
+      annotationConfigurationPanel="False" \
+      defaultToolName="Gaussian Blur"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
