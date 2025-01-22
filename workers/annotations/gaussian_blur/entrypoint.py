@@ -123,8 +123,12 @@ def compute(datasetId, apiUrl, token, params):
     sink = li.new()
 
     dtype = tileClient.tiles['dtype']
-    dtype_info = np.iinfo(dtype)
-    max_val = dtype_info.max
+    # If dtype is an integer type, get the max value
+    if np.issubdtype(dtype, np.integer):
+        dtype_info = np.iinfo(dtype)
+        max_val = dtype_info.max
+    else:
+        max_val = 1
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
@@ -158,7 +162,12 @@ def compute(datasetId, apiUrl, token, params):
     sink.write('/tmp/output.tiff')
     print("Wrote to file")
 
-    gc.uploadFileToFolder(datasetId, '/tmp/output.tiff')
+    item = gc.uploadFileToFolder(datasetId, '/tmp/output.tiff')
+    gc.addMetadataToItem(item['itemId'], {
+        'tool': 'Gaussian blur',
+        'sigma': sigma,
+        'channel': channel,
+    })
     print("Uploaded file")
 
 
