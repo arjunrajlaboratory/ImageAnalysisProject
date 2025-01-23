@@ -122,7 +122,11 @@ def compute(datasetId, apiUrl, token, params):
             property_value_dict[annotation['_id']] = prop
             processed_annotations += 1
             # Only send progress every number_annotations / 100
-            if processed_annotations % int(number_annotations / 100) == 0:
+            if number_annotations > 100:
+                if processed_annotations % int(number_annotations / 100) == 0:
+                    sendProgress(processed_annotations / number_annotations, 'Computing blob intensity',
+                                 f"Processing annotation {processed_annotations}/{number_annotations}")
+            else:
                 sendProgress(processed_annotations / number_annotations, 'Computing blob intensity',
                              f"Processing annotation {processed_annotations}/{number_annotations}")
 

@@ -51,8 +51,7 @@ def compute(datasetId, apiUrl, token, params):
         'polygon', limit=0)
     print(f"Found {len(annotationList)} annotations with shape 'polygon'")
     print(f"The tags are: {params.get('tags', {}).get('tags', [])}")
-    print(f"The exclusive flag is: {params.get(
-        'tags', {}).get('exclusive', False)}")
+    # print(f"The exclusive flag is: {params.get('tags', {}).get('exclusive', False)}")
     annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get(
         'tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
     print(f"Found {len(annotationList)} annotations with the specified tags")
