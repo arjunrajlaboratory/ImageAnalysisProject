@@ -10,8 +10,10 @@ import annotation_utilities.annotation_tools as annotation_tools
 from shapely.geometry import Polygon
 import numpy as np
 
+
 def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
 
     # Available types: number, text, tags, layer
     interface = {
@@ -41,32 +43,35 @@ def compute(datasetId, apiUrl, token, params):
         tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
     """
 
-    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+    workerClient = workers.UPennContrastWorkerClient(
+        datasetId, apiUrl, token, params)
     # Here's an example of what the "params" dict might look like:
     # {'id': '65bc10b3e62fc888551f168d', 'name': 'metrics2', 'image': 'properties/blob_metrics:latest', 'tags': {'exclusive': False, 'tags': ['nucleus']}, 'shape': 'polygon', 'workerInterface': {}, 'scales': {'pixelSize': {'unit': 'mm', 'value': 0.000219080212825376}, 'tStep': {'unit': 's', 'value': 1}, 'zStep': {'unit': 'm', 'value': 1}}}
-    annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+    annotationList = workerClient.get_annotation_list_by_shape(
+        'polygon', limit=0)
     print(f"Found {len(annotationList)} annotations with shape 'polygon'")
     print(f"The tags are: {params.get('tags', {}).get('tags', [])}")
-    print(f"The exclusive flag is: {params.get('tags', {}).get('exclusive', False)}")
-    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get('tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
+    # print(f"The exclusive flag is: {params.get('tags', {}).get('exclusive', False)}")
+    annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get(
+        'tags', {}).get('tags', []), params.get('tags', {}).get('exclusive', False))
     print(f"Found {len(annotationList)} annotations with the specified tags")
 
     # We need at least one annotation
     if len(annotationList) == 0:
         return
 
-
     number_annotations = len(annotationList)
     property_value_dict = {}  # Initialize as a dictionary
     for i, annotation in enumerate(annotationList):
 
-        polygon_coords = [list(coordinate.values())[0:2] for coordinate in annotation['coordinates']]
+        polygon_coords = [list(coordinate.values())[0:2]
+                          for coordinate in annotation['coordinates']]
         if len(polygon_coords) < 3:
             continue
         poly = Polygon(polygon_coords)
         convex_hull = poly.convex_hull
         min_rect = poly.minimum_rotated_rectangle
-        
+
         # Calculate elongation
         min_rect_coords = np.array(min_rect.exterior.coords)
         edges = np.diff(min_rect_coords, axis=0)
@@ -105,19 +110,30 @@ def compute(datasetId, apiUrl, token, params):
         }
         # Add prop to the dictionary with annotation['_id'] as the key
         property_value_dict[annotation['_id']] = prop
-        sendProgress((i+1)/number_annotations, 'Computing blob metrics', f"Processing annotation {i+1}/{number_annotations}")
+        # Only send progress every number_annotations / 100
+        if number_annotations > 100:
+            if i % int(number_annotations / 100) == 0:
+                sendProgress((i+1)/number_annotations, 'Computing blob metrics',
+                             f"Processing annotation {i+1}/{number_annotations}")
+        else:
+            sendProgress((i+1)/number_annotations, 'Computing blob metrics',
+                         f"Processing annotation {i+1}/{number_annotations}")
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 
-    sendProgress(0.5,'Done computing', 'Sending computed metrics to the server')
-    workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
+    sendProgress(0.5, 'Done computing',
+                 'Sending computed metrics to the server')
+    workerClient.add_multiple_annotation_property_values(
+        dataset_property_value_dict)
+
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
