@@ -85,6 +85,11 @@ def interface(image, apiUrl, token):
             'tooltip': 'The channel to blur.',
             'displayOrder': 1,
         },
+        'All channels': {
+            'type': 'channelCheckboxes',
+            'tooltip': 'Blur selected channels.',
+            'displayOrder': 2,
+        },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
@@ -113,6 +118,9 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
     sigma = float(workerInterface['Sigma'])
     channel = int(workerInterface['Channel'])
+    allChannels = workerInterface['All channels']
+
+    print("allChannels", allChannels)
 
     tile = params['tile']
     frame = tileClient.coordinatesToFrameIndex(
