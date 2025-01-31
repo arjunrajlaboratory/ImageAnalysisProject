@@ -93,10 +93,12 @@ def compute(datasetId, apiUrl, token, params):
 
         # Compute properties for all annotations at that location
         for annotation in annotations:
-            polygon = np.array([list(coordinate.values())[1::-1]
-                               for coordinate in annotation['coordinates']])
-            mask = draw.polygon2mask(image.shape, polygon)
-            intensities = image[mask]
+            polygon = np.array([[coordinate['y'] - 0.5, coordinate['x'] - 0.5]
+                                for coordinate in annotation['coordinates']])
+            rr, cc = draw.polygon(
+                polygon[:, 0], polygon[:, 1], shape=image.shape)
+            intensities = image[rr, cc]
+
             if len(intensities) == 0:  # Skip if there are no pixels in the mask
                 continue
 
