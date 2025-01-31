@@ -95,6 +95,10 @@ def compute(datasetId, apiUrl, token, params):
         for annotation in annotations:
             polygon = np.array([[coordinate['y'] - 0.5, coordinate['x'] - 0.5]
                                 for coordinate in annotation['coordinates']])
+
+            if len(polygon) < 3:  # Skip if the polygon is not valid
+                continue
+
             rr, cc = draw.polygon(
                 polygon[:, 0], polygon[:, 1], shape=image.shape)
             intensities = image[rr, cc]
