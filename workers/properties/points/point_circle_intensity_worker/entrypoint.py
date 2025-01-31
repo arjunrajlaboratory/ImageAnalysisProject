@@ -1,11 +1,13 @@
 import argparse
 import json
 import sys
+import time
 
 import annotation_client.workers as workers
-
+import annotation_client.tiles as tiles
 import numpy as np
 from skimage import draw
+from collections import defaultdict
 
 from annotation_client.utils import sendProgress
 import annotation_utilities.annotation_tools as annotation_tools
@@ -61,9 +63,12 @@ def compute(datasetId, apiUrl, token, params):
 
     # Constants
     radius = float(params['workerInterface']['Radius'])
+    channel = params['workerInterface']['Channel']
 
     workerClient = workers.UPennContrastWorkerClient(
         datasetId, apiUrl, token, params)
+    tileClient = tiles.UPennContrastDataset(
+        apiUrl=apiUrl, token=token, datasetId=datasetId)
     annotationList = workerClient.get_annotation_list_by_shape(
         'point', limit=0)
     annotationList = annotation_tools.get_annotations_with_tags(annotationList, params.get(
@@ -75,54 +80,70 @@ def compute(datasetId, apiUrl, token, params):
 
     number_annotations = len(annotationList)
 
+    grouped_annotations = defaultdict(list)
+    for annotation in annotationList:
+        location_key = (annotation['location']['Time'],
+                        annotation['location']['Z'], annotation['location']['XY'])
+        grouped_annotations[location_key].append(annotation)
+
+    # For reporting progress
+    processed_annotations = 0
+
     property_value_dict = {}  # Initialize as a dictionary
 
-    for i, annotation in enumerate(annotationList):
-
-        image = workerClient.get_image_for_annotation(annotation)
+    for location_key, annotations in grouped_annotations.items():
+        t, z, xy = location_key
+        frame = tileClient.coordinatesToFrameIndex(xy, z, t, channel)
+        image = tileClient.getRegion(datasetId, frame=frame)
 
         if image is None:
             continue
 
-        geojsPoint = annotation['coordinates'][0]
-        point = np.array([geojsPoint['y']-0.5, geojsPoint['x']-0.5])
-        # Subtract 0.5 to convert from pixel corner to pixel center for skimage.draw.disk
+        for annotation in annotations:
 
-        rr, cc = draw.disk(point, radius, shape=image.shape)
-        # Code below seems very inefficient. Probably could just go straight from rr,cc to the calculation. But whatever.
-        if rr.size > 0:  # If the circle catches at least one pixel
-            mask = np.zeros(image.shape, dtype=bool)
-            mask[rr, cc] = 1
-            intensities = image[mask]
-            # Calculating the desired metrics
-            mean_intensity = np.mean(intensities)
-            max_intensity = np.max(intensities)
-            min_intensity = np.min(intensities)
-            median_intensity = np.median(intensities)
-            q25_intensity = np.percentile(intensities, 25)
-            q75_intensity = np.percentile(intensities, 75)
-            total_intensity = np.sum(intensities)
+            # image = workerClient.get_image_for_annotation(annotation)
 
-            prop = {
-                'MeanIntensity': float(mean_intensity),
-                'MaxIntensity': float(max_intensity),
-                'MinIntensity': float(min_intensity),
-                'MedianIntensity': float(median_intensity),
-                '25thPercentileIntensity': float(q25_intensity),
-                '75thPercentileIntensity': float(q75_intensity),
-                'TotalIntensity': float(total_intensity),
-            }
+            if image is None:
+                continue
 
-            property_value_dict[annotation['_id']] = prop
+            geojsPoint = annotation['coordinates'][0]
+            # Subtract 0.5 to convert from pixel corner to pixel center for skimage.draw.disk
+            point = np.array([geojsPoint['y']-0.5, geojsPoint['x']-0.5])
 
-            # Only send progress every number_annotations / 100
-            if number_annotations > 100:
-                if i % int(number_annotations / 100) == 0:
-                    sendProgress(i / number_annotations, 'Computing point intensities',
-                                 f"Processing annotation {i}/{number_annotations}")
-            else:
-                sendProgress(i / number_annotations, 'Computing point intensities',
-                             f"Processing annotation {i}/{number_annotations}")
+            rr, cc = draw.disk(point, radius, shape=image.shape)
+
+            if rr.size > 0:  # If the circle catches at least one pixel
+                intensities = image[rr, cc]
+                # Calculating the desired metrics
+                mean_intensity = np.mean(intensities)
+                max_intensity = np.max(intensities)
+                min_intensity = np.min(intensities)
+                median_intensity = np.median(intensities)
+                q25_intensity = np.percentile(intensities, 25)
+                q75_intensity = np.percentile(intensities, 75)
+                total_intensity = np.sum(intensities)
+
+                prop = {
+                    'MeanIntensity': float(mean_intensity),
+                    'MaxIntensity': float(max_intensity),
+                    'MinIntensity': float(min_intensity),
+                    'MedianIntensity': float(median_intensity),
+                    '25thPercentileIntensity': float(q25_intensity),
+                    '75thPercentileIntensity': float(q75_intensity),
+                    'TotalIntensity': float(total_intensity),
+                }
+
+                property_value_dict[annotation['_id']] = prop
+
+                # Only send progress every number_annotations / 100
+                processed_annotations += 1
+                if number_annotations > 100:
+                    if processed_annotations % int(number_annotations / 100) == 0:
+                        sendProgress(processed_annotations / number_annotations, 'Computing point intensities',
+                                     f"Processing annotation {processed_annotations}/{number_annotations}")
+                else:
+                    sendProgress(processed_annotations / number_annotations, 'Computing point intensities',
+                                 f"Processing annotation {processed_annotations}/{number_annotations}")
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 
