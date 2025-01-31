@@ -114,20 +114,30 @@ def compute(datasetId, apiUrl, token, params):
 
         # Compute properties for all annotations at that location
         for annotation in annotations:
-            polygon = np.array([list(coordinate.values())[1::-1]
-                               for coordinate in annotation['coordinates']])
+            polygon = np.array([[coordinate['y'] - 0.5, coordinate['x'] - 0.5]
+                                for coordinate in annotation['coordinates']])
+
             if len(polygon) < 3:  # Skip if the polygon is not valid
                 continue
-            mask = draw.polygon2mask(image.shape, polygon)
 
+            rr, cc = draw.polygon(
+                polygon[:, 0], polygon[:, 1], shape=image.shape)
+            original_coords = set(zip(rr, cc))
+
+            # Get coordinates of dilated polygon
             dilated_polygon = Polygon(polygon).buffer(annulus_radius)
-            dilated_mask = draw.polygon2mask(
-                image.shape, np.array(dilated_polygon.exterior.coords))
+            rr_dilated, cc_dilated = draw.polygon(
+                np.array(dilated_polygon.exterior.coords)[:, 0],
+                np.array(dilated_polygon.exterior.coords)[:, 1],
+                shape=image.shape
+            )
+            dilated_coords = set(zip(rr_dilated, cc_dilated))
 
-            # Generate annulus
-            # Subtracting the original mask from dilated mask
-            annulus_mask = dilated_mask & ~mask
-            intensities = image[annulus_mask]
+            # Get just the annulus coordinates (in dilated but not in original)
+            annulus_coords = dilated_coords - original_coords
+            rr_annulus, cc_annulus = zip(*annulus_coords)
+            intensities = image[rr_annulus, cc_annulus]
+
             if len(intensities) == 0:  # Skip if there are no pixels in the mask
                 continue
 
