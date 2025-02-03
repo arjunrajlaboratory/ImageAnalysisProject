@@ -21,7 +21,7 @@ else
     DOCKERFILE="Dockerfile"
 fi
 
-# Build Docker image
+# Build Docker images
 
 # Annotation workers
 echo "Building annotation worker: connect_to_nearest"
@@ -103,6 +103,16 @@ echo "Building property worker: line_scan_worker"
 docker build -f ./workers/properties/lines/line_scan_worker/$DOCKERFILE -t properties/line_scan_worker:latest ./workers/properties/lines/line_scan_worker/ $NO_CACHE
 # docker build -f ./workers/properties/lines/line_scan_worker/Dockerfile_M1 -t properties/line_scan_worker:latest ./workers/properties/lines/line_scan_worker/
 
+# Image processing workers
+
+echo "Building image processing worker: rolling_ball"
+docker build -f ./workers/annotations/rolling_ball/$DOCKERFILE -t annotations/rolling_ball:latest ./workers/annotations/rolling_ball/ $NO_CACHE
+# docker build -f ./workers/annotations/rolling_ball/Dockerfile_M1 -t annotations/rolling_ball:latest ./workers/annotations/rolling_ball/
+
+echo "Building image processing worker: crop"
+docker build -f ./workers/annotations/crop/$DOCKERFILE -t annotations/crop:latest ./workers/annotations/crop/ $NO_CACHE
+# docker build -f ./workers/annotations/crop/Dockerfile_M1 -t annotations/crop:latest ./workers/annotations/crop/
+
 
 # TEST WORKERS
 # echo "Building property worker: test_file_creation_worker"
@@ -110,6 +120,8 @@ docker build -f ./workers/properties/lines/line_scan_worker/$DOCKERFILE -t prope
 # docker build -f ./workers/properties/lines/test_file_creation_worker/Dockerfile_M1 -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
 # docker build -f ./workers/annotations/random_square/Dockerfile_M1 -t annotations/random_square:latest ./workers/annotations/random_square/
 # docker build -f ./workers/annotations/gaussian_blur/Dockerfile_M1 -t annotations/gaussian_blur:latest ./workers/annotations/gaussian_blur/
+# docker build -f ./workers/annotations/rolling_ball/Dockerfile_M1 -t annotations/rolling_ball:latest ./workers/annotations/rolling_ball/
+# docker build -f ./workers/annotations/crop/Dockerfile_M1 -t annotations/crop:latest ./workers/annotations/crop/
 
 
 # AI workers
