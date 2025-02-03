@@ -17,7 +17,7 @@ import numpy as np
 from worker_client import WorkerClient
 
 from functools import partial
-from skimage import feature, filters, measure
+from skimage import feature, filters, measure, restoration
 
 import large_image as li
 
@@ -71,23 +71,17 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
-        'Sigma': {
+        'Radius': {
             'type': 'number',
             'min': 0,
             'max': 100,
             'default': 20,
-            'tooltip': 'The sigma value for the Gaussian blur filter.',
+            'tooltip': 'The radius of the rolling ball.',
             'displayOrder': 0,
         },
-        'Channel': {
-            'type': 'channel',
-            'default': 0,
-            'tooltip': 'The channel to blur.',
-            'displayOrder': 1,
-        },
-        'All channels': {
+        'Channels to correct': {
             'type': 'channelCheckboxes',
-            'tooltip': 'Blur selected channels.',
+            'tooltip': 'Process selected channels.',
             'displayOrder': 2,
         },
     }
@@ -116,9 +110,8 @@ def compute(datasetId, apiUrl, token, params):
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     workerInterface = params['workerInterface']
-    sigma = float(workerInterface['Sigma'])
-    channel = int(workerInterface['Channel'])
-    allChannels = workerInterface['All channels']
+    radius = float(workerInterface['Radius'])
+    allChannels = workerInterface['Channels to correct']
 
     print("allChannels", allChannels)
     # Output is allChannels {'1': True, '2': True}
@@ -134,35 +127,28 @@ def compute(datasetId, apiUrl, token, params):
 
     sink = li.new()
 
-    dtype = tileClient.tiles['dtype']
-    # If dtype is an integer type, get the max value
-    if np.issubdtype(dtype, np.integer):
-        dtype_info = np.iinfo(dtype)
-        max_val = dtype_info.max
-    else:
-        max_val = 1
-
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
             # Create a parameters dictionary with only the indices that exist in frame
             # The len(k) > 5 is to avoid the 'Index' key that has no postfix to it
-            params = {f'{k.lower()[5:]}': v for k, v in frame.items(
+            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items(
             ) if k.startswith('Index') and len(k) > 5}
 
             image = tileClient.getRegion(datasetId, frame=i).squeeze()
             if frame['IndexC'] in channels:
-                # Only process the channel that is being blurred
-                blurred = filters.gaussian(image, sigma=sigma)*max_val
-                image = blurred.astype(dtype)
+                # Only process the channel that is being processed
+                background = restoration.rolling_ball(
+                    image, radius=radius)
+                image = image-background
 
-            sink.addTile(image, 0, 0, **params)
+            sink.addTile(image, 0, 0, **large_image_params)
 
-            sendProgress(i / len(tileClient.tiles['frames']), 'Gaussian blur',
+            sendProgress(i / len(tileClient.tiles['frames']), 'Rolling ball',
                          f"Processing frame {i+1}/{len(tileClient.tiles['frames'])}")
     else:
         image = tileClient.getRegion(datasetId, frame=frame).squeeze()
-        blurred = filters.gaussian(image, sigma=sigma)*max_val
-        image = blurred.astype(dtype)
+        background = restoration.rolling_ball(image, radius=radius)
+        image = image-background
         sink.addTile(image, 0, 0, z=0)  # X, Y, Z
 
     # Copy over the metadata
@@ -177,9 +163,8 @@ def compute(datasetId, apiUrl, token, params):
 
     item = gc.uploadFileToFolder(datasetId, '/tmp/output.tiff')
     gc.addMetadataToItem(item['itemId'], {
-        'tool': 'Gaussian blur',
-        'sigma': sigma,
-        'channel': channel,
+        'tool': 'Rolling ball',
+        'radius': radius,
     })
     print("Uploaded file")
 
