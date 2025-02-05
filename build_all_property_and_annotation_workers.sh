@@ -117,6 +117,10 @@ echo "Building image processing worker: histogram_matching"
 docker build -f ./workers/annotations/histogram_matching/$DOCKERFILE -t annotations/histogram_matching:latest ./workers/annotations/histogram_matching/ $NO_CACHE
 # docker build -f ./workers/annotations/histogram_matching/Dockerfile_M1 -t annotations/histogram_matching:latest ./workers/annotations/histogram_matching/
 
+echo "Building image processing worker: registration"
+docker build -f ./workers/annotations/registration/$DOCKERFILE -t annotations/registration:latest ./workers/annotations/registration/ $NO_CACHE
+# docker build -f ./workers/annotations/registration/Dockerfile_M1 -t annotations/registration:latest ./workers/annotations/registration/
+
 
 # TEST WORKERS
 # echo "Building property worker: test_file_creation_worker"
@@ -127,7 +131,7 @@ docker build -f ./workers/annotations/histogram_matching/$DOCKERFILE -t annotati
 # docker build -f ./workers/annotations/rolling_ball/Dockerfile_M1 -t annotations/rolling_ball:latest ./workers/annotations/rolling_ball/
 # docker build -f ./workers/annotations/crop/Dockerfile_M1 -t annotations/crop:latest ./workers/annotations/crop/
 # docker build -f ./workers/annotations/histogram_matching/Dockerfile_M1 -t annotations/histogram_matching:latest ./workers/annotations/histogram_matching/
-
+# docker build -f ./workers/annotations/registration/Dockerfile_M1 -t annotations/registration:latest ./workers/annotations/registration/
 
 # AI workers
 echo "Building AI worker: ai_analysis"
