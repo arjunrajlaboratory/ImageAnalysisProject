@@ -23,11 +23,13 @@ class WorkerClient:
         self.params = params
 
         # roughly validate params
-        keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
+        keys = ["assignment", "channel", "connectTo",
+                "tags", "tile", "workerInterface"]
         if not all(key in params for key in keys):
             print("Invalid worker parameters", params)
             return
-        assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+        assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(
+            *keys)(params)
 
         self.assignment = assignment
         self.channel = channel
@@ -40,9 +42,12 @@ class WorkerClient:
         batch_z = workerInterface.get('Batch Z', None)
         batch_time = workerInterface.get('Batch Time', None)
 
-        batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-        batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-        batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
+        batch_xy = batch_argument_parser.process_range_list(
+            batch_xy, convert_one_to_zero_index=True)
+        batch_z = batch_argument_parser.process_range_list(
+            batch_z, convert_one_to_zero_index=True)
+        batch_time = batch_argument_parser.process_range_list(
+            batch_time, convert_one_to_zero_index=True)
 
         if batch_xy is None:
             batch_xy = [tile['XY']]
@@ -74,8 +79,10 @@ class WorkerClient:
         if channel is None:
             channel = self.channel
 
-        frame = self.datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
-        image = self.datasetClient.getRegion(self.datasetId, frame=frame).squeeze()
+        frame = self.datasetClient.coordinatesToFrameIndex(
+            xy, z, time, channel)
+        image = self.datasetClient.getRegion(
+            self.datasetId, frame=frame).squeeze()
 
         return image
 
@@ -84,7 +91,8 @@ class WorkerClient:
         xy, z, time, channel = location
 
         if stack_xys == 'all':
-            xys = range(self.datasetClient.tiles['IndexRange'].get('IndexXY', 0))
+            xys = range(
+                self.datasetClient.tiles['IndexRange'].get('IndexXY', 0))
         elif isinstance(stack_xys, Sequence) and len(stack_xys):
             xys = stack_xys
         else:
@@ -104,7 +112,8 @@ class WorkerClient:
                 zs = [z]
 
         if stack_times == 'all':
-            times = range(self.datasetClient.tiles['IndexRange'].get('IndexTime', 0))
+            times = range(
+                self.datasetClient.tiles['IndexRange'].get('IndexT', 0))
         elif isinstance(stack_times, Sequence) and len(stack_times):
             times = stack_times
         else:
@@ -114,7 +123,8 @@ class WorkerClient:
                 times = [time]
 
         if stack_channels == 'all':
-            channels = range(self.datasetClient.tiles['IndexRange'].get('IndexC', 0))
+            channels = range(
+                self.datasetClient.tiles['IndexRange'].get('IndexC', 0))
         elif isinstance(stack_channels, Sequence) and len(stack_channels):
             channels = stack_channels
         else:
@@ -123,7 +133,8 @@ class WorkerClient:
             else:
                 channels = [channel]
 
-        shape = (l for l, s in zip((len(xys), len(zs), len(times), len(channels)), (stack_xys, stack_zs, stack_times, stack_channels)) if isinstance(s, Sequence) and len(s))
+        shape = (l for l, s in zip((len(xys), len(zs), len(times), len(channels)), (stack_xys,
+                 stack_zs, stack_times, stack_channels)) if isinstance(s, Sequence) and len(s))
 
         frames = []
 
@@ -181,9 +192,11 @@ class WorkerClient:
                 }
                 annotation_list.append(annotation)
 
-        annotationsIds = [a['_id'] for a in self.annotationClient.createMultipleAnnotations(annotation_list)]
+        annotationsIds = [
+            a['_id'] for a in self.annotationClient.createMultipleAnnotations(annotation_list)]
         if len(self.connectTo['tags']) > 0:
-            self.annotationClient.connectToNearest(self.connectTo, annotationsIds)
+            self.annotationClient.connectToNearest(
+                self.connectTo, annotationsIds)
 
     def create_polygon_annotations(self, location, polygons):
 
@@ -212,9 +225,11 @@ class WorkerClient:
             }
             annotation_list.append(annotation)
 
-        annotationsIds = [a['_id'] for a in self.annotationClient.createMultipleAnnotations(annotation_list)]
+        annotationsIds = [
+            a['_id'] for a in self.annotationClient.createMultipleAnnotations(annotation_list)]
         if len(self.connectTo['tags']) > 0:
-            self.annotationClient.connectToNearest(self.connectTo, annotationsIds)
+            self.annotationClient.connectToNearest(
+                self.connectTo, annotationsIds)
 
     def process(self, f_process, f_annotation, stack_xys=None, stack_zs=None, stack_times=None, stack_channels=None,
                 progress_text='Running Worker'):
@@ -244,7 +259,8 @@ class WorkerClient:
 
         for xy, z, time, channel in product(*batch):
 
-            image = self.get_image_stack((xy, z, time, channel), stack_xys, stack_zs, stack_times, stack_channels)
+            image = self.get_image_stack(
+                (xy, z, time, channel), stack_xys, stack_zs, stack_times, stack_channels)
 
             output = f_process(image)
 

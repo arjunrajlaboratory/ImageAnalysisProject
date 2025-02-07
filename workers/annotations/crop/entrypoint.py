@@ -122,8 +122,8 @@ def compute(datasetId, apiUrl, token, params):
             range_z = range(0, tileInfo['IndexRange']['IndexZ'])
         else:
             range_z = [0]
-        if 'IndexTime' in tileInfo['IndexRange']:
-            range_time = range(0, tileInfo['IndexRange']['IndexTime'])
+        if 'IndexT' in tileInfo['IndexRange']:
+            range_time = range(0, tileInfo['IndexRange']['IndexT'])
         else:
             range_time = [0]
         if 'IndexC' in tileInfo['IndexRange']:
