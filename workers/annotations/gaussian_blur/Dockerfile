@@ -47,6 +47,8 @@ RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 RUN pip install /ImageAnalysisProject/worker_client
 
+RUN pip install large-image-source-tiff large-image-source-zarr large-image-converter large-image --find-links https://girder.github.io/large_image_wheels
+
 COPY ./entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
