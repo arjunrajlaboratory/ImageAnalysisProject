@@ -10,7 +10,7 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 import annotation_client.annotations as annotations
 
-from annotation_client.utils import sendProgress, sendError
+from annotation_client.utils import sendProgress, sendError, sendWarning
 
 import annotation_utilities.annotation_tools as annotation_tools
 import annotation_utilities.batch_argument_parser as batch_argument_parser
@@ -81,12 +81,23 @@ def interface(image, apiUrl, token):
             'tooltip': 'Enter the tag of the region to reference for registration.',
             'displayOrder': 6
         },
+        'Control point tag': {
+            'type': 'tags',
+            'tooltip': 'Enter the tag of the control points to use for registration.',
+            'displayOrder': 7
+        },
+        'Apply algorithm after control points': {
+            'type': 'checkbox',
+            'tooltip': 'Apply the registration algorithm after the control points are applied.',
+            'default': False,
+            'displayOrder': 8
+        },
         'Algorithm': {
             'type': 'select',
-            'options': ['Translation', 'Rigid', 'Affine'],
+            'items': ['Translation', 'Rigid', 'Affine'],
             'label': 'Algorithm',
             'default': 'Translation',
-            'displayOrder': 7
+            'displayOrder': 9
         },
     }
     # Send the interface object to the server
@@ -130,6 +141,7 @@ def compute(datasetId, apiUrl, token, params):
 
     # Get algorithm from workerInterface
     algorithm = params['workerInterface']['Algorithm']
+    apply_algorithm_after_control_points = params['workerInterface']['Apply algorithm after control points']
 
     tileInfo = tileClient.tiles
 
@@ -236,6 +248,34 @@ def compute(datasetId, apiUrl, token, params):
             print(
                 f"Reference region dimensions - left: {reference_region_left}, top: {reference_region_top}, right: {reference_region_right}, bottom: {reference_region_bottom}")
 
+    should_use_control_points = (workerInterface['Control point tag'] is not None and
+                                 workerInterface['Control point tag'])
+    cp_dict = {}
+    if should_use_control_points:
+        control_point_annotations = annotationClient.getAnnotationsByDatasetId(
+            datasetId, limit=1000, shape='point')
+        control_point_annotations = annotation_tools.get_annotations_with_tags(
+            control_point_annotations, workerInterface['Control point tag'], exclusive=False)
+        if len(control_point_annotations) == 0:
+            sendWarning("No control points found")
+        else:
+            # Build a dictionary mapping (XY, Time) to (x, y) using the first control point found
+            for cp in control_point_annotations:
+                loc = cp.get('location', {})
+                cp_xy = loc.get('XY')
+                cp_time = loc.get('Time')
+                if cp_xy is not None and cp_time is not None:
+                    if (cp_xy, cp_time) not in cp_dict:
+                        coords = cp.get('coordinates')
+                        if coords and len(coords) > 0:
+                            x = coords[0].get('x')
+                            y = coords[0].get('y')
+                            if x is not None and y is not None:
+                                cp_dict[(cp_xy, cp_time)] = (x, y)
+            # For debugging:
+            print("Control point dictionary:")
+            pprint.pprint(cp_dict)
+
     # Initialize the stackreg object
     # TODO: Make this configurable based on selected algorithm
     sr = StackReg(StackReg.TRANSLATION)
@@ -244,14 +284,12 @@ def compute(datasetId, apiUrl, token, params):
     registration_matrices = {}
     progress_counter = 0
     total_progress = len(apply_XY) * tileInfo['IndexRange']['IndexT']
-    for xy in apply_XY:
-        # Set first matrix to identity
-        registration_matrices[(xy, 0)] = np.eye(3)
 
-        # Get first frame
+    for xy in apply_XY:
+        # Start with the identity matrix at t=0.
+        registration_matrices[(xy, 0)] = np.eye(3)
         frame = tileClient.coordinatesToFrameIndex(
             xy, reference_Z, 0, reference_channel)
-        # Use the reference_region to pull just the relevant region, look at the crop tool for an example
         if should_use_reference_region:
             current_image = tileClient.getRegion(
                 datasetId, frame=frame,
@@ -265,7 +303,6 @@ def compute(datasetId, apiUrl, token, params):
                 datasetId, frame=frame).squeeze()
 
         for t in range(1, tileInfo['IndexRange']['IndexT']):
-            # Get the reference image
             next_frame = tileClient.coordinatesToFrameIndex(
                 xy, reference_Z, t, reference_channel)
             if should_use_reference_region:
@@ -280,10 +317,35 @@ def compute(datasetId, apiUrl, token, params):
                 next_image = tileClient.getRegion(
                     datasetId, frame=next_frame).squeeze()
 
-            # Compute the registration matrix
-            registration_matrix = sr.register(current_image, next_image)
-            cumulative_registration_matrix = np.dot(
-                registration_matrix, registration_matrices[(xy, t-1)])
+            # Check for control points at (xy, t-1) and (xy, t)
+            cp_prev = cp_dict.get(
+                (xy, t - 1)) if should_use_control_points else None
+            cp_curr = cp_dict.get(
+                (xy, t)) if should_use_control_points else None
+
+            if cp_prev is not None and cp_curr is not None:
+                # Compute the translation (control point) matrix.
+                dx = cp_curr[0] - cp_prev[0]
+                dy = cp_curr[1] - cp_prev[1]
+                CP = np.array([[1, 0, dx],
+                               [0, 1, dy],
+                               [0, 0, 1]])
+                if apply_algorithm_after_control_points:
+                    # First apply the control point correction then do the registration algorithm.
+                    reg_matrix = sr.register(
+                        current_image, sr.transform(next_image, tmat=CP))
+                    combined_matrix = np.dot(reg_matrix, CP)
+                else:
+                    # Use only the control point transformation.
+                    combined_matrix = CP
+                cumulative_registration_matrix = np.dot(
+                    combined_matrix, registration_matrices[(xy, t - 1)])
+            else:
+                # Fall back to using the algorithm's registration if control points are not available.
+                reg_matrix = sr.register(current_image, next_image)
+                cumulative_registration_matrix = np.dot(
+                    reg_matrix, registration_matrices[(xy, t - 1)])
+
             registration_matrices[(xy, t)] = cumulative_registration_matrix
             current_image = next_image
 
