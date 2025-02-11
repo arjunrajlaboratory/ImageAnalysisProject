@@ -94,9 +94,13 @@ def interface(image, apiUrl, token):
         },
         'Algorithm': {
             'type': 'select',
-            'items': ['Translation', 'Rigid', 'Affine'],
+            'items': ['None (control points only)', 'Translation', 'Rigid', 'Affine'],
             'label': 'Algorithm',
             'default': 'Translation',
+            'tooltip': 'Select the registration constraints (pystackreg). If you just want to use control points, select "None (control points only)".\n'
+                       'Translation: Only translation is applied.\n'
+                       'Rigid: Translation and rotation are applied.\n'
+                       'Affine: Translation, rotation, and scaling are applied.',
             'displayOrder': 9
         },
     }
@@ -114,6 +118,13 @@ def safe_astype(arr, dtype):
         info = np.iinfo(dtype)
         return np.clip(arr, info.min, info.max).astype(dtype)
     return arr.astype(dtype)
+
+
+def register_images(image1, image2, algorithm, sr):
+    if algorithm == 'None (control points only)':
+        return np.eye(3)
+    else:
+        return sr.register(image1, image2)
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -278,7 +289,17 @@ def compute(datasetId, apiUrl, token, params):
 
     # Initialize the stackreg object
     # TODO: Make this configurable based on selected algorithm
-    sr = StackReg(StackReg.TRANSLATION)
+    if algorithm == 'None (control points only)':
+        sr = StackReg(StackReg.TRANSLATION)
+    elif algorithm == 'Translation':
+        sr = StackReg(StackReg.TRANSLATION)
+    elif algorithm == 'Rigid':
+        sr = StackReg(StackReg.RIGID_BODY)
+    elif algorithm == 'Affine':
+        sr = StackReg(StackReg.AFFINE)
+    else:
+        sendError(f"Invalid algorithm: {algorithm}")
+        return
 
     # Now let's compute the registration matrices
     registration_matrices = {}
@@ -332,8 +353,8 @@ def compute(datasetId, apiUrl, token, params):
                                [0, 0, 1]])
                 if apply_algorithm_after_control_points:
                     # First apply the control point correction then do the registration algorithm.
-                    reg_matrix = sr.register(
-                        current_image, sr.transform(next_image, tmat=CP))
+                    reg_matrix = register_images(
+                        current_image, sr.transform(next_image, tmat=CP), algorithm, sr)
                     combined_matrix = np.dot(reg_matrix, CP)
                 else:
                     # Use only the control point transformation.
@@ -342,7 +363,8 @@ def compute(datasetId, apiUrl, token, params):
                     combined_matrix, registration_matrices[(xy, t - 1)])
             else:
                 # Fall back to using the algorithm's registration if control points are not available.
-                reg_matrix = sr.register(current_image, next_image)
+                reg_matrix = register_images(
+                    current_image, next_image, algorithm, sr)
                 cumulative_registration_matrix = np.dot(
                     reg_matrix, registration_matrices[(xy, t - 1)])
 
