@@ -47,22 +47,22 @@ def interface(image, apiUrl, token):
         'Reference Z Coordinate': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 8; default is 0',
+                'placeholder': 'ex. 8; default is 1',
                 'label': 'Reference Z coordinate.',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Z coordinate to reference for registration. Default is 0.'
+                'tooltip': 'Enter the Z coordinate to reference for registration. Default is 1.'
             },
             'displayOrder': 2
         },
         'Reference Time Coordinate': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 8; default is 0',
+                'placeholder': 'ex. 8; default is 1',
                 'label': 'Reference Time coordinate.',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the time point to reference for registration. Default is 0.'
+                'tooltip': 'Enter the time point to reference for registration. Default is 1.'
             },
             'displayOrder': 3
         },
@@ -259,6 +259,28 @@ def compute(datasetId, apiUrl, token, params):
                          'Calculating registration matrices',
                          f"Processing t: {t}, xy: {xy}")
             progress_counter += 1
+
+    # If a reference time other than t=0 was specified, adjust the matrices so that
+    # the registration matrices are relative to the chosen reference time.
+    if reference_Time != 0:
+        for xy in apply_XY:
+            # Check that the reference time is within the available range
+            if reference_Time >= tileInfo['IndexRange']['IndexT']:
+                sendError(f"Reference time {reference_Time+1} "
+                          f"is out of range for XY coordinate {xy}.")
+                return
+            # Get the cumulative matrix at the reference time for this XY position.
+            ref_matrix = registration_matrices[(xy, reference_Time)]
+            try:
+                inv_ref = np.linalg.inv(ref_matrix)
+            except np.linalg.LinAlgError as e:
+                sendError("Could not invert reference matrix for XY "
+                          f"{xy} at time {reference_Time+1}: {str(e)}")
+                return
+            # Multiply all matrices by the inverse of the reference matrix.
+            for t in range(tileInfo['IndexRange']['IndexT']):
+                registration_matrices[(xy, t)] = np.dot(
+                    inv_ref, registration_matrices[(xy, t)])
 
     gc = tileClient.client
 
