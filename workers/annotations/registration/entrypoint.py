@@ -93,6 +93,18 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 
+def safe_astype(arr, dtype):
+    """
+    This function is used to cast an array to a new dtype.
+    It will clip the values to the range of the new dtype if necessary.
+    This is useful for avoiding overflow when casting to integer types.
+    """
+    if np.issubdtype(dtype, np.integer):
+        info = np.iinfo(dtype)
+        return np.clip(arr, info.min, info.max).astype(dtype)
+    return arr.astype(dtype)
+
+
 def compute(datasetId, apiUrl, token, params):
     """
     params (could change):
@@ -320,11 +332,11 @@ def compute(datasetId, apiUrl, token, params):
                     if frame['IndexXY'] in apply_XY:
                         transformed_image = sr.transform(
                             image, tmat=registration_matrices[(frame['IndexXY'], frame['IndexT'])])
-                        image = transformed_image.astype(image.dtype)
+                        image = safe_astype(transformed_image, image.dtype)
                 else:
                     transformed_image = sr.transform(
                         image, tmat=registration_matrices[(0, frame['IndexT'])])
-                    image = transformed_image.astype(image.dtype)
+                    image = safe_astype(transformed_image, image.dtype)
 
             sink.addTile(image, 0, 0, **large_image_params)
 
