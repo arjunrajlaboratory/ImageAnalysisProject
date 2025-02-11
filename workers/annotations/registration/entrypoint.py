@@ -147,15 +147,35 @@ def compute(datasetId, apiUrl, token, params):
         apply_XY = batch_argument_parser.process_range_list(
             workerInterface['Apply to XY coordinates'], convert_one_to_zero_index=True)
         apply_XY = list(set(apply_XY) & set(range_xy))
-    # TODO: Could add guards to make sure that the reference Z and Time are within the range of the dataset
+
     if workerInterface['Reference Z Coordinate'] == "":
         reference_Z = 0
     else:
         reference_Z = int(workerInterface['Reference Z Coordinate']) - 1
+        if reference_Z > 0:
+            # Check if IndexZ exists and if so, check that the reference Z is within the range
+            if 'IndexZ' in tileInfo['IndexRange']:
+                if reference_Z >= tileInfo['IndexRange']['IndexZ']:
+                    sendError(f"Reference Z {reference_Z+1} "
+                              "is out of range.")
+                    return
+            else:
+                sendError("IndexZ not found in tileInfo")
+                return
     if workerInterface['Reference Time Coordinate'] == "":
         reference_Time = 0
     else:
         reference_Time = int(workerInterface['Reference Time Coordinate']) - 1
+        if reference_Time > 0:
+            # Check if IndexT exists and if so, check that the reference time is within the range
+            if 'IndexT' in tileInfo['IndexRange']:
+                if reference_Time >= tileInfo['IndexRange']['IndexT']:
+                    sendError(f"Reference time {reference_Time+1} "
+                              "is out of range.")
+                    return
+            else:
+                sendError("IndexT not found in tileInfo")
+                return
 
     reference_channel = workerInterface['Reference Channel']
     if reference_channel == "" or reference_channel == -1:
