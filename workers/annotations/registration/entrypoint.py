@@ -184,9 +184,9 @@ def compute(datasetId, apiUrl, token, params):
         blobAnnotationList.extend(rectangleAnnotationList)
 
         cropAnnotationList = annotation_tools.get_annotations_with_tags(
-            blobAnnotationList, params['workerInterface']['Crop Rectangle'], exclusive=False)
+            blobAnnotationList, params['workerInterface']['Reference region tag'], exclusive=False)
         if cropAnnotationList is None or len(cropAnnotationList) == 0:
-            sendError("No crop rectangle found")
+            sendError("No reference region found")
             return
         else:
             cropAnnotation = cropAnnotationList[0]
@@ -219,15 +219,34 @@ def compute(datasetId, apiUrl, token, params):
         # Get first frame
         frame = tileClient.coordinatesToFrameIndex(
             xy, reference_Z, 0, reference_channel)
-        # TODO: Can use the reference_region to pull just the relevant region, look at the crop tool for an example
-        current_image = tileClient.getRegion(datasetId, frame=frame).squeeze()
+        # Use the reference_region to pull just the relevant region, look at the crop tool for an example
+        if should_use_reference_region:
+            current_image = tileClient.getRegion(
+                datasetId, frame=frame,
+                left=reference_region_left,
+                top=reference_region_top,
+                right=reference_region_right,
+                bottom=reference_region_bottom,
+                units="base_pixels").squeeze()
+        else:
+            current_image = tileClient.getRegion(
+                datasetId, frame=frame).squeeze()
 
         for t in range(1, tileInfo['IndexRange']['IndexT']):
             # Get the reference image
             next_frame = tileClient.coordinatesToFrameIndex(
                 xy, reference_Z, t, reference_channel)
-            next_image = tileClient.getRegion(
-                datasetId, frame=next_frame).squeeze()
+            if should_use_reference_region:
+                next_image = tileClient.getRegion(
+                    datasetId, frame=next_frame,
+                    left=reference_region_left,
+                    top=reference_region_top,
+                    right=reference_region_right,
+                    bottom=reference_region_bottom,
+                    units="base_pixels").squeeze()
+            else:
+                next_image = tileClient.getRegion(
+                    datasetId, frame=next_frame).squeeze()
 
             # Compute the registration matrix
             registration_matrix = sr.register(current_image, next_image)
