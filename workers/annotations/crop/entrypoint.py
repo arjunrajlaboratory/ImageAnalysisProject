@@ -272,6 +272,7 @@ def compute(datasetId, apiUrl, token, params):
     sink.mm_x = tileClient.tiles['mm_x']
     sink.mm_y = tileClient.tiles['mm_y']
     sink.magnification = tileClient.tiles['magnification']
+    print("sink.getMetadata()", sink.getMetadata())
     sink.write('/tmp/cropped.tiff')
     print("Wrote to file")
 

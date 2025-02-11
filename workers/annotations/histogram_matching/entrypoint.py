@@ -194,5 +194,3 @@ if __name__ == '__main__':
             compute(datasetId, apiUrl, token, params)
         case 'interface':
             interface(params['image'], apiUrl, token)
-        case 'preview':
-            preview(datasetId, apiUrl, token, params, params['image'])
