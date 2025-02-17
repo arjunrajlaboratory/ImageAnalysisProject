@@ -4,13 +4,14 @@ import json
 import sys
 import random
 import timeit
-
+import time
+import threading
 from operator import itemgetter
 
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress #, sendError
+from annotation_client.utils import sendProgress  # , sendError
 
 
 import imageio
@@ -25,17 +26,21 @@ from shapely.geometry import Polygon
 # REMOVE THE BELOW
 def preview(datasetId, apiUrl, token, params, bimage):
     # Setup helper classes with url and credentials
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
-    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
-    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+    keys = ["assignment", "channel", "connectTo",
+            "tags", "tile", "workerInterface"]
+    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(
+        *keys)(params)
     thresholdValue = float(workerInterface['Threshold'])
     sigma = float(workerInterface['Gaussian Sigma'])
 
     # Get the tile
-    frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    frame = datasetClient.coordinatesToFrameIndex(
+        tile['XY'], tile['Z'], tile['Time'], channel)
     image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
     (width, height) = np.shape(image)
@@ -65,7 +70,8 @@ def preview(datasetId, apiUrl, token, params, bimage):
 
 
 def interface(image, apiUrl, token):
-    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
 
     # Available types: number, text, tags, layer
     interface = {
@@ -95,11 +101,11 @@ def interface(image, apiUrl, token):
         'Batch Z': {
             'type': 'text',
             'vueAttrs': {
-               'placeholder': 'ex. 1-3, 5-8',
-               'label': 'Enter the frames you want to connect',
-               'persistentPlaceholder': True,
-               'filled': True,
-               'title': 'Frames to connect'
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the frames you want to connect',
+                'persistentPlaceholder': True,
+                'filled': True,
+                'title': 'Frames to connect'
             }
         },
         'Batch Time': {
@@ -116,6 +122,18 @@ def interface(image, apiUrl, token):
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
+
+
+def sendHeartbeat():
+    """Sends a heartbeat message to keep the connection alive."""
+    print(json.dumps({"type": "heartbeat"}))
+    sys.stdout.flush()
+
+
+def heartbeat_loop(interval=10):
+    while True:
+        time.sleep(interval)
+        sendHeartbeat()
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -136,11 +154,13 @@ def compute(datasetId, apiUrl, token, params):
     """
 
     # roughly validate params
-    keys = ["assignment", "channel", "connectTo", "tags", "tile", "workerInterface"]
+    keys = ["assignment", "channel", "connectTo",
+            "tags", "tile", "workerInterface"]
     if not all(key in params for key in keys):
-        print ("Invalid worker parameters", params)
+        print("Invalid worker parameters", params)
         return
-    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(*keys)(params)
+    assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(
+        *keys)(params)
 
     annotationSize = float(workerInterface['Square size'])
     annotationNumber = float(workerInterface['Number of random annotations'])
@@ -160,7 +180,10 @@ def compute(datasetId, apiUrl, token, params):
     #     batch_time = [tile['Time'] + 1]
 
     # Get the Gaussian sigma and threshold from interface values
-    #annulus_size = float(workerInterface['Annulus size'])
+    # annulus_size = float(workerInterface['Annulus size'])
+
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    heartbeat_thread.start()
 
     sendProgress(0.1, "Starting worker", "Starting")
 
@@ -173,7 +196,8 @@ def compute(datasetId, apiUrl, token, params):
     tile_width = datasetClient.tiles['tileWidth']
     tile_height = datasetClient.tiles['tileHeight']
 
-    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+    workerClient = workers.UPennContrastWorkerClient(
+        datasetId, apiUrl, token, params)
     # annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
 
     # Provided snippets
@@ -185,54 +209,62 @@ def compute(datasetId, apiUrl, token, params):
 
     # Create a list to hold the generated annotations
     theAnnotations = []
-    
-    sendProgress(0.2, "Starting random square generation", "Generating annotations")
+
+    sendProgress(0.2, "Starting random square generation",
+                 "Generating annotations")
 
     # Generate random annotations
     for i in range(int(annotationNumber)):
         # Generate a random center point for the square, ensuring it won't go off the edge of the field
         x = random.uniform(annotationSize/2, tile_width - annotationSize/2)
         y = random.uniform(annotationSize/2, tile_height - annotationSize/2)
-        
+
         # Generate the four corners of the square
         square_coords = [(x - annotationSize/2, y - annotationSize/2),
                          (x + annotationSize/2, y - annotationSize/2),
                          (x + annotationSize/2, y + annotationSize/2),
                          (x - annotationSize/2, y + annotationSize/2)]
-        
+
         # Define the new annotation
         new_annotation = {
-            "tags": tags, # *** NEED TO UPDATE TO ADD A NEW TAG ****
+            "tags": tags,  # *** NEED TO UPDATE TO ADD A NEW TAG ****
             "shape": "polygon",
             "channel": channel,
             "location": {
-                        "XY": tile['XY'],
-                        "Z": tile['Z'],
-                        "Time": tile['Time']
-                        },
+                "XY": tile['XY'],
+                "Z": tile['Z'],
+                "Time": tile['Time']
+            },
             "datasetId": datasetId,
             "coordinates": [{"x": float(coord[0]), "y": float(coord[1])} for coord in square_coords]
         }
-        
+
         # Append the new annotation to the list
         theAnnotations.append(new_annotation)
         fraction_done = (i + 1) / annotationNumber
-        sendProgress(fraction_done, "Generating random squares", f"Generated {i + 1} of {int(annotationNumber)} annotations")
+        sendProgress(fraction_done, "Generating random squares",
+                     f"Generated {i + 1} of {int(annotationNumber)} annotations")
 
     # sendError("test")
 
     # print(json.dumps({"error": "test", "title": "testError", "info": "testMessage"}))
-    print(json.dumps({"error": "test", "title": "testError", "info": "This is just a test error message. May in future include some information on how to resolve it.", "type": "error"}))
+    print(json.dumps({"error": "test", "title": "testError",
+          "info": "This is just a test error message. May in future include some information on how to resolve it.", "type": "error"}))
     sys.stdout.flush()
 
     # Below is a test without adding the "info" field
-    print(json.dumps({"error": "test", "title": "testError2", "type": "error"}))
+    print(json.dumps(
+        {"error": "test", "title": "testError2", "type": "error"}))
     sys.stdout.flush()
 
-    print(json.dumps({"warning": "test", "title": "testWarning", "type": "warning"}))
+    time.sleep(60)
+
+    print(json.dumps(
+        {"warning": "test", "title": "testWarning", "type": "warning"}))
     sys.stdout.flush()
 
-    print(json.dumps({"warning": "test", "title": "testWarning", "info": "This is just a test warning message. May in future include some information on how to resolve it.", "type": "warning"}))
+    print(json.dumps({"warning": "test", "title": "testWarning",
+          "info": "This is just a test warning message. May in future include some information on how to resolve it.", "type": "warning"}))
     sys.stdout.flush()
 
     start_time = timeit.default_timer()
@@ -245,10 +277,8 @@ def compute(datasetId, apiUrl, token, params):
     print(f"Executed the code in: {execution_time} seconds")
 
     # TODO: will need to iterate or stitch and handle roi and proper intensities
-    #frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
-    #image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
-
-
+    # frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
+    # image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
 
 
 if __name__ == '__main__':
@@ -256,7 +286,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Compute average intensity values in a circle around point annotations')
 
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
