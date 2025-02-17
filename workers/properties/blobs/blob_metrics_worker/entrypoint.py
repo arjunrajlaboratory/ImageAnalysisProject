@@ -33,7 +33,7 @@ def interface(image, apiUrl, token):
         'Units': {
             'type': 'select',
             'items': ['m', 'mm', 'µm', 'nm'],
-            'value': 'µm',
+            'default': 'µm',
             'tooltip': 'The units of the physical units. If unchecked, the metrics will be computed in pixels.',
             'displayOrder': 2,
         },
