@@ -3,10 +3,10 @@ import json
 import sys
 
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendWarning
 
 import annotation_utilities.annotation_tools as annotation_tools
-
+# import annotation_utilities.units as units # Preserved for later use
 from shapely.geometry import Polygon
 import numpy as np
 
@@ -24,9 +24,53 @@ def interface(image, apiUrl, token):
                      'rectangularity, circularity, fractal dimension, and eccentricity.',
             'displayOrder': 0,
         },
+        'Use physical units': {
+            'type': 'checkbox',
+            'value': False,
+            'tooltip': 'If checked, the metrics will be computed in physical units. If unchecked, the metrics will be computed in pixels.',
+            'displayOrder': 1,
+        },
+        'Units': {
+            'type': 'select',
+            'items': ['m', 'mm', 'µm', 'nm'],
+            'value': 'µm',
+            'tooltip': 'The units of the physical units. If unchecked, the metrics will be computed in pixels.',
+            'displayOrder': 2,
+        },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
+
+
+def convert_units(pixelSize, to_units):
+    """
+    Convert a pixel size to a different unit.
+    """
+    current_units = pixelSize['unit']
+    current_value = pixelSize['value']
+    if current_units == 'm':
+        current_value *= 1
+    elif current_units == 'mm':
+        current_value *= 1e-3
+    elif current_units == 'µm':
+        current_value *= 1e-6
+    elif current_units == 'nm':
+        current_value *= 1e-9
+    else:
+        raise ValueError(f"Unknown unit: {current_units}")
+
+    if to_units == 'm':
+        current_value *= 1
+    elif to_units == 'mm':
+        current_value *= 1e3
+    elif to_units == 'µm':
+        current_value *= 1e6
+    elif to_units == 'nm':
+        current_value *= 1e9
+    else:
+        raise ValueError(f"Unknown unit: {to_units}")
+
+    return {'unit': to_units, 'value': current_value}
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -45,6 +89,11 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(
         datasetId, apiUrl, token, params)
+
+    use_physical_units = params.get(
+        'workerInterface', {}).get('Use physical units', False)
+    final_units = params.get('workerInterface', {}).get('Units', 'µm')
+
     # Here's an example of what the "params" dict might look like:
     # {'id': '65bc10b3e62fc888551f168d', 'name': 'metrics2', 'image': 'properties/blob_metrics:latest', 'tags': {'exclusive': False, 'tags': ['nucleus']}, 'shape': 'polygon', 'workerInterface': {}, 'scales': {'pixelSize': {'unit': 'mm', 'value': 0.000219080212825376}, 'tStep': {'unit': 's', 'value': 1}, 'zStep': {'unit': 'm', 'value': 1}}}
     annotationList = workerClient.get_annotation_list_by_shape(
@@ -59,6 +108,20 @@ def compute(datasetId, apiUrl, token, params):
     # We need at least one annotation
     if len(annotationList) == 0:
         return
+
+    pixelSize = params['scales']['pixelSize']
+    print(f"The pixel size is: {pixelSize}")
+    # If the pixel size is 0, we can't compute physical units
+    if pixelSize.get('value', 0) == 0:
+        sendWarning('No pixel size found in the configuration')
+        use_physical_units = False
+
+    if use_physical_units:
+        # TODO: Once we have a unit package, we can use it here as units.convert_units
+        pixelSize = convert_units(pixelSize, final_units)
+        pixel_length = pixelSize['value']
+    else:
+        pixel_length = 1
 
     number_annotations = len(annotationList)
     property_value_dict = {}  # Initialize as a dictionary
@@ -96,9 +159,9 @@ def compute(datasetId, apiUrl, token, params):
                 return None
 
         prop = {
-            'Area': float(poly.area),
-            'Perimeter': float(poly.length),
-            'Centroid': {'x': float(poly.centroid.x), 'y': float(poly.centroid.y)},
+            'Area': float(poly.area) * pixel_length ** 2,
+            'Perimeter': float(poly.length) * pixel_length,
+            'Centroid': {'x': float(poly.centroid.x) * pixel_length, 'y': float(poly.centroid.y) * pixel_length},
             'Compactness': safe_compute(4 * np.pi * poly.area / (poly.length ** 2)),
             'Elongation': elongation,
             'Convexity': safe_compute(poly.area / convex_hull.area),
