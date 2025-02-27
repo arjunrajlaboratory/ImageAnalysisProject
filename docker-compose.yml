@@ -1,0 +1,153 @@
+version: '3'
+
+services:
+  # Annotation workers
+  connect_to_nearest:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_to_nearest/${DOCKERFILE:-Dockerfile}
+    image: annotations/connect_to_nearest:latest
+
+  connect_sequential:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_sequential/${DOCKERFILE:-Dockerfile}
+    image: annotations/connect_sequential:latest
+
+  connect_time_lapse:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_timelapse/${DOCKERFILE:-Dockerfile}
+    image: annotations/connect_time_lapse:latest
+
+  laplacian_of_gaussian:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/laplacian_of_gaussian/${DOCKERFILE:-Dockerfile}
+    image: annotations/laplacian_of_gaussian:latest
+
+  # Property workers - blobs
+  blob_metrics:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_metrics_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_metrics:latest
+
+  blob_overlap:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_overlap_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_overlap:latest
+
+  blob_intensity:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_intensity_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_intensity:latest
+
+  blob_intensity_percentile:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_intensity_percentile:latest
+
+  blob_annulus_intensity:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_annulus_intensity:latest
+
+  blob_annulus_intensity_percentile:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_annulus_intensity_percentile:latest
+
+  blob_colony_two_color_intensity:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_colony_two_color_intensity_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_colony_two_color_intensity:latest
+
+  blob_point_count:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_point_count_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_point_count:latest
+
+  blob_point_count_3d_projection:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_point_count_3D_projection_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/blob_point_count_3d_projection:latest
+
+  # Property workers - connections
+  children_count:
+    build:
+      context: .
+      dockerfile: ./workers/properties/connections/children_count_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/children_count:latest
+
+  parent_child:
+    build:
+      context: .
+      dockerfile: ./workers/properties/connections/parent_child_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/parent_child:latest
+
+  # Property workers - points
+  point_metrics:
+    build:
+      context: .
+      dockerfile: ./workers/properties/points/point_metrics_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/point_metrics:latest
+
+  point_intensity:
+    build:
+      context: .
+      dockerfile: ./workers/properties/points/point_circle_intensity_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/point_intensity:latest
+
+  point_to_nearest_blob_distance:
+    build:
+      context: .
+      dockerfile: ./workers/properties/points/point_to_nearest_blob_distance/${DOCKERFILE:-Dockerfile}
+    image: properties/point_to_nearest_blob_distance:latest
+
+  # Property workers - lines
+  line_scan_worker:
+    build:
+      context: .
+      dockerfile: ./workers/properties/lines/line_scan_worker/${DOCKERFILE:-Dockerfile}
+    image: properties/line_scan_worker:latest
+
+  # Image processing workers
+  rolling_ball:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/rolling_ball/${DOCKERFILE:-Dockerfile}
+    image: annotations/rolling_ball:latest
+
+  crop:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/crop/${DOCKERFILE:-Dockerfile}
+    image: annotations/crop:latest
+
+  histogram_matching:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/histogram_matching/${DOCKERFILE:-Dockerfile}
+    image: annotations/histogram_matching:latest
+
+  registration:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/registration/${DOCKERFILE:-Dockerfile}
+    image: annotations/registration:latest
+
+  # AI workers
+  ai_analysis:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/ai_analysis/${DOCKERFILE:-Dockerfile}
+    image: annotations/ai_analysis:latest
