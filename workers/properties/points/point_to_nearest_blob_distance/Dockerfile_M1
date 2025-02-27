@@ -28,13 +28,13 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/properties/points/point_to_nearest_blob_distance/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-WORKDIR /ImageAnalysisProject
-RUN pip install ./annotation_utilities
+COPY ./annotation_utilities /annotation_utilities
+WORKDIR /annotation_utilities
+RUN pip install .
 
 WORKDIR /
 RUN git clone https://github.com/Kitware/UPennContrast/
@@ -43,7 +43,7 @@ WORKDIR /UPennContrast
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
 
-COPY ./entrypoint.py /
+COPY ./workers/properties/points/point_to_nearest_blob_distance/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \

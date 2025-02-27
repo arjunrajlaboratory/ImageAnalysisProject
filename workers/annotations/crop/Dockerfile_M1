@@ -37,7 +37,7 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/annotations/crop/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -45,13 +45,17 @@ RUN git clone https://github.com/arjunrajlaboratory/NimbusImage/
 RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-RUN pip install /ImageAnalysisProject/annotation_utilities
-RUN pip install /ImageAnalysisProject/worker_client
+COPY ./annotation_utilities /annotation_utilities
+WORKDIR /annotation_utilities
+RUN pip install .
+
+COPY ./worker_client /worker_client
+WORKDIR /worker_client
+RUN pip install .
 
 RUN pip install large-image-source-tiff large-image-source-zarr large-image-converter large-image --find-links https://girder.github.io/large_image_wheels
 
-COPY ./entrypoint.py /
+COPY ./workers/annotations/crop/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \

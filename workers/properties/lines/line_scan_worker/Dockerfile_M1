@@ -28,7 +28,7 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/properties/lines/line_scan_worker/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -38,7 +38,7 @@ WORKDIR /UPennContrast
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
 
-COPY ./entrypoint.py /
+COPY ./workers/properties/lines/line_scan_worker/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
       isPropertyWorker="" \

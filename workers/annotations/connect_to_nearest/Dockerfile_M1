@@ -30,14 +30,14 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/annotations/connect_to_nearest/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 # Install the annotation utilities
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-WORKDIR /ImageAnalysisProject
-RUN pip install ./annotation_utilities
+COPY ./annotation_utilities /annotation_utilities
+WORKDIR /annotation_utilities
+RUN pip install .
 
 WORKDIR /
 RUN git clone https://github.com/Kitware/UPennContrast/
@@ -49,7 +49,7 @@ RUN pip install -e devops/girder/annotation_client/
 
 #COPY ./annotation_tools.py /
 #COPY ./batch_argument_parser.py /
-COPY ./entrypoint.py /
+COPY ./workers/annotations/connect_to_nearest/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
