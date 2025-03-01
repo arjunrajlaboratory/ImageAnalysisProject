@@ -130,6 +130,8 @@ def compute(datasetId, apiUrl, token, params):
         polygon_coords = [list(coordinate.values())[0:2]
                           for coordinate in annotation['coordinates']]
         if len(polygon_coords) < 3:
+            sendWarning("Incorrect polygon detected",
+                        info="Polygon with less than 3 points found.")
             continue
         poly = Polygon(polygon_coords)
         convex_hull = poly.convex_hull
