@@ -75,15 +75,15 @@ done
 if [ "$TEST_ONLY" = false ]; then
     if [ -z "$SERVICE" ]; then
         echo "Building all workers..."
-        docker-compose build $NO_CACHE
+        docker compose build $NO_CACHE
     else
         echo "Building worker: $SERVICE"
-        docker-compose build $NO_CACHE $SERVICE
+        docker compose build $NO_CACHE $SERVICE
         # If we're building a specific service and want to test it
         if [ "$RUN_TESTS" = true ]; then
             # Also build its test
             echo "Building test for: $SERVICE"
-            docker-compose build $NO_CACHE "${SERVICE}_test"
+            docker compose build $NO_CACHE "${SERVICE}_test"
         fi
     fi
 fi
@@ -93,14 +93,14 @@ if [ "$RUN_TESTS" = true ] || [ "$TEST_ONLY" = true ]; then
     if [ -z "$SERVICE" ]; then
         echo "Running all tests..."
         # Find all test services and run them
-        TEST_SERVICES=$(docker-compose config --services | grep '_test$')
+        TEST_SERVICES=$(docker compose config --services | grep '_test$')
         for test_service in $TEST_SERVICES; do
             echo "Running test: $test_service"
-            docker-compose run --rm $test_service
+            docker compose run --rm $test_service
         done
     else
         echo "Running test for: $SERVICE"
-        docker-compose run --rm "${SERVICE}_test"
+        docker compose run --rm "${SERVICE}_test"
     fi
 fi
 
