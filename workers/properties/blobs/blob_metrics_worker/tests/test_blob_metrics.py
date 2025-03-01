@@ -206,29 +206,43 @@ def test_shape_metrics(mock_worker_client, sample_params, shape,
             expected, rel=0.01)
 
 
-def test_error_handling(mock_worker_client, sample_params):
+def test_error_handling(mock_worker_client, sample_params, capsys):
     """Test handling of various error conditions"""
-    # Test invalid polygon (less than 3 points)
+    # Test case 1: Invalid polygon (less than 3 points)
     invalid_annotation = {
         '_id': 'invalid_polygon',
         'coordinates': [
             {'x': 0, 'y': 0},
             {'x': 10, 'y': 10}
-        ]
+        ],
+        'tags': ['nucleus']  # Add the tag that matches our filter
     }
 
     mock_worker_client.get_annotation_list_by_shape.return_value = [
         invalid_annotation]
 
-    # Mock the sendWarning function
-    with patch('annotation_client.utils.sendWarning') as mock_send_warning:
-        # Should not raise an error, but should skip the invalid annotation
-        compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+    # Run the compute function
+    compute('test_dataset', 'http://test-api', 'test-token', sample_params)
 
-        # Check if sendWarning was called with the expected arguments
-        mock_send_warning.assert_called_once_with(
-            "Incorrect polygon detected", info="Polygon with less than 3 points found.")
+    # Capture the stdout output
+    captured = capsys.readouterr()
 
-    calls = mock_worker_client.add_multiple_annotation_property_values.call_args_list
-    # No properties should be added for invalid annotations
-    assert len(calls) == 0
+    # Check if the warning message about incorrect polygon is in the output
+    assert '"warning": "Incorrect polygon detected"' in captured.out
+    assert '"info": "Polygon with less than 3 points found."' in captured.out
+
+    # With the guard clause, add_multiple_annotation_property_values should not be called
+    # when there are no valid annotations
+    mock_worker_client.add_multiple_annotation_property_values.assert_not_called()
+
+
+def test_no_annotations(mock_worker_client, sample_params):
+    """Test handling of no annotations"""
+    # Return an empty list of annotations
+    mock_worker_client.get_annotation_list_by_shape.return_value = []
+
+    # Run the compute function
+    compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+    # The worker should not call add_multiple_annotation_property_values
+    mock_worker_client.add_multiple_annotation_property_values.assert_not_called()
