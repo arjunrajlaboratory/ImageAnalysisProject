@@ -231,9 +231,9 @@ def test_error_handling(mock_worker_client, sample_params, capsys):
     assert '"warning": "Incorrect polygon detected"' in captured.out
     assert '"info": "Polygon with less than 3 points found."' in captured.out
 
-    # The worker calls add_multiple_annotation_property_values with an empty dictionary
-    mock_worker_client.add_multiple_annotation_property_values.assert_called_once_with(
-        {'test_dataset': {}})
+    # With the guard clause, add_multiple_annotation_property_values should not be called
+    # when there are no valid annotations
+    mock_worker_client.add_multiple_annotation_property_values.assert_not_called()
 
 
 def test_no_annotations(mock_worker_client, sample_params):
