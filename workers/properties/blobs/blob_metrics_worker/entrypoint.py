@@ -107,6 +107,8 @@ def compute(datasetId, apiUrl, token, params):
 
     # We need at least one annotation
     if len(annotationList) == 0:
+        sendWarning('No annotations found',
+                    info='No annotations with the specified tags and shape were found.')
         return
 
     pixelSize = params['scales']['pixelSize']
@@ -186,10 +188,15 @@ def compute(datasetId, apiUrl, token, params):
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 
-    sendProgress(0.5, 'Done computing',
-                 'Sending computed metrics to the server')
-    workerClient.add_multiple_annotation_property_values(
-        dataset_property_value_dict)
+    # Only send the metrics if we have at least one valid annotation
+    if len(property_value_dict) > 0:
+        sendProgress(0.5, 'Done computing',
+                     'Sending computed metrics to the server')
+        workerClient.add_multiple_annotation_property_values(
+            dataset_property_value_dict)
+    else:
+        sendWarning('No valid annotations',
+                    info='No valid annotations were found to compute metrics on.')
 
 
 if __name__ == '__main__':
