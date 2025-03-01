@@ -30,14 +30,14 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/annotations/ai_analysis/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 # Install the annotation utilities
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-WORKDIR /ImageAnalysisProject
-RUN pip install ./annotation_utilities
+COPY ./annotation_utilities /annotation_utilities
+WORKDIR /annotation_utilities
+RUN pip install .
 
 WORKDIR /
 RUN git clone https://github.com/Kitware/UPennContrast/
@@ -46,9 +46,9 @@ WORKDIR /UPennContrast
 RUN pip install -r devops/girder/annotation_client/requirements.txt
 RUN pip install -e devops/girder/annotation_client/
 
-COPY ./entrypoint.py /
-COPY ./system_prompt.txt /
-COPY ./property_handling.py /
+COPY ./workers/annotations/ai_analysis/entrypoint.py /
+COPY ./workers/annotations/ai_analysis/system_prompt.txt /
+COPY ./workers/annotations/ai_analysis/property_handling.py /
 
 ENV ANTHROPIC_API_KEY=""
 
