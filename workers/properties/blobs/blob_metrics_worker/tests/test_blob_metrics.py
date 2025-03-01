@@ -214,14 +214,16 @@ def test_error_handling(mock_worker_client, sample_params):
         'coordinates': [
             {'x': 0, 'y': 0},
             {'x': 10, 'y': 10}
-        ]
+        ],
+        'tags': ['nucleus']  # Add the tag that matches our filter
     }
 
     mock_worker_client.get_annotation_list_by_shape.return_value = [
         invalid_annotation]
 
     # Mock the sendWarning function
-    with patch('annotation_client.utils.sendWarning') as mock_send_warning:
+    # The function is imported directly in the entrypoint.py file, so we need to mock it there
+    with patch('entrypoint.sendWarning') as mock_send_warning:
         # Should not raise an error, but should skip the invalid annotation
         compute('test_dataset', 'http://test-api', 'test-token', sample_params)
 
@@ -230,5 +232,7 @@ def test_error_handling(mock_worker_client, sample_params):
             "Incorrect polygon detected", info="Polygon with less than 3 points found.")
 
     calls = mock_worker_client.add_multiple_annotation_property_values.call_args_list
-    # No properties should be added for invalid annotations
-    assert len(calls) == 0
+    # The worker should still call add_multiple_annotation_property_values, but with an empty dictionary
+    assert len(calls) == 1
+    property_values = calls[0][0][0]['test_dataset']
+    assert len(property_values) == 0  # No properties should be added for invalid annotations
