@@ -163,7 +163,11 @@ def compute(datasetId, apiUrl, token, params):
     )
 
     utils.upload_girder_model(gc, new_model_name)
-    utils.upload_girder_cache(gc, mode='train')
+    try:
+        utils.upload_girder_cache(gc, mode='train')
+    except Exception as e:
+        # Log the error but continue execution
+        print(f"Warning: Failed to upload cache: {e}", file=sys.stderr)
 
 
 if __name__ == '__main__':
