@@ -1,20 +1,15 @@
+import utils
+from worker_client import WorkerClient
+from piscis.paths import MODELS_DIR
+from piscis import Piscis
+import annotation_client.workers as workers
+from functools import partial
 import argparse
 import json
 import sys
 
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'False'
-
-from functools import partial
-
-import annotation_client.workers as workers
-
-from piscis import Piscis
-from piscis.paths import MODELS_DIR
-
-from worker_client import WorkerClient
-
-import utils
 
 
 def interface(image, apiUrl, token):
@@ -35,30 +30,30 @@ def interface(image, apiUrl, token):
         'Batch XY': {
             'type': 'text',
             'vueAttrs': {
-               'placeholder': 'ex. 1-3, 5-8',
-               'label': 'Enter the XY positions you want to iterate over',
-               'persistentPlaceholder': True,
-               'filled': True,
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the XY positions you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
             },
             'displayOrder': 1,
         },
         'Batch Z': {
             'type': 'text',
             'vueAttrs': {
-               'placeholder': 'ex. 1-3, 5-8',
-               'label': 'Enter the Z slices you want to iterate over',
-               'persistentPlaceholder': True,
-               'filled': True,
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Z slices you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
             },
             'displayOrder': 2,
         },
         'Batch Time': {
             'type': 'text',
             'vueAttrs': {
-               'placeholder': 'ex. 1-3, 5-8',
-               'label': 'Enter the Time points you want to iterate over',
-               'persistentPlaceholder': True,
-               'filled': True,  
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Time points you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
             },
             'displayOrder': 3,
         },
@@ -109,7 +104,8 @@ def interface(image, apiUrl, token):
 
 def run_model(image, model, stack, scale, threshold):
 
-    coords = model.predict(image, stack=stack, scale=scale, threshold=threshold, intermediates=False)
+    coords = model.predict(image, stack=stack, scale=scale,
+                           threshold=threshold, intermediates=False)
     coords[:, -2:] += 0.5
 
     return coords
@@ -146,9 +142,14 @@ def compute(datasetId, apiUrl, token, params):
 
     model = Piscis(model_name=model_name, batch_size=1)
     f_process = partial(run_model, model=model, stack=stack, scale=scale, threshold=threshold)
-    worker.process(f_process, f_annotation='point', stack_zs='all' if stack else None, progress_text='Running Piscis')
+    worker.process(f_process, f_annotation='point',
+                   stack_zs='all' if stack else None, progress_text='Running Piscis')
 
-    utils.upload_girder_cache(gc, mode='predict')
+    try:
+        utils.upload_girder_cache(gc, mode='predict')
+    except Exception as e:
+        # Log the error but continue execution
+        print(f"Warning: Failed to upload cache: {e}", file=sys.stderr)
 
 
 if __name__ == '__main__':
