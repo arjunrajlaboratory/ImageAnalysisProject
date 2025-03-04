@@ -58,10 +58,10 @@ def interface(image, apiUrl, token):
             'default': datetime_string
         },
         'Annotation Tag': {
-        	'type': 'tags'
+            'type': 'tags'
         },
         'Region Tag': {
-        	'type': 'tags'
+            'type': 'tags'
         }
     }
     # Send the interface object to the server
@@ -99,12 +99,16 @@ def compute(datasetId, apiUrl, token, params):
     annotation_tag = workerInterface['Annotation Tag']
     region_tag = workerInterface['Region Tag']
 
-    annotationList = annotationClient.getAnnotationsByDatasetId(datasetId, shape='point', tags=json.dumps(annotation_tag))
+    annotationList = annotationClient.getAnnotationsByDatasetId(
+        datasetId, shape='point', tags=json.dumps(annotation_tag))
     points = np.array([[point['location'][i]
                         for i in ['Time', 'XY', 'Z']] + list(point['coordinates'][0].values())[1::-1]
-                        for point in annotationList])
+                       for point in annotationList])
     points[:, -2:] -= np.array((0.5, 0.5))
-    regionList = annotationClient.getAnnotationsByDatasetId(datasetId, shape='polygon', tags=json.dumps(region_tag))
+    regionList = annotationClient.getAnnotationsByDatasetId(
+        datasetId, shape='polygon', tags=json.dumps(region_tag))
+    regionList.extend(annotationClient.getAnnotationsByDatasetId(
+        datasetId, shape='rectangle', tags=json.dumps(region_tag)))
 
     images = []
     coords = []
@@ -112,19 +116,24 @@ def compute(datasetId, apiUrl, token, params):
     for region in regionList:
 
         image = workerClient.get_image_for_annotation(region)
-        
-        polygon = np.array([[coordinate[i] for i in ['y', 'x']] for coordinate in region['coordinates']]) - np.array((0.5, 0.5))
+
+        polygon = np.array([[coordinate[i] for i in ['y', 'x']]
+                           for coordinate in region['coordinates']]) - np.array((0.5, 0.5))
         polygony, polygonx = polygon.T
-        minx, miny, maxx, maxy = np.min(polygonx), np.min(polygony), np.max(polygonx), np.max(polygony)
-        minx, miny, maxx, maxy = np.maximum(minx, -0.5), np.maximum(miny, -0.5), np.minimum(maxx, image.shape[1] - 0.5), np.minimum(maxy, image.shape[0] - 0.5)
+        minx, miny, maxx, maxy = np.min(polygonx), np.min(
+            polygony), np.max(polygonx), np.max(polygony)
+        minx, miny, maxx, maxy = np.maximum(minx, -0.5), np.maximum(miny, -0.5), np.minimum(
+            maxx, image.shape[1] - 0.5), np.minimum(maxy, image.shape[0] - 0.5)
         mini, minj, maxi, maxj = round(miny), round(minx), round(maxy), round(maxx)
         shapely_polygon = Polygon(np.stack([polygonx - minj, polygony - mini]).T)
         image = image[mini:maxi + 1, minj:maxj + 1]
-    
-        mask = rasterize([(shapely_polygon, 1)], out_shape=image.shape, all_touched=True, dtype=np.uint8)
+
+        mask = rasterize([(shapely_polygon, 1)], out_shape=image.shape,
+                         all_touched=True, dtype=np.uint8)
         image = image * mask
-        
-        c = points[np.all(points[:, :3] == np.array([region['location'][i] for i in ['Time', 'XY', 'Z']]), axis=1)][:, -2:]
+
+        c = points[np.all(points[:, :3] == np.array([region['location'][i]
+                          for i in ['Time', 'XY', 'Z']]), axis=1)][:, -2:]
         c = c[point_in_polygon(c, polygon)] - np.array([mini, minj])
         c = np.array(c)
         c = snap_coords(c, image)
