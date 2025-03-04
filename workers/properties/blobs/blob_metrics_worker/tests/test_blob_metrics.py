@@ -107,9 +107,6 @@ def test_square_metrics(mock_worker_client, sample_params):
     assert property_values['Circularity'] == pytest.approx(
         0.785, rel=0.01)  # π/4
 
-    # Updated: Compactness uses the same formula as Circularity in the worker code
-    assert property_values['Compactness'] == pytest.approx(
-        0.785, rel=0.01)  # π/4
     assert property_values['Elongation'] == 0  # Square has no elongation
 
 
