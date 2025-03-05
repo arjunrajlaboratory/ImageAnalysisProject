@@ -37,6 +37,9 @@
 #   ./build_workers.sh --test-only blob_metrics
 # =============================================================================
 
+# Limit the number of parallel builds to 1 to avoid memory issues
+export COMPOSE_PARALLEL_LIMIT=1
+
 # Detect architecture
 ARCH=$(uname -m)
 echo "Architecture: $ARCH"
