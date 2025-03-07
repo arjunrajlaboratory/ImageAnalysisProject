@@ -16,6 +16,7 @@ from shapely.geometry import Polygon
 from rasterio import features
 import rasterio.transform
 
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -63,25 +64,29 @@ def interface(image, apiUrl, token):
     }
     client.setWorkerImageInterface(image, interface)
 
+
 def run_stardist(image, model, prob_thresh, nms_thresh):
     print(f"Image shape: {image.shape}, dtype: {image.dtype}")
-    
+
     # Normalize the image to 0-1 range
     image_normalized = image.astype(np.float32) / image.max()
-    
+
     print(f"Normalized image range: {image_normalized.min()} to {image_normalized.max()}")
-    
-    labels, details = model.predict_instances(image_normalized, prob_thresh=prob_thresh, nms_thresh=nms_thresh)
+
+    labels, details = model.predict_instances(
+        image_normalized, prob_thresh=prob_thresh, nms_thresh=nms_thresh)
 
     print(f"StarDist prediction: {labels.shape} labels, {len(details['coord'])} objects detected")
 
     return labels
 
+
 def labels_to_polygons(labels):
     polygons = []
     # Create a default transform
-    default_transform = rasterio.transform.from_bounds(0, labels.shape[0], labels.shape[1], 0, labels.shape[1], labels.shape[0])
-    
+    default_transform = rasterio.transform.from_bounds(
+        0, labels.shape[0], labels.shape[1], 0, labels.shape[1], labels.shape[0])
+
     try:
         for shape, value in features.shapes(labels.astype(np.int32), mask=(labels > 0), transform=default_transform):
             polygon = Polygon(shape['coordinates'][0])
@@ -96,8 +101,9 @@ def labels_to_polygons(labels):
             polygon = Polygon(shape['coordinates'][0])
             if polygon.is_valid and not polygon.is_empty:
                 polygons.append(polygon)
-    
+
     return polygons
+
 
 def compute(datasetId, apiUrl, token, params):
     start_time = timeit.default_timer()
@@ -119,7 +125,7 @@ def compute(datasetId, apiUrl, token, params):
     # Get the image data
     tile = params['tile']
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
-    image = datasetClient.getRegion(datasetId, frame=frame).squeeze()
+    image = datasetClient.getRegion(datasetId, frame=frame, protocol=4).squeeze()
 
     if image is None:
         print("Failed to load image")
@@ -170,6 +176,7 @@ def compute(datasetId, apiUrl, token, params):
     end_time = timeit.default_timer()
     execution_time = end_time - start_time
     print(f"Executed the code in: {execution_time} seconds")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Compute StarDist segmentation on images')
