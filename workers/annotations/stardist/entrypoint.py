@@ -2,7 +2,6 @@ import argparse
 import json
 import sys
 import timeit
-
 from functools import partial
 
 import annotation_client.workers as workers
@@ -125,7 +124,7 @@ def compute(datasetId, apiUrl, token, params):
     # Get the image data
     tile = params['tile']
     frame = datasetClient.coordinatesToFrameIndex(tile['XY'], tile['Z'], tile['Time'], channel)
-    image = datasetClient.getRegion(datasetId, frame=frame, protocol=4).squeeze()
+    image = datasetClient.getRegion(datasetId, frame=frame, use_tiff=True).squeeze()
 
     if image is None:
         print("Failed to load image")
