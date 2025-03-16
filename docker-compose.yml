@@ -168,3 +168,11 @@ services:
     image: properties/blob_intensity:test
     depends_on:
       - blob_intensity
+
+  blob_intensity_percentile_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/tests/Dockerfile_Test
+    image: properties/blob_intensity_percentile:test
+    depends_on:
+      - blob_intensity_percentile

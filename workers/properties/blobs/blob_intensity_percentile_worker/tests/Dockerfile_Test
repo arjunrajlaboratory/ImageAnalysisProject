@@ -1,0 +1,14 @@
+# Use your existing Dockerfile as the base
+FROM properties/blob_intensity_percentile:latest as test
+
+# Install test dependencies
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+RUN pip install pytest pytest-mock
+
+# Copy test files
+RUN mkdir -p /tests
+COPY ./workers/properties/blobs/blob_intensity_percentile_worker/tests/*.py /tests
+WORKDIR /tests
+
+# Command to run tests
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"] 
