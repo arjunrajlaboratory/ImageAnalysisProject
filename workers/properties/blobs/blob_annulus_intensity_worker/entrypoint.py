@@ -127,6 +127,11 @@ def compute(datasetId, apiUrl, token, params):
 
             # Get just the annulus coordinates (in dilated but not in original)
             annulus_coords = dilated_coords - original_coords
+
+            # Skip if there are no pixels in the annulus
+            if len(annulus_coords) == 0:
+                continue
+
             rr_annulus, cc_annulus = zip(*annulus_coords)
             intensities = image[rr_annulus, cc_annulus]
 
