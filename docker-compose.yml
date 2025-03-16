@@ -192,3 +192,11 @@ services:
     image: properties/blob_annulus_intensity_percentile:test
     depends_on:
       - blob_annulus_intensity_percentile
+
+  blob_point_count_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_point_count_worker/tests/Dockerfile_Test
+    image: properties/blob_point_count:test
+    depends_on:
+      - blob_point_count
