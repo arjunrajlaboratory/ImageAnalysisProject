@@ -57,11 +57,12 @@ def sample_params():
     return {
         'id': 'test_property_id',
         'name': 'test_intensity',
-        'image': 'properties/blob_intensity:latest',
+        'image': 'properties/blob_intensity_percentile:latest',
         'tags': {'exclusive': False, 'tags': ['cell']},
         'shape': 'polygon',
         'workerInterface': {
-            'Channel': 0
+            'Channel': 0,
+            'Percentile': 75  # Add percentile parameter
         }
     }
 
@@ -81,6 +82,9 @@ def test_interface():
         assert 'Channel' in interface_data
         assert interface_data['Channel']['type'] == 'channel'
         assert interface_data['Channel']['required'] is True
+        assert 'Percentile' in interface_data
+        assert interface_data['Percentile']['type'] == 'number'
+        assert interface_data['Percentile']['default'] == 50
 
 
 def test_worker_startup(mock_worker_client, mock_dataset_client, sample_params):
@@ -96,8 +100,8 @@ def test_worker_startup(mock_worker_client, mock_dataset_client, sample_params):
     mock_worker_client.add_multiple_annotation_property_values.assert_not_called()
 
 
-def test_uniform_intensity_calculation(mock_worker_client, mock_dataset_client, sample_params):
-    """Test intensity calculations with a uniform intensity image"""
+def test_uniform_intensity_percentile(mock_worker_client, mock_dataset_client, sample_params):
+    """Test percentile calculation with a uniform intensity image"""
     # Create a uniform intensity test image (all pixels = 50)
     test_image = np.ones((20, 20), dtype=np.uint8) * 50
 
@@ -136,21 +140,17 @@ def test_uniform_intensity_calculation(mock_worker_client, mock_dataset_client, 
     # Get the computed metrics
     property_values = calls[0][0][0]['test_dataset']['test_square']
 
-    # For a uniform image with all pixels = 50, all metrics should be 50
-    # except total intensity which is 50 * number of pixels
-    assert property_values['MeanIntensity'] == pytest.approx(50.0)
-    assert property_values['MaxIntensity'] == pytest.approx(50.0)
-    assert property_values['MinIntensity'] == pytest.approx(50.0)
-    assert property_values['MedianIntensity'] == pytest.approx(50.0)
-    assert property_values['25thPercentileIntensity'] == pytest.approx(50.0)
-    assert property_values['75thPercentileIntensity'] == pytest.approx(50.0)
+    # For a uniform image with all pixels = 50, the percentile value should be 50
+    percentile = float(sample_params['workerInterface']['Percentile'])
+    prop_name = f'{percentile}thPercentileIntensity'
 
-    # The square is 10x10 = 100 pixels, so total intensity should be 50 * 100 = 5000
-    assert property_values['TotalIntensity'] == pytest.approx(5000.0)
+    # Assert that the property exists and has the expected value
+    assert prop_name in property_values
+    assert property_values[prop_name] == pytest.approx(50.0)
 
 
-def test_gradient_intensity_calculation(mock_worker_client, mock_dataset_client, sample_params):
-    """Test intensity calculations with a gradient intensity image"""
+def test_gradient_intensity_percentile(mock_worker_client, mock_dataset_client, sample_params):
+    """Test percentile calculation with a gradient intensity image"""
     # Create a gradient test image (values from 0 to 99)
     y, x = np.mgrid[0:20, 0:20]
     test_image = (x + y) * 2.5  # Creates a diagonal gradient from 0 to 95
@@ -191,33 +191,18 @@ def test_gradient_intensity_calculation(mock_worker_client, mock_dataset_client,
     # Get the computed metrics
     property_values = calls[0][0][0]['test_dataset']['test_gradient_square']
 
-    # Calculate expected values for the 10x10 square from (5,5) to (15,15)
-    # For this region in our gradient:
-    # Min value should be at (5,5) = (5+5)*2.5 = 25
-    # Max value should be at (14,14) = (14+14)*2.5 = 70
-    # Mean should be the average of all values in the square
-
     # Extract the exact region from our test image to calculate expected values
     region = test_image[5:15, 5:15]
-    expected_mean = np.mean(region)
-    expected_max = np.max(region)
-    expected_min = np.min(region)
-    expected_median = np.median(region)
-    expected_q25 = np.percentile(region, 25)
-    expected_q75 = np.percentile(region, 75)
-    expected_total = np.sum(region)
+    percentile = float(sample_params['workerInterface']['Percentile'])
+    expected_percentile = np.percentile(region, percentile)
+    prop_name = f'{percentile}thPercentileIntensity'
 
     # Verify the computed metrics match our expectations
-    assert property_values['MeanIntensity'] == pytest.approx(expected_mean)
-    assert property_values['MaxIntensity'] == pytest.approx(expected_max)
-    assert property_values['MinIntensity'] == pytest.approx(expected_min)
-    assert property_values['MedianIntensity'] == pytest.approx(expected_median)
-    assert property_values['25thPercentileIntensity'] == pytest.approx(expected_q25)
-    assert property_values['75thPercentileIntensity'] == pytest.approx(expected_q75)
-    assert property_values['TotalIntensity'] == pytest.approx(expected_total)
+    assert prop_name in property_values
+    assert property_values[prop_name] == pytest.approx(expected_percentile)
 
 
-def test_multiple_annotations(mock_worker_client, mock_dataset_client, sample_params):
+def test_multiple_annotations_percentile(mock_worker_client, mock_dataset_client, sample_params):
     """Test processing multiple annotations with different shapes"""
     # Create a test image with a gradient
     test_image = np.zeros((30, 30), dtype=np.uint8)
@@ -277,18 +262,70 @@ def test_multiple_annotations(mock_worker_client, mock_dataset_client, sample_pa
     # Extract the regions from our test image to calculate expected values
     square_region = test_image[5:15, 5:15]
     rectangle_region = test_image[5:25, 20:25]
+    percentile = float(sample_params['workerInterface']['Percentile'])
+    prop_name = f'{percentile}thPercentileIntensity'
 
     # Verify square metrics
     square_values = property_values['test_square']
-    assert square_values['MeanIntensity'] == pytest.approx(np.mean(square_region))
-    assert square_values['MaxIntensity'] == pytest.approx(np.max(square_region))
-    assert square_values['MinIntensity'] == pytest.approx(np.min(square_region))
+    assert prop_name in square_values
+    assert square_values[prop_name] == pytest.approx(np.percentile(square_region, percentile))
 
     # Verify rectangle metrics
     rectangle_values = property_values['test_rectangle']
-    assert rectangle_values['MeanIntensity'] == pytest.approx(np.mean(rectangle_region))
-    assert rectangle_values['MaxIntensity'] == pytest.approx(np.max(rectangle_region))
-    assert rectangle_values['MinIntensity'] == pytest.approx(np.min(rectangle_region))
+    assert prop_name in rectangle_values
+    assert rectangle_values[prop_name] == pytest.approx(np.percentile(rectangle_region, percentile))
+
+
+def test_different_percentiles(mock_worker_client, mock_dataset_client, sample_params):
+    """Test different percentile values"""
+    # Create a test image with a range of values
+    test_image = np.arange(0, 100, dtype=np.uint8).reshape(10, 10)
+
+    # Create a test annotation covering the whole image
+    test_annotation = {
+        '_id': 'test_percentile',
+        'coordinates': [
+            {'x': 0, 'y': 0},
+            {'x': 0, 'y': 10},
+            {'x': 10, 'y': 10},
+            {'x': 10, 'y': 0},
+            {'x': 0, 'y': 0}
+        ],
+        'location': {'Time': 0, 'Z': 0, 'XY': 0},
+        'tags': ['cell']
+    }
+
+    # Set up mock to return our test annotation
+    mock_worker_client.get_annotation_list_by_shape.return_value = [test_annotation]
+
+    # Set up mock to return our test image
+    mock_dataset_client.getRegion.return_value = test_image
+    mock_dataset_client.coordinatesToFrameIndex.return_value = 0
+
+    # Test different percentile values
+    percentiles_to_test = [0.0, 25.0, 50.0, 75.0, 90.0, 99.0]
+
+    for percentile in percentiles_to_test:
+        # Update the percentile parameter
+        sample_params['workerInterface']['Percentile'] = percentile
+
+        # Run computation
+        compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+        # Get the property values that were sent to the server
+        calls = mock_worker_client.add_multiple_annotation_property_values.call_args_list
+        assert len(calls) > 0
+
+        # Get the computed metrics
+        property_values = calls[-1][0][0]['test_dataset']['test_percentile']
+
+        # Calculate expected percentile
+        expected_percentile = np.percentile(test_image, percentile)
+        prop_name = f'{percentile}thPercentileIntensity'
+
+        # Verify the computed metrics match our expectations
+        assert prop_name in property_values
+        assert property_values[prop_name] == pytest.approx(expected_percentile)
 
 
 def test_edge_cases(mock_worker_client, mock_dataset_client, sample_params):
@@ -363,7 +400,8 @@ def test_edge_cases(mock_worker_client, mock_dataset_client, sample_params):
     assert 'outside_annotation' not in property_values
 
     # Verify valid annotation metrics
+    percentile = float(sample_params['workerInterface']['Percentile'])
+    prop_name = f'{percentile}thPercentileIntensity'
     valid_values = property_values['valid_annotation']
-    assert valid_values['MeanIntensity'] == pytest.approx(100.0)
-    assert valid_values['MaxIntensity'] == pytest.approx(100.0)
-    assert valid_values['MinIntensity'] == pytest.approx(100.0)
+    assert prop_name in valid_values
+    assert valid_values[prop_name] == pytest.approx(100.0)
