@@ -216,3 +216,11 @@ services:
     image: properties/point_intensity:test
     depends_on:
       - point_intensity
+
+  children_count_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/connections/children_count_worker/tests/Dockerfile_Test
+    image: properties/children_count:test
+    depends_on:
+      - children_count
