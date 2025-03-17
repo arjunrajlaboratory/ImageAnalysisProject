@@ -224,3 +224,11 @@ services:
     image: properties/children_count:test
     depends_on:
       - children_count
+
+  parent_child_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/connections/parent_child_worker/tests/Dockerfile_Test
+    image: properties/parent_child:test
+    depends_on:
+      - parent_child
