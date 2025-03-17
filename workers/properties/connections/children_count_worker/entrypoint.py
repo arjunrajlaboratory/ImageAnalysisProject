@@ -9,6 +9,7 @@ from annotation_client.utils import sendProgress
 import pandas as pd
 import numpy as np
 
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -32,13 +33,14 @@ def interface(image, apiUrl, token):
     }
     client.setWorkerImageInterface(image, interface)
 
+
 def compute(datasetId, apiUrl, token, params):
     propertyId = params.get('id', 'unknown_property')
     workerInterface = params['workerInterface']
-    
+
     parent_tags = set(params.get('tags', {}).get('tags', []))
     parent_exclusive = params.get('tags', {}).get('exclusive', False)
-    
+
     child_tags = set(workerInterface.get('Child Tags', []))
     print(workerInterface)
     child_exclusive = workerInterface['Child Tags Exclusive'] == 'Yes'
@@ -48,12 +50,12 @@ def compute(datasetId, apiUrl, token, params):
 
     sendProgress(0.1, 'Fetching data', 'Getting all annotations')
     all_annotations = workerClient.get_annotation_list_by_shape(None, limit=0)
-    
+
     sendProgress(0.3, 'Fetching data', 'Getting all connections')
     all_connections = annotationClient.getAnnotationConnections(datasetId, limit=10000000)
 
     sendProgress(0.5, 'Processing data', 'Filtering annotations and connections')
-    
+
     def filter_annotations(annotations, tags, exclusive):
         if exclusive:
             return [ann for ann in annotations if set(ann['tags']) == tags]
@@ -67,7 +69,7 @@ def compute(datasetId, apiUrl, token, params):
     child_ids = set(ann['_id'] for ann in child_annotations)
 
     filtered_connections = [
-        conn for conn in all_connections 
+        conn for conn in all_connections
         if conn['parentId'] in parent_ids and conn['childId'] in child_ids
     ]
 
@@ -78,7 +80,7 @@ def compute(datasetId, apiUrl, token, params):
     children_count_dict = dict(zip(children_count['parentId'], children_count['count']))
 
     property_value_dict = {
-        parent_id: children_count_dict.get(parent_id, 0) 
+        parent_id: children_count_dict.get(parent_id, 0)
         for parent_id in parent_ids
     }
 
@@ -88,6 +90,7 @@ def compute(datasetId, apiUrl, token, params):
     workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
 
     sendProgress(1.0, 'Complete', 'Property worker finished successfully')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
