@@ -208,3 +208,11 @@ services:
     image: properties/point_metrics:test
     depends_on:
       - point_metrics
+
+  point_intensity_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/points/point_circle_intensity_worker/tests/Dockerfile_Test
+    image: properties/point_intensity:test
+    depends_on:
+      - point_intensity

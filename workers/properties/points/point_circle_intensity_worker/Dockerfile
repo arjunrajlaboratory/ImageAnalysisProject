@@ -17,6 +17,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libpython3-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
+ENV PYTHONUNBUFFERED=TRUE
+
 ENV PATH="/root/miniforge3/bin:$PATH"
 ARG PATH="/root/miniforge3/bin:$PATH"
 
