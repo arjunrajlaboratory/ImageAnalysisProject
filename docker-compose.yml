@@ -200,3 +200,11 @@ services:
     image: properties/blob_point_count:test
     depends_on:
       - blob_point_count
+
+  point_metrics_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/points/point_metrics_worker/tests/Dockerfile_Test
+    image: properties/point_metrics:test
+    depends_on:
+      - point_metrics
