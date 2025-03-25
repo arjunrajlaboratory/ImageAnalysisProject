@@ -4,10 +4,11 @@ import sys
 import timeit
 
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendWarning, sendError
 import annotation_client.tiles as tiles
 
 import annotation_utilities.annotation_tools as annotation_tools
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import numpy as np
 from skimage import draw
@@ -32,7 +33,18 @@ def interface(image, apiUrl, token):
             'tooltip': 'Compute pixel intensities in this channel.\n'
                        'The channel does not have to be the same as the layer the annotations are on.',
             'displayOrder': 1,
-        }
+        },
+        'Z planes': {
+            'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Z positions to compute intensities for (empty to use annotation plane)',
+                'persistentPlaceholder': True,
+                'filled': True,
+                'tooltip': 'Enter the Z positions to compute intensities for. Leave blank to use the plane the annotations are on.'
+            },
+            'displayOrder': 2
+        },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
@@ -58,6 +70,52 @@ def compute(datasetId, apiUrl, token, params):
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
+    tileInfo = datasetClient.tiles
+
+    # If there is an 'IndexRange' key in the tileClient.tiles, then
+    # let's get a range for each of XY, Z, T, and C
+    # Currently, we are just using the Z range, but the code is here in
+    # case we want to use the XY, T, and C ranges in the future
+    if 'IndexRange' in tileInfo:
+        if 'IndexXY' in tileInfo['IndexRange']:
+            range_xy = range(0, tileInfo['IndexRange']['IndexXY'])
+        else:
+            range_xy = [0]
+        if 'IndexZ' in tileInfo['IndexRange']:
+            range_z = range(0, tileInfo['IndexRange']['IndexZ'])
+        else:
+            range_z = [0]
+        if 'IndexT' in tileInfo['IndexRange']:
+            range_time = range(0, tileInfo['IndexRange']['IndexT'])
+        else:
+            range_time = [0]
+        if 'IndexC' in tileInfo['IndexRange']:
+            range_c = range(0, tileInfo['IndexRange']['IndexC'])
+        else:
+            range_c = [0]
+    else:
+        # If there is no 'IndexRange' key in the tileClient.tiles, then there is just one frame
+        range_xy = [0]
+        range_z = [0]
+        range_time = [0]
+        range_c = [0]
+
+    # Get the Z planes from the worker interface
+    # Old workers may not have this key, so we use get() with a default of None
+    z_planes = params['workerInterface'].get('Z planes', None)
+    if z_planes is not None and z_planes.strip():
+        z_planes = list(batch_argument_parser.process_range_list(
+            z_planes, convert_one_to_zero_index=True))
+        # Find which planes are out of range
+        invalid_planes = [x+1 for x in z_planes if x not in range_z]
+        if invalid_planes:
+            sendWarning('Requested planes out of range',
+                        info=f'Excluding planes {", ".join(map(str, invalid_planes))}.')
+        z_planes = [x for x in z_planes if x in range_z]
+    else:
+        # If no Z planes are specified, then we will use the plane from the annotations
+        z_planes = None
+
     # Following line should be updated to get just the annotations with specified tags
     annotationList = workerClient.get_annotation_list_by_shape(
         'polygon', limit=0)
@@ -66,6 +124,8 @@ def compute(datasetId, apiUrl, token, params):
 
     # We need at least one annotation
     if len(annotationList) == 0:
+        sendWarning('No objects found',
+                    info='No objects found. Please check the tags and shape.')
         return
 
     start_time = timeit.default_timer()
@@ -89,6 +149,8 @@ def compute(datasetId, apiUrl, token, params):
         image = datasetClient.getRegion(datasetId, frame=frame)
 
         if image is None:
+            sendWarning('No image found',
+                        info=f'No image found for frame {frame}.')
             continue
 
         # Compute properties for all annotations at that location
@@ -97,6 +159,8 @@ def compute(datasetId, apiUrl, token, params):
                                 for coordinate in annotation['coordinates']])
 
             if len(polygon) < 3:  # Skip if the polygon is not valid
+                sendWarning('Invalid polygon',
+                            info=f'Object {annotation["_id"]} has less than 3 vertices.')
                 continue
 
             rr, cc = draw.polygon(
@@ -104,6 +168,8 @@ def compute(datasetId, apiUrl, token, params):
             intensities = image[rr, cc]
 
             if len(intensities) == 0:  # Skip if there are no pixels in the mask
+                sendWarning('No pixels in mask',
+                            info=f'Object {annotation["_id"]} has no pixels in the mask.')
                 continue
 
             # Calculating the desired metrics
