@@ -11,8 +11,10 @@
 #
 # Options:
 #   --no-cache     Build images without using Docker cache
-#   --test         Build images and run tests afterward
-#   --test-only    Run tests without rebuilding images
+#   --build-tests-only     Build tests only
+#   --build-and-run-tests     Build and run tests
+#   --run-tests-only     Run tests without rebuilding images
+#   --build-samples-and-samples-tests-only     Build samples and samples tests only
 #
 # Examples:
 #   # Build all workers
@@ -25,16 +27,22 @@
 #   ./build_workers.sh --no-cache
 #
 #   # Build and test all workers
-#   ./build_workers.sh --test
+#   ./build_workers.sh --build-and-run-tests
 #
 #   # Build and test a specific worker
-#   ./build_workers.sh --test blob_metrics
+#   ./build_workers.sh --build-and-run-tests blob_metrics
 #
-#   # Run tests for all workers without rebuilding
-#   ./build_workers.sh --test-only
+#   # Build tests for all workers without rebuilding
+#   ./build_workers.sh --build-tests-only
 #
-#   # Run tests for a specific worker without rebuilding
-#   ./build_workers.sh --test-only blob_metrics
+#   # Build tests for a specific worker without rebuilding
+#   ./build_workers.sh --build-tests-only blob_metrics
+#
+#   # Build samples and samples tests for all workers
+#   ./build_workers.sh --build-samples-and-samples-tests-only
+#
+#   # Build samples and samples tests for a specific sample worker
+#   ./build_workers.sh sample_interface --build-and-run-tests
 # =============================================================================
 
 # Limit the number of parallel builds to 1 to avoid memory issues
@@ -56,54 +64,84 @@ fi
 # Parse arguments
 NO_CACHE=""
 SERVICE=""
+BUILD_WORKERS=true
+BUILD_TESTS=false
 RUN_TESTS=false
 TEST_ONLY=false
+BUILD_SAMPLES=false
+BUILD_SAMPLES_TESTS=false
+RUN_SAMPLES_TESTS=false
 
 for arg in "$@"; do
     if [ "$arg" == "--no-cache" ]; then
         NO_CACHE="--no-cache"
         echo "Building without cache"
-    elif [ "$arg" == "--test" ]; then
+    elif [ "$arg" == "--build-tests-only" ]; then
+        BUILD_TESTS=true
+        echo "Will build tests only; will not run tests"
+    elif [ "$arg" == "--build-and-run-tests" ]; then
+        BUILD_TESTS=true
         RUN_TESTS=true
-        echo "Will run tests after building"
-    elif [ "$arg" == "--test-only" ]; then
-        TEST_ONLY=true
+        echo "Will build and run tests"
+    elif [ "$arg" == "--run-tests-only" ]; then
+        RUN_TESTS=true
         echo "Will only run tests (no build)"
+    elif [ "$arg" == "--build-samples-and-samples-tests-only" ]; then
+        BUILD_WORKERS=false
+        BUILD_SAMPLES=true
+        BUILD_SAMPLES_TESTS=true
+        RUN_SAMPLES_TESTS=true
+        echo "Will build samples and samples tests only; will run samples tests"
     else
         SERVICE="$arg"
     fi
 done
 
-# Build services
-if [ "$TEST_ONLY" = false ]; then
-    if [ -z "$SERVICE" ]; then
+if [ -z "$SERVICE" ]; then
+    if [ "$BUILD_WORKERS" = true ]; then
         echo "Building all workers..."
-        docker compose build $NO_CACHE
-    else
-        echo "Building worker: $SERVICE"
-        docker compose build $NO_CACHE $SERVICE
-        # If we're building a specific service and want to test it
-        if [ "$RUN_TESTS" = true ]; then
-            # Also build its test
-            echo "Building test for: $SERVICE"
-            docker compose build $NO_CACHE "${SERVICE}_test"
-        fi
+        docker compose --profile worker build $NO_CACHE
     fi
-fi
 
-# Run tests if requested
-if [ "$RUN_TESTS" = true ] || [ "$TEST_ONLY" = true ]; then
-    if [ -z "$SERVICE" ]; then
-        echo "Running all tests..."
-        # Find all test services and run them
-        TEST_SERVICES=$(docker compose config --services | grep '_test$')
-        for test_service in $TEST_SERVICES; do
-            echo "Running test: $test_service"
-            docker compose run --rm $test_service
+    if [ "$BUILD_SAMPLES" = true ]; then
+        docker compose --profile samples build $NO_CACHE
+    fi
+
+    if [ "$BUILD_TESTS" = true ]; then
+        docker compose --profile worker --profile test build $NO_CACHE
+    fi
+
+    if [ "$RUN_TESTS" = true ]; then
+        # Get list of test services and run them one by one
+        for test_service in $(docker compose --profile worker --profile test config --services | grep "_test$"); do
+            echo "Running tests for worker: $test_service"
+            docker compose --profile worker --profile test run --rm $test_service
         done
-    else
-        echo "Running test for: $SERVICE"
-        docker compose run --rm "${SERVICE}_test"
+    fi
+
+    if [ "$BUILD_SAMPLES_TESTS" = true ]; then
+        docker compose --profile samples --profile sampletest build $NO_CACHE
+    fi
+
+    if [ "$RUN_SAMPLES_TESTS" = true ]; then
+        # Get list of test services and run them one by one
+        for test_service in $(docker compose --profile samples --profile sampletest config --services | grep "_test$"); do
+            echo "Running tests for sample worker: $test_service"
+            docker compose --profile samples --profile sampletest run --rm $test_service
+        done
+    fi
+else
+    echo "Building worker: $SERVICE"
+    
+    # Build the main service with its profile
+    docker compose --profile "*" build $NO_CACHE $SERVICE
+
+    if [ "$BUILD_TESTS" = true ]; then
+        docker compose --profile "*" build $NO_CACHE "${SERVICE}_test"
+    fi
+
+    if [ "$RUN_TESTS" = true ]; then
+        docker compose --profile "*" run --rm "${SERVICE}_test"
     fi
 fi
 
