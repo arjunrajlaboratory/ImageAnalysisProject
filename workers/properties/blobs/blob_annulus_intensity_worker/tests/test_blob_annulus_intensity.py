@@ -499,3 +499,214 @@ def test_different_radius_values(mock_worker_client, mock_dataset_client, sample
 
     # With a radial gradient, the mean intensity should be different for different radius values
     assert property_values_r10['MeanIntensity'] != property_values_r2['MeanIntensity']
+
+
+def test_z_planes_intensity_calculation(mock_worker_client, mock_dataset_client, sample_params):
+    """Test intensity calculations across multiple Z planes"""
+    # Create two test images with different intensities for different Z planes
+    test_image_z0 = np.ones((40, 40), dtype=np.uint8) * 50  # Z=0 (plane 1) has intensity 50
+    test_image_z1 = np.ones((40, 40), dtype=np.uint8) * 100  # Z=1 (plane 2) has intensity 100
+
+    # Create a test annotation (10x10 square)
+    test_annotation = {
+        '_id': 'test_z_planes',
+        'coordinates': [
+            {'x': 15, 'y': 15},
+            {'x': 15, 'y': 25},
+            {'x': 25, 'y': 25},
+            {'x': 25, 'y': 15},
+            {'x': 15, 'y': 15}  # Close the polygon
+        ],
+        'location': {
+            'Time': 0,
+            'Z': 0,
+            'XY': 0
+        },
+        'tags': ['cell']
+    }
+
+    # Set up the parameters with Z planes specified
+    z_params = sample_params.copy()
+    z_params['workerInterface'] = z_params.get('workerInterface', {}).copy()
+    z_params['workerInterface']['Z planes'] = '1-2'  # Specifying Z planes 1-2 (0-indexed: 0-1)
+
+    # Set up mock to return our test annotation
+    mock_worker_client.get_annotation_list_by_shape.return_value = [test_annotation]
+
+    # Set up mock tile info for IndexRange
+    mock_dataset_client.tiles = {
+        'IndexRange': {
+            'IndexZ': 2  # We have 2 Z planes (0 and 1)
+        }
+    }
+
+    # Set up mock to return different images based on frame coordinates
+    def get_region_side_effect(dataset_id, frame):
+        if frame == 0:  # First frame (Z=0)
+            return test_image_z0
+        elif frame == 1:  # Second frame (Z=1)
+            return test_image_z1
+        return None
+
+    mock_dataset_client.getRegion.side_effect = get_region_side_effect
+
+    # Set up mock to convert coordinates to frame index
+    def coordinates_to_frame_side_effect(xy, z, time, channel):
+        # Return frame index based on Z coordinate
+        return z
+
+    mock_dataset_client.coordinatesToFrameIndex.side_effect = coordinates_to_frame_side_effect
+
+    # Run computation
+    compute('test_dataset', 'http://test-api', 'test-token', z_params)
+
+    # Get the property values that were sent to the server
+    calls = mock_worker_client.add_multiple_annotation_property_values.call_args_list
+    assert len(calls) == 1
+
+    # Get the computed metrics
+    property_values = calls[0][0][0]['test_dataset']['test_z_planes']
+
+    # Verify that we have a nested dictionary with z001 and z002 keys
+    assert 'MeanIntensity' in property_values
+    assert 'z001' in property_values['MeanIntensity']
+    assert 'z002' in property_values['MeanIntensity']
+
+    # Verify that the intensity values are correct for each plane
+    # For annulus, values should be the same as the image since we have uniform intensity
+    assert property_values['MeanIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MeanIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['MaxIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MaxIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['MinIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MinIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['MedianIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MedianIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['25thPercentileIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['25thPercentileIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['75thPercentileIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['75thPercentileIntensity']['z002'] == pytest.approx(100.0)
+
+    # The total intensity should be proportional to the number of pixels in the annulus
+    # We don't know exact pixel count, but we can verify it's greater than zero
+    assert property_values['TotalIntensity']['z001'] > 0
+    assert property_values['TotalIntensity']['z002'] > 0
+    # Z2 should have double the intensity per pixel compared to Z1
+    assert property_values['TotalIntensity']['z002'] == pytest.approx(
+        property_values['TotalIntensity']['z001'] * 2.0)
+
+
+def test_additional_percentiles(mock_worker_client, mock_dataset_client, sample_params):
+    """Test the additional percentiles functionality"""
+    # Create a test image with a range of values for predictable percentiles
+    # Using a linear gradient for easier percentile calculation
+    test_image = np.zeros((40, 40), dtype=np.uint8)
+    for i in range(40):
+        for j in range(40):
+            # Create a value proportional to position
+            test_image[i, j] = min(255, (i + j) * 3)
+
+    # Create a test annotation
+    test_annotation = {
+        '_id': 'test_percentiles',
+        'coordinates': [
+            {'x': 15.5, 'y': 15.5},
+            {'x': 15.5, 'y': 25.5},
+            {'x': 25.5, 'y': 25.5},
+            {'x': 25.5, 'y': 15.5},
+            {'x': 15.5, 'y': 15.5}
+        ],
+        'location': {'Time': 0, 'Z': 0, 'XY': 0},
+        'tags': ['cell']
+    }
+
+    # Set up the parameters with additional percentiles
+    params_with_percentiles = sample_params.copy()
+    params_with_percentiles['workerInterface'] = params_with_percentiles.get(
+        'workerInterface', {}).copy()
+    params_with_percentiles['workerInterface']['Additional percentiles'] = '10, 30, 90'
+
+    # Set up mock to return our test annotation
+    mock_worker_client.get_annotation_list_by_shape.return_value = [test_annotation]
+
+    # Set up mock to return our test image
+    mock_dataset_client.getRegion.return_value = test_image
+    mock_dataset_client.coordinatesToFrameIndex.return_value = 0
+
+    # Run computation
+    compute('test_dataset', 'http://test-api', 'test-token', params_with_percentiles)
+
+    # Get the property values that were sent to the server
+    calls = mock_worker_client.add_multiple_annotation_property_values.call_args_list
+    assert len(calls) == 1
+
+    # Get the computed metrics
+    property_values = calls[0][0][0]['test_dataset']['test_percentiles']
+
+    # Print full property_values dictionary for debugging
+    print(f"All property values: {property_values}")
+
+    # Test default percentiles are present
+    assert '25thPercentileIntensity' in property_values
+    assert '75thPercentileIntensity' in property_values
+
+    # Extract the annulus from our test image to calculate expected values
+    # Create a mask for the original square
+    mask_original = np.zeros_like(test_image, dtype=bool)
+    mask_original[15:26, 15:26] = True
+
+    # Create a mask for the dilated square (with radius from sample_params)
+    radius = sample_params['workerInterface']['Radius']
+    mask_dilated = np.zeros_like(test_image, dtype=bool)
+    # Approximate dilation by expanding radius pixels in each direction
+    y_min = max(0, 15 - radius)
+    y_max = min(test_image.shape[0], 26 + radius)
+    x_min = max(0, 15 - radius)
+    x_max = min(test_image.shape[1], 26 + radius)
+    mask_dilated[y_min:y_max, x_min:x_max] = True
+
+    # Create the annulus mask
+    mask_annulus = mask_dilated & ~mask_original
+
+    # Extract the intensities in the annulus
+    annulus_intensities = test_image[mask_annulus]
+
+    # Calculate expected values
+    expected_25th = np.percentile(annulus_intensities, 25)
+    expected_75th = np.percentile(annulus_intensities, 75)
+    expected_10th = np.percentile(annulus_intensities, 10)
+    expected_30th = np.percentile(annulus_intensities, 30)
+    expected_90th = np.percentile(annulus_intensities, 90)
+
+    print(f"Expected 25th percentile: {expected_25th}")
+    print(f"Expected 75th percentile: {expected_75th}")
+    print(f"Expected 10th percentile: {expected_10th}")
+    print(f"Expected 30th percentile: {expected_30th}")
+    print(f"Expected 90th percentile: {expected_90th}")
+
+    # Use larger tolerance for approximation due to differences in how annulus is calculated
+    assert property_values['25thPercentileIntensity'] == pytest.approx(expected_25th, abs=15.0)
+    assert property_values['75thPercentileIntensity'] == pytest.approx(expected_75th, abs=15.0)
+
+    # Test additional percentiles are present
+    assert '10.0thPercentileIntensity' in property_values
+    assert '30.0thPercentileIntensity' in property_values
+    assert '90.0thPercentileIntensity' in property_values
+
+    # Verify additional percentiles
+    assert property_values['10.0thPercentileIntensity'] == pytest.approx(expected_10th, abs=15.0)
+    assert property_values['30.0thPercentileIntensity'] == pytest.approx(expected_30th, abs=15.0)
+    assert property_values['90.0thPercentileIntensity'] == pytest.approx(expected_90th, abs=15.0)
+
+    # Make sure other standard metrics are still there
+    assert 'MeanIntensity' in property_values
+    assert 'MaxIntensity' in property_values
+    assert 'MinIntensity' in property_values
+    assert property_values['MeanIntensity'] == pytest.approx(np.mean(annulus_intensities), abs=15.0)
+    assert property_values['MaxIntensity'] == pytest.approx(np.max(annulus_intensities), abs=15.0)
+    assert property_values['MinIntensity'] == pytest.approx(np.min(annulus_intensities), abs=15.0)
