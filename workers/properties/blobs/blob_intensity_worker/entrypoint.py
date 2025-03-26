@@ -9,7 +9,7 @@ import annotation_client.tiles as tiles
 
 import annotation_utilities.annotation_tools as annotation_tools
 import annotation_utilities.batch_argument_parser as batch_argument_parser
-
+from annotation_utilities.progress import update_progress
 import numpy as np
 from skimage import draw
 from collections import defaultdict
@@ -130,77 +130,153 @@ def compute(datasetId, apiUrl, token, params):
 
     start_time = timeit.default_timer()
 
-    grouped_annotations = defaultdict(list)
-    for annotation in annotationList:
-        location_key = (annotation['location']['Time'],
-                        annotation['location']['Z'], annotation['location']['XY'])
-        grouped_annotations[location_key].append(annotation)
-
     number_annotations = len(annotationList)
+    processed_annotations = 0  # For reporting progress
+    property_value_dict = {}  # Initialize output dictionary
 
-    # For reporting progress
-    processed_annotations = 0
+    # If no Z planes are specified, then we will use the plane from the annotations
+    if z_planes is None:
+        print("No Z planes specified, computing intensity at annotation locations")
+        grouped_annotations = defaultdict(list)
+        # First, group the annotations by their location
+        # That way, we can load the image once and compute the properties for all
+        # annotations at that location
+        for annotation in annotationList:
+            location_key = (annotation['location']['Time'],
+                            annotation['location']['Z'], annotation['location']['XY'])
+            grouped_annotations[location_key].append(annotation)
 
-    property_value_dict = {}  # Initialize as a dictionary
+        # Now, we will loop over all the locations and compute the properties
+        # for all annotations at that location.
+        for location_key, annotations in grouped_annotations.items():
+            time, z, xy = location_key
+            frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
+            image = datasetClient.getRegion(datasetId, frame=frame)
 
-    for location_key, annotations in grouped_annotations.items():
-        time, z, xy = location_key
-        frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
-        image = datasetClient.getRegion(datasetId, frame=frame)
-
-        if image is None:
-            sendWarning('No image found',
-                        info=f'No image found for frame {frame}.')
-            continue
-
-        # Compute properties for all annotations at that location
-        for annotation in annotations:
-            polygon = np.array([[coordinate['y'] - 0.5, coordinate['x'] - 0.5]
-                                for coordinate in annotation['coordinates']])
-
-            if len(polygon) < 3:  # Skip if the polygon is not valid
-                sendWarning('Invalid polygon',
-                            info=f'Object {annotation["_id"]} has less than 3 vertices.')
+            if image is None:
+                sendWarning('No image found',
+                            info=f'No image found for frame {frame}.')
                 continue
 
-            rr, cc = draw.polygon(
-                polygon[:, 0], polygon[:, 1], shape=image.shape)
-            intensities = image[rr, cc]
+            # Compute properties for all annotations at that location
+            for annotation in annotations:
+                polygon = np.array([[coordinate['y'] - 0.5, coordinate['x'] - 0.5]
+                                    for coordinate in annotation['coordinates']])
 
-            if len(intensities) == 0:  # Skip if there are no pixels in the mask
-                sendWarning('No pixels in mask',
-                            info=f'Object {annotation["_id"]} has no pixels in the mask.')
-                continue
+                if len(polygon) < 3:  # Skip if the polygon is not valid
+                    sendWarning('Invalid polygon',
+                                info=f'Object {annotation["_id"]} has less than 3 vertices.')
+                    continue
 
-            # Calculating the desired metrics
-            mean_intensity = np.mean(intensities)
-            max_intensity = np.max(intensities)
-            min_intensity = np.min(intensities)
-            median_intensity = np.median(intensities)
-            q25_intensity = np.percentile(intensities, 25)
-            q75_intensity = np.percentile(intensities, 75)
-            total_intensity = np.sum(intensities)
+                rr, cc = draw.polygon(
+                    polygon[:, 0], polygon[:, 1], shape=image.shape)
+                intensities = image[rr, cc]
 
-            prop = {
-                'MeanIntensity': float(mean_intensity),
-                'MaxIntensity': float(max_intensity),
-                'MinIntensity': float(min_intensity),
-                'MedianIntensity': float(median_intensity),
-                '25thPercentileIntensity': float(q25_intensity),
-                '75thPercentileIntensity': float(q75_intensity),
-                'TotalIntensity': float(total_intensity),
+                if len(intensities) == 0:  # Skip if there are no pixels in the mask
+                    sendWarning('No pixels in mask',
+                                info=f'Object {annotation["_id"]} has no pixels in the mask.')
+                    continue
+
+                # Calculating the desired metrics
+                mean_intensity = float(np.mean(intensities))
+                max_intensity = float(np.max(intensities))
+                min_intensity = float(np.min(intensities))
+                median_intensity = float(np.median(intensities))
+                q25_intensity = float(np.percentile(intensities, 25))
+                q75_intensity = float(np.percentile(intensities, 75))
+                total_intensity = float(np.sum(intensities))
+
+                prop = {
+                    'MeanIntensity': mean_intensity,
+                    'MaxIntensity': max_intensity,
+                    'MinIntensity': min_intensity,
+                    'MedianIntensity': median_intensity,
+                    '25thPercentileIntensity': q25_intensity,
+                    '75thPercentileIntensity': q75_intensity,
+                    'TotalIntensity': total_intensity,
+                }
+
+                property_value_dict[annotation['_id']] = prop
+                processed_annotations += 1
+                update_progress(processed_annotations, number_annotations,
+                                "Computing blob intensity")
+
+    else:
+        print("Z planes specified, computing intensity at specified planes")
+
+        grouped_annotations = defaultdict(list)
+        # First, group the annotations by their location, but exclude Z
+        for annotation in annotationList:
+            location_key = (annotation['location']['Time'],
+                            annotation['location']['XY'])
+            grouped_annotations[location_key].append(annotation)
+
+        # Initialize the property dictionaries for all annotations before processing Z-planes
+        for annotation in annotationList:
+            property_value_dict[annotation['_id']] = {
+                'MeanIntensity': {},
+                'MaxIntensity': {},
+                'MinIntensity': {},
+                'MedianIntensity': {},
+                '25thPercentileIntensity': {},
+                '75thPercentileIntensity': {},
+                'TotalIntensity': {},
             }
 
-            property_value_dict[annotation['_id']] = prop
-            processed_annotations += 1
-            # Only send progress every number_annotations / 100
-            if number_annotations > 100:
-                if processed_annotations % int(number_annotations / 100) == 0:
-                    sendProgress(processed_annotations / number_annotations, 'Computing blob intensity',
-                                 f"Processing annotation {processed_annotations}/{number_annotations}")
-            else:
-                sendProgress(processed_annotations / number_annotations, 'Computing blob intensity',
-                             f"Processing annotation {processed_annotations}/{number_annotations}")
+        # Your grouped_annotations code remains the same
+        for location_key, annotations in grouped_annotations.items():
+            time, xy = location_key
+            for z in z_planes:
+                # Create a formatted Z-key (e.g., "z001", "z002", etc.)
+                z_key = f"z{(z+1):03d}"  # +1 for 1-based indexing in UI
+
+                frame = datasetClient.coordinatesToFrameIndex(xy, z, time, channel)
+                image = datasetClient.getRegion(datasetId, frame=frame)
+
+                if image is None:
+                    sendWarning('No image found', info=f'No image found for frame {frame}.')
+                    continue
+
+                # Process each annotation for this Z-plane
+                for annotation in annotations:
+                    polygon = np.array([[coordinate['y'] - 0.5, coordinate['x'] - 0.5]
+                                        for coordinate in annotation['coordinates']])
+
+                    if len(polygon) < 3:
+                        sendWarning('Invalid polygon',
+                                    info=f'Object {annotation["_id"]} has less than 3 vertices.')
+                        continue
+
+                    rr, cc = draw.polygon(polygon[:, 0], polygon[:, 1], shape=image.shape)
+                    intensities = image[rr, cc]
+
+                    if len(intensities) == 0:
+                        sendWarning('No pixels in mask',
+                                    info=f'Object {annotation["_id"]} has no pixels in the mask.')
+                        continue
+
+                    # Update the nested dictionary for this annotation's properties at this Z-plane
+                    annotation_id = annotation['_id']
+                    property_value_dict[annotation_id]['MeanIntensity'][z_key] = float(
+                        np.mean(intensities))
+                    property_value_dict[annotation_id]['MaxIntensity'][z_key] = float(
+                        np.max(intensities))
+                    property_value_dict[annotation_id]['MinIntensity'][z_key] = float(
+                        np.min(intensities))
+                    property_value_dict[annotation_id]['MedianIntensity'][z_key] = float(
+                        np.median(intensities))
+                    property_value_dict[annotation_id]['25thPercentileIntensity'][z_key] = float(
+                        np.percentile(intensities, 25))
+                    property_value_dict[annotation_id]['75thPercentileIntensity'][z_key] = float(
+                        np.percentile(intensities, 75))
+                    property_value_dict[annotation_id]['TotalIntensity'][z_key] = float(
+                        np.sum(intensities))
+
+                    processed_annotations += 1
+                    # Adjust the total for progress reporting (annotations × z-planes)
+                    total_operations = len(annotationList) * len(z_planes)
+                    update_progress(processed_annotations, total_operations,
+                                    "Computing blob intensity")
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 
