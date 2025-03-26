@@ -367,3 +367,138 @@ def test_edge_cases(mock_worker_client, mock_dataset_client, sample_params):
     assert valid_values['MeanIntensity'] == pytest.approx(100.0)
     assert valid_values['MaxIntensity'] == pytest.approx(100.0)
     assert valid_values['MinIntensity'] == pytest.approx(100.0)
+
+
+def test_less_than_3_coordinates_warning(mock_worker_client, mock_dataset_client, sample_params, capsys):
+    """Test that a warning is issued when an annotation has less than 3 coordinates"""
+    # Create a test image
+    test_image = np.ones((20, 20), dtype=np.uint8) * 100
+
+    # Create an annotation with only 2 coordinates (invalid polygon)
+    invalid_annotation = {
+        '_id': 'invalid_annotation',
+        'coordinates': [
+            {'x': 5, 'y': 5},
+            {'x': 5, 'y': 10},
+            {'x': 5, 'y': 5}  # Closing point doesn't count as a new vertex
+        ],
+        'location': {'Time': 0, 'Z': 0, 'XY': 0},
+        'tags': ['cell']
+    }
+
+    # Set up mock to return our test annotation
+    mock_worker_client.get_annotation_list_by_shape.return_value = [invalid_annotation]
+
+    # Set up mock to return our test image
+    mock_dataset_client.getRegion.return_value = test_image
+    mock_dataset_client.coordinatesToFrameIndex.return_value = 0
+
+    # Run computation
+    compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+    # Capture the stdout output
+    captured = capsys.readouterr()
+
+    # Check if the warning message about no pixels in mask is in the output
+    assert '"warning": "No pixels in mask"' in captured.out
+    assert '"info": "Object invalid_annotation has no pixels in the mask."' in captured.out
+
+    # Verify that add_multiple_annotation_property_values was called with an empty dictionary
+    calls = mock_worker_client.add_multiple_annotation_property_values.call_args_list
+    assert len(calls) == 1
+    assert calls[0][0][0] == {'test_dataset': {}}
+
+
+def test_z_planes_intensity_calculation(mock_worker_client, mock_dataset_client, sample_params):
+    """Test intensity calculations across multiple Z planes"""
+    # Create two test images with different intensities for different Z planes
+    test_image_z0 = np.ones((20, 20), dtype=np.uint8) * 50  # Z=0 (plane 1) has intensity 50
+    test_image_z1 = np.ones((20, 20), dtype=np.uint8) * 100  # Z=1 (plane 2) has intensity 100
+
+    # Create a test annotation (10x10 square)
+    test_annotation = {
+        '_id': 'test_z_planes',
+        'coordinates': [
+            {'x': 5, 'y': 5},
+            {'x': 5, 'y': 15},
+            {'x': 15, 'y': 15},
+            {'x': 15, 'y': 5},
+            {'x': 5, 'y': 5}  # Close the polygon
+        ],
+        'location': {
+            'Time': 0,
+            'Z': 0,
+            'XY': 0
+        },
+        'tags': ['cell']
+    }
+
+    # Set up the parameters with Z planes specified
+    z_params = sample_params.copy()
+    z_params['workerInterface'] = z_params.get('workerInterface', {}).copy()
+    z_params['workerInterface']['Z planes'] = '1-2'  # Specifying Z planes 1-2 (0-indexed: 0-1)
+
+    # Set up mock to return our test annotation
+    mock_worker_client.get_annotation_list_by_shape.return_value = [test_annotation]
+
+    # Set up mock tile info for IndexRange
+    mock_dataset_client.tiles = {
+        'IndexRange': {
+            'IndexZ': 2  # We have 2 Z planes (0 and 1)
+        }
+    }
+
+    # Set up mock to return different images based on frame coordinates
+    def get_region_side_effect(dataset_id, frame):
+        if frame == 0:  # First frame (Z=0)
+            return test_image_z0
+        elif frame == 1:  # Second frame (Z=1)
+            return test_image_z1
+        return None
+
+    mock_dataset_client.getRegion.side_effect = get_region_side_effect
+
+    # Set up mock to convert coordinates to frame index
+    def coordinates_to_frame_side_effect(xy, z, time, channel):
+        # Return frame index based on Z coordinate
+        return z
+
+    mock_dataset_client.coordinatesToFrameIndex.side_effect = coordinates_to_frame_side_effect
+
+    # Run computation
+    compute('test_dataset', 'http://test-api', 'test-token', z_params)
+
+    # Get the property values that were sent to the server
+    calls = mock_worker_client.add_multiple_annotation_property_values.call_args_list
+    assert len(calls) == 1
+
+    # Get the computed metrics
+    property_values = calls[0][0][0]['test_dataset']['test_z_planes']
+
+    # Verify that we have a nested dictionary with z001 and z002 keys
+    assert 'MeanIntensity' in property_values
+    assert 'z001' in property_values['MeanIntensity']
+    assert 'z002' in property_values['MeanIntensity']
+
+    # Verify that the intensity values are correct for each plane
+    assert property_values['MeanIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MeanIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['MaxIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MaxIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['MinIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MinIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['MedianIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['MedianIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['25thPercentileIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['25thPercentileIntensity']['z002'] == pytest.approx(100.0)
+
+    assert property_values['75thPercentileIntensity']['z001'] == pytest.approx(50.0)
+    assert property_values['75thPercentileIntensity']['z002'] == pytest.approx(100.0)
+
+    # For a 10x10 square, total intensity should be 50 * 100 = 5000 for z001 and 100 * 100 = 10000 for z002
+    assert property_values['TotalIntensity']['z001'] == pytest.approx(5000.0)
+    assert property_values['TotalIntensity']['z002'] == pytest.approx(10000.0)
