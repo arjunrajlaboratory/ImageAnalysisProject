@@ -45,6 +45,14 @@ def interface(image, apiUrl, token):
             },
             'displayOrder': 2
         },
+        'Additional percentiles': {
+            'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 10, 45, 90 (empty for default)',
+                'label': 'Percentiles to compute intensities for (leave empty for default of 25, 75)',
+            },
+            'displayOrder': 3
+        }
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
@@ -66,10 +74,23 @@ def compute(datasetId, apiUrl, token, params):
 
     workerClient = workers.UPennContrastWorkerClient(
         datasetId, apiUrl, token, params)
-    channel = params['workerInterface']['Channel']
+
     datasetClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
+    channel = params['workerInterface']['Channel']
+    additional_percentiles = params['workerInterface'].get(
+        'Additional percentiles', None)
+
+    # Parse the additional percentiles (floats) into a list and validate that they are between 0 and 100
+    if additional_percentiles is not None:
+        additional_percentiles = [float(x) for x in additional_percentiles.split(
+            ',') if x.strip()]
+        if any(x <= 0 or x >= 100 for x in additional_percentiles):
+            sendWarning('Invalid additional percentiles',
+                        info='Additional percentiles must be between 0 and 100.')
+
+    # Let's validate the z-planes
     tileInfo = datasetClient.tiles
 
     # If there is an 'IndexRange' key in the tileClient.tiles, then
@@ -196,6 +217,14 @@ def compute(datasetId, apiUrl, token, params):
                     'TotalIntensity': total_intensity,
                 }
 
+                # If there are additional percentiles, compute them and
+                # add them to the property dictionary
+                if additional_percentiles is not None:
+                    for percentile in additional_percentiles:
+                        prop_name = f'{percentile}thPercentileIntensity'
+                        prop_value = float(np.percentile(intensities, percentile))
+                        prop[prop_name] = prop_value
+
                 property_value_dict[annotation['_id']] = prop
                 processed_annotations += 1
                 update_progress(processed_annotations, number_annotations,
@@ -222,6 +251,12 @@ def compute(datasetId, apiUrl, token, params):
                 '75thPercentileIntensity': {},
                 'TotalIntensity': {},
             }
+
+            # If there are additional percentiles, add them to the property dictionary
+            if additional_percentiles is not None:
+                for percentile in additional_percentiles:
+                    prop_name = f'{percentile}thPercentileIntensity'
+                    property_value_dict[annotation['_id']][prop_name] = {}
 
         # Your grouped_annotations code remains the same
         for location_key, annotations in grouped_annotations.items():
@@ -271,6 +306,14 @@ def compute(datasetId, apiUrl, token, params):
                         np.percentile(intensities, 75))
                     property_value_dict[annotation_id]['TotalIntensity'][z_key] = float(
                         np.sum(intensities))
+
+                    # If there are additional percentiles, compute them and
+                    # add them to the property dictionary
+                    if additional_percentiles is not None:
+                        for percentile in additional_percentiles:
+                            prop_name = f'{percentile}thPercentileIntensity'
+                            prop_value = float(np.percentile(intensities, percentile))
+                            property_value_dict[annotation_id][prop_name][z_key] = prop_value
 
                     processed_annotations += 1
                     # Adjust the total for progress reporting (annotations × z-planes)
