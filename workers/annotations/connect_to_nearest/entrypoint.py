@@ -32,8 +32,9 @@ def interface(image, apiUrl, token):
     interface = {
         'Connect to nearest': {
             'type': 'notes',
-            'value': 'This tool connects annotations to their nearest neighbors.'
-                     'It will connect from objects with the parent tag to objects with the child tag.',
+            'value': 'This tool connects annotations to their nearest neighbors. '
+                     'It will connect from objects with the parent tag to objects with the child tag. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/tools-for-connecting-objects#connect-to-nearest" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
         'Parent tag': {
