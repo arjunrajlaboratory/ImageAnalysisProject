@@ -38,7 +38,8 @@ def interface(image, apiUrl, token):
     interface = {
         'Cellpose train': {
             'type': 'notes',
-            'value': 'This tool trains a Cellpose model using user-corrected annotations.',
+            'value': 'This tool trains a Cellpose model using user-corrected annotations. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/tools-for-making-objects#cellpose-training" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
         'Base Model': {

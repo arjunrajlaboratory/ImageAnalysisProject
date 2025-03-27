@@ -26,7 +26,8 @@ def interface(image, apiUrl, token):
             'type': 'notes',
             'value': 'This tool computes the pixel intensity in an annulus around the objects in the specified channel. '
                      'It will compute the mean, max, min, median, 25th percentile, and 75th percentile intensity, as well as the total intensity. '
-                     'The size of the annulus is defined by the radius.',
+                     'The size of the annulus is defined by the radius. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/measuring-object-properties#blob-annulus-intensity" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
         'Channel': {

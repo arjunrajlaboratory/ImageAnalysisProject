@@ -50,12 +50,12 @@ services:
     image: properties/blob_intensity:latest
     profiles: ["worker", "properties"]
 
-  blob_intensity_percentile:
-    build:
-      context: .
-      dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
-    image: properties/blob_intensity_percentile:latest
-    profiles: ["worker", "properties"]
+  # blob_intensity_percentile:
+  #   build:
+  #     context: .
+  #     dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
+  #   image: properties/blob_intensity_percentile:latest
+  #   profiles: ["worker", "properties"]
 
   blob_annulus_intensity:
     build:
@@ -64,12 +64,12 @@ services:
     image: properties/blob_annulus_intensity:latest
     profiles: ["worker", "properties"]
 
-  blob_annulus_intensity_percentile:
-    build:
-      context: .
-      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
-    image: properties/blob_annulus_intensity_percentile:latest
-    profiles: ["worker", "properties"]
+  # blob_annulus_intensity_percentile:
+  #   build:
+  #     context: .
+  #     dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
+  #   image: properties/blob_annulus_intensity_percentile:latest
+  #   profiles: ["worker", "properties"]
 
   blob_colony_two_color_intensity:
     build:
@@ -194,14 +194,14 @@ services:
       - blob_intensity
     profiles: ["test"]
 
-  blob_intensity_percentile_test:
-    build:
-      context: .
-      dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/tests/Dockerfile_Test
-    image: properties/blob_intensity_percentile:test
-    depends_on:
-      - blob_intensity_percentile
-    profiles: ["test"]
+  # blob_intensity_percentile_test:
+  #   build:
+  #     context: .
+  #     dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/tests/Dockerfile_Test
+  #   image: properties/blob_intensity_percentile:test
+  #   depends_on:
+  #     - blob_intensity_percentile
+  #   profiles: ["test"]
 
   blob_annulus_intensity_test:
     build:
@@ -212,14 +212,14 @@ services:
       - blob_annulus_intensity
     profiles: ["test"]
 
-  blob_annulus_intensity_percentile_test:
-    build:
-      context: .
-      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/tests/Dockerfile_Test
-    image: properties/blob_annulus_intensity_percentile:test
-    depends_on:
-      - blob_annulus_intensity_percentile
-    profiles: ["test"]
+  # blob_annulus_intensity_percentile_test:
+  #   build:
+  #     context: .
+  #     dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/tests/Dockerfile_Test
+  #   image: properties/blob_annulus_intensity_percentile:test
+  #   depends_on:
+  #     - blob_annulus_intensity_percentile
+  #   profiles: ["test"]
 
   blob_point_count_test:
     build:

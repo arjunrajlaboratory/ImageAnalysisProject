@@ -32,36 +32,50 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
+        'Piscis Train': {
+            'type': 'notes',
+            'value': 'This tool trains a Piscis model using user-corrected annotations. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/tools-for-making-objects#piscis-training" target="_blank">Learn more</a>',
+            'displayOrder': 0,
+        },
         'Initial Model Name': {
             'type': 'select',
             'items': models,
-            'default': '20230905'
+            'default': '20230905',
+            'displayOrder': 1,
         },
         'Learning Rate': {
             'type': 'text',
-            'default': 0.2
+            'default': 0.2,
+            'displayOrder': 5,
         },
         'Weight Decay': {
             'type': 'text',
-            'default': 0.0001
+            'default': 0.0001,
+            'displayOrder': 6,
         },
         'Epochs': {
             'type': 'text',
-            'default': 40
+            'default': 40,
+            'displayOrder': 7,
         },
         'Random Seed': {
             'type': 'text',
-            'default': 42
+            'default': 42,
+            'displayOrder': 8,
         },
         'New Model Name': {
             'type': 'text',
-            'default': datetime_string
+            'default': datetime_string,
+            'displayOrder': 2,
         },
         'Annotation Tag': {
-            'type': 'tags'
+            'type': 'tags',
+            'displayOrder': 3,
         },
         'Region Tag': {
-            'type': 'tags'
+            'type': 'tags',
+            'displayOrder': 4,
         }
     }
     # Send the interface object to the server

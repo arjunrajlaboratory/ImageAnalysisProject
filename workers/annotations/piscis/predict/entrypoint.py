@@ -24,7 +24,8 @@ def interface(image, apiUrl, token):
         'Piscis': {
             'type': 'notes',
             'value': 'This tool uses the Piscis model to find points in images. '
-                     'It can be used to segment in 2D or 3D.',
+                     'It can be used to segment in 2D or 3D. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/tools-for-making-objects#piscis-for-automated-spot-finding" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
         'Batch XY': {
