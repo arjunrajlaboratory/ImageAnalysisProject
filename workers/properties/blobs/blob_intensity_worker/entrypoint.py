@@ -24,7 +24,8 @@ def interface(image, apiUrl, token):
         'Blob Intensity': {
             'type': 'notes',
             'value': 'This tool computes the pixel intensity of objects in the specified channel. '
-                     'It will compute the mean, max, min, median, 25th percentile, and 75th percentile intensity, as well as the total intensity.',
+                     'It will compute the mean, max, min, median, 25th percentile, and 75th percentile intensity, as well as the total intensity. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/measuring-object-properties#blob-intensity" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
         'Channel': {

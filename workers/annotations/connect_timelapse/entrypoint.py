@@ -26,8 +26,9 @@ def interface(image, apiUrl, token):
     interface = {
         'Using connect time lapse': {
             'type': 'notes',
-            'value': 'This tool connects objects across time slices.'
-                     'It allows you to connect objects even if there are gaps in time.',
+            'value': 'This tool connects objects across time slices. '
+                     'It allows you to connect objects even if there are gaps in time. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/tools-for-connecting-objects#connect-timelapse" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
         'Object to connect tag': {

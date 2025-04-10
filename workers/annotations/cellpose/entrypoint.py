@@ -37,7 +37,8 @@ def interface(image, apiUrl, token):
     interface = {
         'Cellpose': {
             'type': 'notes',
-            'value': 'This tool runs the Cellpose model to segment the image into cells.',
+            'value': 'This tool runs the Cellpose model to segment the image into cells. '
+                     '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/tools-for-making-objects#cellpose-for-automated-cell-finding" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
         'Batch XY': {
