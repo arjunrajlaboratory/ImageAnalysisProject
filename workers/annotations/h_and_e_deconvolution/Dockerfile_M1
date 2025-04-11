@@ -37,7 +37,7 @@ RUN wget \
 
 FROM base as build
 
-COPY ./workers/annotations/histogram_matching/environment.yml /
+COPY ./workers/annotations/h_and_e_deconvolution/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -53,7 +53,8 @@ COPY ./worker_client /worker_client
 WORKDIR /worker_client
 RUN pip install .
 
-RUN pip install large-image-source-tiff large-image-source-zarr large-image-converter large-image --find-links https://girder.github.io/large_image_wheels
+RUN pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+RUN pip install large-image-source-tiff large-image-source-zarr large-image-source-gdal large-image-converter large-image --find-links https://girder.github.io/large_image_wheels
 
 COPY ./workers/annotations/h_and_e_deconvolution/entrypoint.py /
 
