@@ -17,6 +17,9 @@ from collections import defaultdict
 from shapely.geometry import Polygon
 import pandas as pd
 
+# Import mahotas for texture features
+import mahotas as mh
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
@@ -42,15 +45,92 @@ def interface(image, apiUrl, token):
             'displayOrder': 1,
             'tooltip': 'The buffer to use to generate an annulus around the blobs.'
         },
-        'Add classification as tag': {
+        # 'Add classification as tag': {
+        #     'type': 'checkbox',
+        #     'default': False,
+        #     'displayOrder': 2,
+        #     'tooltip': 'Add the classification as a tag to the annotations.'
+        # },
+        'Include texture features': {
             'type': 'checkbox',
-            'default': False,
-            'displayOrder': 2,
-            'tooltip': 'Add the classification as a tag to the annotations.'
+            'default': True,
+            'displayOrder': 3,
+            'tooltip': 'Include Haralick and other texture features from Mahotas.'
+        },
+        'Texture scaling': {
+            'type': 'number',
+            'min': 1,
+            'max': 255,
+            'default': 8,
+            'unit': 'levels',
+            'displayOrder': 4,
+            'tooltip': 'Number of gray levels to use for texture feature calculation. Lower values are faster but less detailed.'
         },
     }
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
+
+
+def compute_texture_features(image_patch, levels=8):
+    """Compute Haralick and other texture features from Mahotas for an image patch.
+
+    Args:
+        image_patch: NumPy array of the image region
+        levels: Number of gray levels to use (lower is faster)
+
+    Returns:
+        Dictionary of texture features
+    """
+    features = {}
+
+    # Ensure the image is properly scaled for texture analysis
+    if image_patch.size == 0:
+        return {}
+
+    # Rescale to 0-levels
+    image_scaled = mh.stretch(image_patch, 0, levels-1).astype(np.uint8)
+
+    # Skip if the patch is too small or has no variation
+    if image_scaled.size <= 1 or np.std(image_scaled) < 0.01:
+        return {}
+
+    try:
+        # Compute Haralick features (returns features for 4 directions)
+        # We'll average across all directions for rotation invariance
+        haralick_feats = mh.features.haralick(image_scaled, return_mean=True)
+
+        # Add each Haralick feature with descriptive name
+        feature_names = [
+            'ASM', 'Contrast', 'Correlation', 'Variance',
+            'IDM', 'SumAvg', 'SumVar', 'SumEntropy',
+            'Entropy', 'DiffVar', 'DiffEntropy',
+            'IMC1', 'IMC2'
+        ]
+
+        for i, name in enumerate(feature_names):
+            features[f'Haralick_{name}'] = float(haralick_feats[i])
+
+        # Add Local Binary Patterns (rotation invariant)
+        lbp = mh.features.lbp(image_scaled, radius=2, points=8)
+        for i, val in enumerate(lbp):
+            features[f'LBP_{i}'] = float(val)
+
+        # Add Zernike moments (rotation invariant)
+        if image_scaled.shape[0] > 10 and image_scaled.shape[1] > 10:
+            zernike = mh.features.zernike_moments(image_scaled, 8)
+            for i, val in enumerate(zernike):
+                features[f'Zernike_{i}'] = float(val)
+
+        # Add Threshold Adjacency Statistics
+        tas = mh.features.tas(image_scaled)
+        for i, val in enumerate(tas):
+            features[f'TAS_{i}'] = float(val)
+
+    except Exception as e:
+        print(f"Error computing texture features: {e}")
+        return {}
+
+    return features
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -74,8 +154,10 @@ def compute(datasetId, apiUrl, token, params):
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     annulus_radius = float(params['workerInterface']['Buffer radius'])
-
-    add_classification_as_tag = params['workerInterface']['Add classification as tag']
+    # TODO: Need to decide how to implement this feature.
+    # add_classification_as_tag = params['workerInterface']['Add classification as tag']
+    include_texture_features = params['workerInterface'].get('Include texture features', True)
+    texture_scaling = int(params['workerInterface'].get('Texture scaling', 8))
 
     # Let's validate the z-planes
     tileInfo = datasetClient.tiles
@@ -161,8 +243,32 @@ def compute(datasetId, apiUrl, token, params):
         ]
         channel_columns.extend(channel_metrics)
 
+    # Prepare texture feature columns if enabled
+    texture_columns = []
+    if include_texture_features:
+        # Add placeholders for texture features
+        for c in range(num_channels):
+            # Haralick features
+            for name in ['ASM', 'Contrast', 'Correlation', 'Variance',
+                         'IDM', 'SumAvg', 'SumVar', 'SumEntropy',
+                         'Entropy', 'DiffVar', 'DiffEntropy', 'IMC1', 'IMC2']:
+                texture_columns.append(f'Haralick_{name}_{c}')
+
+            # LBP features (simplified, just a few key values)
+            for i in range(10):  # We'll use the first 10 LBP bins
+                texture_columns.append(f'LBP_{i}_{c}')
+
+            # Zernike features (simplified)
+            for i in range(5):  # First 5 Zernike moments
+                texture_columns.append(f'Zernike_{i}_{c}')
+
+            # TAS features
+            for i in range(8):  # 8 TAS features
+                texture_columns.append(f'TAS_{i}_{c}')
+
     # Initialize DataFrame with all columns
-    df = pd.DataFrame(columns=base_columns + channel_columns)
+    all_columns = base_columns + channel_columns + texture_columns
+    df = pd.DataFrame(columns=all_columns)
 
     for location_key, annotations in grouped_annotations.items():
         time, z, xy = location_key
@@ -188,12 +294,16 @@ def compute(datasetId, apiUrl, token, params):
                             info=f'Object {annotation["_id"]} has less than 3 vertices.')
                 continue
 
+            shapely_polygon = Polygon(polygon)
+
+            minx, miny, maxx, maxy = shapely_polygon.bounds
+
             rr, cc = draw.polygon(
                 polygon[:, 0], polygon[:, 1], shape=images[0].shape)
             original_coords = set(zip(rr, cc))
 
             # Get coordinates of dilated polygon
-            dilated_polygon = Polygon(polygon).buffer(annulus_radius)
+            dilated_polygon = shapely_polygon.buffer(annulus_radius)
             rr_dilated, cc_dilated = draw.polygon(
                 np.array(dilated_polygon.exterior.coords)[:, 0],
                 np.array(dilated_polygon.exterior.coords)[:, 1],
@@ -211,6 +321,18 @@ def compute(datasetId, apiUrl, token, params):
 
             rr_annulus, cc_annulus = zip(*annulus_coords)
 
+            # Now let's get coordinates of the middle 20% of the polygon
+
+            centroid = shapely_polygon.centroid
+            boundary_distance = shapely_polygon.boundary.distance(centroid)
+            erosion_buffer = -boundary_distance * 0.80
+            eroded_polygon = shapely_polygon.buffer(erosion_buffer)
+            rr_eroded, cc_eroded = draw.polygon(
+                np.array(eroded_polygon.exterior.coords)[:, 0],
+                np.array(eroded_polygon.exterior.coords)[:, 1],
+                shape=images[0].shape
+            )
+
             for ch_idx, image in enumerate(images):
 
                 intensities = image[rr, cc]
@@ -225,6 +347,13 @@ def compute(datasetId, apiUrl, token, params):
                 if len(annulus_intensities) == 0:  # Skip if there are no pixels in the mask
                     sendWarning('No pixels in mask',
                                 info=f'Object {annotation["_id"]} has no pixels in the mask.')
+                    continue
+
+                eroded_intensities = image[rr_eroded, cc_eroded]
+
+                if len(eroded_intensities) == 0:
+                    sendWarning('No eroded intensities found',
+                                info=f'Object {annotation["_id"]} has no eroded intensities.')
                     continue
 
                 # Calculating the desired metrics
@@ -252,7 +381,26 @@ def compute(datasetId, apiUrl, token, params):
                     np.percentile(annulus_intensities, 90))
                 prop[f'TotalAnnulusIntensity_{ch_idx}'] = float(np.sum(annulus_intensities))
 
-            shapely_polygon = Polygon(polygon)
+                prop[f'MeanErodedIntensity_{ch_idx}'] = float(np.mean(eroded_intensities))
+                prop[f'MedianErodedIntensity_{ch_idx}'] = float(np.median(eroded_intensities))
+
+                # Add texture features if enabled
+                if include_texture_features:
+                    row_min, col_min, row_max, col_max = shapely_polygon.bounds
+                    # TODO: Double check this is referencing the correct image in terms of x vs y
+                    # RESOLVED: It is correct.
+                    cropped_image = image[int(row_min):int(
+                        row_max)+1, int(col_min):int(col_max)+1].squeeze().copy()
+                    # Only compute texture features if the patch is big enough
+                    if cropped_image.size > 0 and np.any(cropped_image):
+                        if cropped_image.shape[0] > 3 and cropped_image.shape[1] > 3:
+                            texture_features = compute_texture_features(
+                                cropped_image, levels=texture_scaling)
+
+                            # Add channel suffix to texture feature names
+                            for key, value in texture_features.items():
+                                prop[f'{key}_{ch_idx}'] = value
+
             prop['Area'] = shapely_polygon.area
             prop['Perimeter'] = shapely_polygon.length
 
@@ -279,12 +427,16 @@ def compute(datasetId, apiUrl, token, params):
             tags = annotation['tags']
             # Remove the generic tags
             tags = [tag for tag in tags if tag not in params['tags']['tags']]
-            print(tags)
 
             if len(tags) > 0:
                 prop['tags'] = tags[0]
             else:
                 prop['tags'] = ""
+
+            # Fill missing columns with NaN
+            for col in all_columns:
+                if col not in prop and col != 'tags':
+                    prop[col] = np.nan
 
             # Add to DataFrame using annotation ID as index
             df.loc[annotation['_id']] = prop
@@ -296,27 +448,36 @@ def compute(datasetId, apiUrl, token, params):
 
             processed_annotations += 1
             update_progress(processed_annotations, number_annotations,
-                            "Computing annulus intensity")
+                            "Computing features and textures")
 
-    print(df.head())
-
-    # Print the tags column to debug
-    if 'tags' in df.columns:
-        print("Tags column contents:")
-        print(df['tags'])
-    else:
-        print("Tags column not found in dataframe. Available columns:", df.columns)
+    # Handle missing values that might have been introduced
+    df = df.fillna(0)  # Replace NaN with 0
 
     # Split the data into labeled and unlabeled
     unlabeled_data = df[df['tags'] == ""]
     labeled_data = df[df['tags'] != ""]
 
+    # Skip if no labeled data
+    if len(labeled_data) == 0:
+        sendWarning('No labeled data',
+                    info='No labeled data found. Please tag some annotations.')
+        return
+
     X_labeled = labeled_data.drop('tags', axis=1)
     y_labeled = labeled_data['tags']
 
+    # Feature selection - remove any columns with zero variance
+    # This helps avoid issues with the classifier
+    selector = X_labeled.var() > 0
+    X_labeled = X_labeled.loc[:, selector]
+
+    # Update all DataFrames to have consistent columns
+    if len(unlabeled_data) > 0:
+        unlabeled_data = unlabeled_data.loc[:, ['tags'] + list(X_labeled.columns)]
+
     # Split labeled data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(
-        X_labeled, y_labeled, test_size=0.2, random_state=42, stratify=y_labeled
+        X_labeled, y_labeled, test_size=0.2, random_state=42, stratify=y_labeled if len(set(y_labeled)) > 1 else None
     )
 
     # Train the Random Forest model
@@ -333,39 +494,69 @@ def compute(datasetId, apiUrl, token, params):
     print("Model performance on test set:")
     print(classification_report(y_test, y_pred))
 
+    # Feature importance analysis
+    if hasattr(rf_model, 'feature_importances_'):
+        feature_importance = pd.DataFrame({
+            'Feature': X_labeled.columns,
+            'Importance': rf_model.feature_importances_
+        }).sort_values('Importance', ascending=False)
+        print("Top 10 important features:")
+        print(feature_importance.head(10))
+
     # Predict on unlabeled data
-    X_unlabeled = unlabeled_data.drop('tags', axis=1)
-    unlabeled_predictions = rf_model.predict(X_unlabeled)
-    unlabeled_probabilities = rf_model.predict_proba(X_unlabeled)
+    if len(unlabeled_data) > 0:
+        X_unlabeled = unlabeled_data.drop('tags', axis=1)
 
-    # Add predictions to the unlabeled data
-    unlabeled_data['predicted_tag'] = unlabeled_predictions
+        # Make sure unlabeled data has the same columns as the training data
+        missing_cols = set(X_train.columns) - set(X_unlabeled.columns)
+        for col in missing_cols:
+            X_unlabeled[col] = 0
 
-    # Add probabilities the right way
-    # Get the maximum probability value for each prediction
-    max_probs = np.max(unlabeled_probabilities, axis=1)
-    unlabeled_data['probability'] = max_probs
+        # Ensure columns are in the same order
+        X_unlabeled = X_unlabeled[X_train.columns]
 
-    # If you want detailed probabilities for each class
-    class_labels = rf_model.classes_
-    for i, label in enumerate(class_labels):
-        unlabeled_data[f'probability_{label}'] = unlabeled_probabilities[:, i]
+        unlabeled_predictions = rf_model.predict(X_unlabeled)
+        unlabeled_probabilities = rf_model.predict_proba(X_unlabeled)
 
-    print(unlabeled_data)
+        # Add predictions to the unlabeled data
+        unlabeled_data['predicted_tag'] = unlabeled_predictions
 
-    # Go through unlabeled_data and add the predicted tag to the property_value_dict
-    for index, row in unlabeled_data.iterrows():
-        print(index, row['predicted_tag'], row['probability'])
-        property_value_dict[index]['predicted_tag'] = row['predicted_tag']
-        property_value_dict[index]['probability'] = row['probability']
+        # Get the maximum probability value for each prediction
+        max_probs = np.max(unlabeled_probabilities, axis=1)
+        unlabeled_data['probability'] = max_probs
+
+        # If you want detailed probabilities for each class
+        # class_labels = rf_model.classes_
+        # for i, label in enumerate(class_labels):
+        #     unlabeled_data[f'probability_{label}'] = unlabeled_probabilities[:, i]
+
+        print(unlabeled_data[['predicted_tag', 'probability']].head())
+
+        # Go through unlabeled_data and add the predicted tag to the property_value_dict
+        for index, row in unlabeled_data.iterrows():
+            # print(index, row['predicted_tag'], row['probability'])
+            property_value_dict[index]['predicted_tag'] = row['predicted_tag']
+            property_value_dict[index]['probability'] = row['probability']
+
+            # TODO: Have not implemented this feature yet.
+            # # Optionally add the predicted class as a tag to the annotation
+            # if add_classification_as_tag:
+            #     tag_data = {
+            #         'tags': [row['predicted_tag']],
+            #         'mode': 'add'
+            #     }
+            #     try:
+            # TODO: This function does not exist, but it should be added.
+            #         workerClient.update_annotation_tags(index, tag_data)
+            #     except Exception as e:
+            #         print(f"Error adding tag: {e}")
 
     # Also add same columns for the labeled data
     for index, row in labeled_data.iterrows():
         property_value_dict[index]['predicted_tag'] = row['tags']
         property_value_dict[index]['probability'] = 1.0
-        # print(index, row['predicted_tag'], row['probability'])
 
-    pprint.pprint(property_value_dict)
+    # pprint.pprint(property_value_dict)
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 
