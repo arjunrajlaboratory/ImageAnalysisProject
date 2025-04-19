@@ -228,6 +228,20 @@ services:
   #     - blob_annulus_intensity_percentile
   #   profiles: ["test"]
 
+  blob_random_forest_classifier:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_random_forest_classifier/Dockerfile_M1
+    image: properties/blob_random_forest_classifier:latest
+    profiles: ["worker", "properties"]
+
+  blob_random_forest_classifier_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_random_forest_classifier/tests/Dockerfile_Test
+    image: properties/blob_random_forest_classifier:test
+    profiles: ["test"]
+
   blob_point_count_test:
     build:
       context: .
