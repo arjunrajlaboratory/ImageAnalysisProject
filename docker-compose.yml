@@ -38,8 +38,10 @@ services:
   blob_metrics:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_metrics_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_metrics_worker/Dockerfile
     image: properties/blob_metrics:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "properties"]
 
   blob_overlap:
