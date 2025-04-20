@@ -1,4 +1,10 @@
 services:
+  worker-base:
+    image: nimbusimage/worker-base:latest
+    build:
+      context: .
+      dockerfile: workers/base_docker_images/Dockerfile.worker_base
+
   # Annotation workers
   connect_to_nearest:
     build:
