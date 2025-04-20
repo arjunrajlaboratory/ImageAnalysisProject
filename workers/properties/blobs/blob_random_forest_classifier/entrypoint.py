@@ -466,6 +466,16 @@ def compute(datasetId, apiUrl, token, params):
     X_labeled = labeled_data.drop('tags', axis=1)
     y_labeled = labeled_data['tags']
 
+    # Check if any class has fewer than 2 samples BEFORE trying to split/train
+    if len(labeled_data) > 1 and y_labeled.nunique() > 1 and any(y_labeled.value_counts() < 2):
+        error_message = (
+            "Classification failed: At least one class has fewer than 2 labeled samples. "
+            "Please ensure each class you want to predict has at least 2 labeled examples."
+        )
+        sendError(error_message)
+        print(error_message)
+        return  # Stop processing
+
     # Feature selection - remove any columns with zero variance
     # This helps avoid issues with the classifier
     selector = X_labeled.var() > 0
@@ -476,8 +486,10 @@ def compute(datasetId, apiUrl, token, params):
         unlabeled_data = unlabeled_data.loc[:, ['tags'] + list(X_labeled.columns)]
 
     # Split labeled data into training and testing sets
+    # Use stratify=y_labeled; train_test_split handles the case of a single class.
+    # Our explicit check above handles the insufficient samples per class case.
     X_train, X_test, y_train, y_test = train_test_split(
-        X_labeled, y_labeled, test_size=0.2, random_state=42, stratify=y_labeled if len(set(y_labeled)) > 1 else None
+        X_labeled, y_labeled, test_size=0.2, random_state=42, stratify=y_labeled
     )
 
     # Train the Random Forest model
@@ -555,8 +567,6 @@ def compute(datasetId, apiUrl, token, params):
     for index, row in labeled_data.iterrows():
         property_value_dict[index]['predicted_tag'] = row['tags']
         property_value_dict[index]['probability'] = 1.0
-
-    # pprint.pprint(property_value_dict)
 
     dataset_property_value_dict = {datasetId: property_value_dict}
 

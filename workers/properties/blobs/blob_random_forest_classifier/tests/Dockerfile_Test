@@ -1,5 +1,5 @@
 # Use your existing Dockerfile as the base
-FROM properties/blob_annulus_intensity:latest as test
+FROM properties/blob_random_forest_classifier:latest as test
 
 # Install test dependencies
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
@@ -7,7 +7,7 @@ RUN pip install pytest pytest-mock
 
 # Copy test files
 RUN mkdir -p /tests
-COPY ./workers/properties/blobs/blob_annulus_intensity_worker/tests/*.py /tests
+COPY ./workers/properties/blobs/blob_random_forest_classifier/tests/*.py /tests
 WORKDIR /tests
 
 # Command to run tests
