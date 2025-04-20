@@ -231,7 +231,7 @@ services:
   blob_random_forest_classifier:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_random_forest_classifier/Dockerfile_M1
+      dockerfile: ./workers/properties/blobs/blob_random_forest_classifier/${DOCKERFILE:-Dockerfile}
     image: properties/blob_random_forest_classifier:latest
     profiles: ["worker", "properties"]
 
