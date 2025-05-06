@@ -1,0 +1,12 @@
+# base_docker_images/environment.core.yml
+name: worker
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - pandas
+  - shapely
+  - scikit-image 
