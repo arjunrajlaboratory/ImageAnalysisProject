@@ -60,13 +60,6 @@ services:
       - worker-base
     profiles: ["worker", "properties"]
 
-  # blob_intensity_percentile:
-  #   build:
-  #     context: .
-  #     dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
-  #   image: properties/blob_intensity_percentile:latest
-  #   profiles: ["worker", "properties"]
-
   blob_annulus_intensity:
     build:
       context: .
@@ -75,13 +68,6 @@ services:
     depends_on:
       - worker-base
     profiles: ["worker", "properties"]
-
-  # blob_annulus_intensity_percentile:
-  #   build:
-  #     context: .
-  #     dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
-  #   image: properties/blob_annulus_intensity_percentile:latest
-  #   profiles: ["worker", "properties"]
 
   blob_colony_two_color_intensity:
     build:
