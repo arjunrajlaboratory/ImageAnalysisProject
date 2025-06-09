@@ -1,5 +1,5 @@
 # Use the existing connect_timelapse worker as the base
-FROM annotations/connect_time_lapse:latest as test
+FROM annotations/connect_time_lapse:latest AS test
 
 # Install test dependencies
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]

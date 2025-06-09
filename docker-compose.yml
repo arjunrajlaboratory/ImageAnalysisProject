@@ -23,8 +23,10 @@ services:
   connect_time_lapse:
     build:
       context: .
-      dockerfile: ./workers/annotations/connect_timelapse/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/connect_timelapse/Dockerfile
     image: annotations/connect_time_lapse:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "annotations"]
 
   laplacian_of_gaussian:
