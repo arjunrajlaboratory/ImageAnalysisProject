@@ -9,4 +9,4 @@ dependencies:
   - numpy
   - pandas
   - shapely
-  - scikit-image 
+  - scikit-image

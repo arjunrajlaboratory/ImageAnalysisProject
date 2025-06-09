@@ -54,8 +54,10 @@ services:
   blob_intensity:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_intensity_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_intensity_worker/Dockerfile
     image: properties/blob_intensity:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "properties"]
 
   # blob_intensity_percentile:
@@ -68,8 +70,10 @@ services:
   blob_annulus_intensity:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_worker/Dockerfile
     image: properties/blob_annulus_intensity:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "properties"]
 
   # blob_annulus_intensity_percentile:
