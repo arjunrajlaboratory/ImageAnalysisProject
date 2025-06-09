@@ -8,5 +8,6 @@ dependencies:
   - pip
   - numpy
   - pandas
+  - geopandas
   - shapely
   - scikit-image 
