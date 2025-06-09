@@ -9,8 +9,10 @@ services:
   connect_to_nearest:
     build:
       context: .
-      dockerfile: ./workers/annotations/connect_to_nearest/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/connect_to_nearest/Dockerfile
     image: annotations/connect_to_nearest:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "annotations"]
 
   connect_sequential:
