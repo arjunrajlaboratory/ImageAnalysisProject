@@ -10,3 +10,4 @@ dependencies:
   - pandas
   - shapely
   - scikit-image
+  - rtree
