@@ -199,6 +199,15 @@ services:
     depends_on:
       - blob_metrics
     profiles: ["test"]
+
+  connect_time_lapse_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_timelapse/tests/Dockerfile_Test
+    image: annotations/connect_timelapse:test
+    depends_on:
+      - connect_time_lapse
+    profiles: ["test"]
       
   blob_intensity_test:
     build:

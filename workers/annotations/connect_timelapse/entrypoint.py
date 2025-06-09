@@ -6,7 +6,7 @@ from operator import itemgetter
 
 import annotation_client.annotations as annotations
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress, sendError
+from annotation_client.utils import sendProgress, sendError, sendWarning
 
 import annotation_utilities.annotation_tools as annotation_tools
 
@@ -201,6 +201,11 @@ def compute(datasetId, apiUrl, token, params):
     object_data = extract_spatial_annotation_data(objectList)
 
     object_df = pd.DataFrame(object_data)
+
+    if object_df.empty:
+        sendWarning("No annotations found",
+                    info="No objects with the specified tag were found to connect")
+        return
 
     gdf_object = gpd.GeoDataFrame(
         object_df, geometry=gpd.points_from_xy(object_df.x, object_df.y))

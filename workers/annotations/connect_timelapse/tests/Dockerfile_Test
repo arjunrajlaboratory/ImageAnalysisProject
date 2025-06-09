@@ -1,0 +1,14 @@
+# Use the existing connect_timelapse worker as the base
+FROM annotations/connect_time_lapse:latest as test
+
+# Install test dependencies
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+RUN pip install pytest pytest-mock
+
+# Copy test files
+RUN mkdir -p /tests
+COPY ./workers/annotations/connect_timelapse/tests/*.py /tests
+WORKDIR /tests
+
+# Command to run tests
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"] 
