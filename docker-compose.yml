@@ -210,6 +210,15 @@ services:
     depends_on:
       - connect_time_lapse
     profiles: ["test"]
+
+  connect_to_nearest_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_to_nearest/tests/Dockerfile_Test
+    image: annotations/connect_to_nearest:test
+    depends_on:
+      - connect_to_nearest
+    profiles: ["test"]
       
   blob_intensity_test:
     build:

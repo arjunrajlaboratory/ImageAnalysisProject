@@ -11,7 +11,7 @@ from operator import itemgetter
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendWarning
 
 # import annotation_tools
 import annotation_utilities.annotation_tools as annotation_tools
@@ -112,6 +112,13 @@ def extract_spatial_annotation_data(obj_list):
             'XY': obj['location']['XY'],
             'Z': obj['location']['Z']
         })
+
+    # Handle empty case
+    if not data:
+        # Create empty GeoDataFrame with proper columns
+        gdf = gpd.GeoDataFrame(columns=['_id', 'geometry', 'Time', 'XY', 'Z'])
+        gdf = gdf.set_geometry('geometry')
+        return gdf
 
     # Create GeoDataFrame directly
     gdf = gpd.GeoDataFrame(data, geometry='geometry')
@@ -294,6 +301,15 @@ def compute(datasetId, apiUrl, token, params):
 
     parent_data = extract_spatial_annotation_data(parentList)
     child_data = extract_spatial_annotation_data(childList)
+
+    # Check for empty parent or child lists and send warnings
+    if len(parent_data) == 0:
+        sendWarning("No parent annotations found",
+                    f"No annotations found with parent tag(s): {', '.join(parent_tag)}")
+
+    if len(child_data) == 0:
+        sendWarning("No child annotations found",
+                    f"No annotations found with child tag(s): {', '.join(child_tag)}")
 
     # We will always group by XY, because there is no reasonable scenario in which you want to connect across XY.
     groupby_cols = ['XY']
