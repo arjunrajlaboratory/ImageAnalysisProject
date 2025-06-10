@@ -223,15 +223,6 @@ services:
       - blob_intensity
     profiles: ["test"]
 
-  # blob_intensity_percentile_test:
-  #   build:
-  #     context: .
-  #     dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/tests/Dockerfile_Test
-  #   image: properties/blob_intensity_percentile:test
-  #   depends_on:
-  #     - blob_intensity_percentile
-  #   profiles: ["test"]
-
   blob_annulus_intensity_test:
     build:
       context: .
@@ -240,15 +231,6 @@ services:
     depends_on:
       - blob_annulus_intensity
     profiles: ["test"]
-
-  # blob_annulus_intensity_percentile_test:
-  #   build:
-  #     context: .
-  #     dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/tests/Dockerfile_Test
-  #   image: properties/blob_annulus_intensity_percentile:test
-  #   depends_on:
-  #     - blob_annulus_intensity_percentile
-  #   profiles: ["test"]
 
   blob_random_forest_classifier:
     build:
@@ -315,3 +297,13 @@ services:
       dockerfile: ./workers/properties/blobs/sample_interface_worker/tests/Dockerfile_Test
     image: properties/sample_interface:test
     profiles: ["sampletest"]
+
+  # Testing image processing workers
+  h_and_e_deconvolution_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/h_and_e_deconvolution/tests/Dockerfile_Test
+    image: annotations/h_and_e_deconvolution:test
+    depends_on:
+      - h_and_e_deconvolution
+    profiles: ["test"]
