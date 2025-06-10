@@ -1,8 +1,2 @@
 name: worker
-dependencies:
-- python=3.12
-- pip
-- imageio
-- numba
-- rtree
-- shapely
+# No additional dependencies needed - all requirements covered by base image

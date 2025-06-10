@@ -12,3 +12,4 @@ dependencies:
   - shapely
   - scikit-image
   - scipy
+  - rtree

@@ -58,30 +58,20 @@ services:
   blob_intensity:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_intensity_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_intensity_worker/Dockerfile
     image: properties/blob_intensity:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "properties"]
-
-  # blob_intensity_percentile:
-  #   build:
-  #     context: .
-  #     dockerfile: ./workers/properties/blobs/blob_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
-  #   image: properties/blob_intensity_percentile:latest
-  #   profiles: ["worker", "properties"]
 
   blob_annulus_intensity:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_annulus_intensity_worker/Dockerfile
     image: properties/blob_annulus_intensity:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "properties"]
-
-  # blob_annulus_intensity_percentile:
-  #   build:
-  #     context: .
-  #     dockerfile: ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/${DOCKERFILE:-Dockerfile}
-  #   image: properties/blob_annulus_intensity_percentile:latest
-  #   profiles: ["worker", "properties"]
 
   blob_colony_two_color_intensity:
     build:
@@ -93,8 +83,10 @@ services:
   blob_point_count:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_point_count_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_point_count_worker/Dockerfile
     image: properties/blob_point_count:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "properties"]
 
   # Property workers - connections
