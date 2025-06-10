@@ -1,9 +1,2 @@
 name: worker
-dependencies:
-- python=3.9
-- pip
-- numpy
-- pandas
-- geopandas
-- scipy
-- shapely
+# No additional dependencies needed - all requirements covered by base image

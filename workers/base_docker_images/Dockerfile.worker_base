@@ -1,5 +1,5 @@
 # base_docker_images/Dockerfile.worker_base
-FROM ubuntu:jammy as base
+FROM ubuntu:jammy AS base
 LABEL isUPennContrastWorkerBase=True
 LABEL isUPennContrastWorker=True
 
@@ -43,7 +43,7 @@ RUN case ${TARGETARCH} in \
 # Set PATH for conda
 ENV PATH="${CONDA_PATH}/bin:$PATH"
 
-FROM base as build
+FROM base AS build
 
 # For multi-arch support, add both possible conda paths to environment
 ENV PATH="/root/miniforge3/bin:/root/miniconda3/bin:$PATH"

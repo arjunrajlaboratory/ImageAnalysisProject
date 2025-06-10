@@ -11,4 +11,5 @@ dependencies:
   - geopandas
   - shapely
   - scikit-image
+  - scipy
   - rtree

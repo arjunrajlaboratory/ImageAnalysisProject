@@ -9,8 +9,10 @@ services:
   connect_to_nearest:
     build:
       context: .
-      dockerfile: ./workers/annotations/connect_to_nearest/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/connect_to_nearest/Dockerfile
     image: annotations/connect_to_nearest:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "annotations"]
 
   connect_sequential:
@@ -23,8 +25,10 @@ services:
   connect_time_lapse:
     build:
       context: .
-      dockerfile: ./workers/annotations/connect_timelapse/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/connect_timelapse/Dockerfile
     image: annotations/connect_time_lapse:latest
+    depends_on:
+      - worker-base
     profiles: ["worker", "annotations"]
 
   laplacian_of_gaussian:
@@ -190,6 +194,24 @@ services:
     image: properties/blob_metrics:test
     depends_on:
       - blob_metrics
+    profiles: ["test"]
+
+  connect_time_lapse_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_timelapse/tests/Dockerfile_Test
+    image: annotations/connect_timelapse:test
+    depends_on:
+      - connect_time_lapse
+    profiles: ["test"]
+
+  connect_to_nearest_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_to_nearest/tests/Dockerfile_Test
+    image: annotations/connect_to_nearest:test
+    depends_on:
+      - connect_to_nearest
     profiles: ["test"]
       
   blob_intensity_test:
