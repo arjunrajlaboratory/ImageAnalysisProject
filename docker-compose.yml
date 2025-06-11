@@ -315,3 +315,12 @@ services:
     depends_on:
       - h_and_e_deconvolution
     profiles: ["test"]
+
+  crop_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/crop/tests/Dockerfile_Test
+    image: annotations/crop:test
+    depends_on:
+      - crop
+    profiles: ["test"]
