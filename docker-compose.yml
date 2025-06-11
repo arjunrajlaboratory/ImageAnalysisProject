@@ -151,7 +151,7 @@ services:
   gaussian_blur:
     build:
       context: .
-      dockerfile: ./workers/annotations/gaussian_blur/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/gaussian_blur/Dockerfile
     image: annotations/gaussian_blur:latest
     profiles: ["worker", "image-processing"]
 
