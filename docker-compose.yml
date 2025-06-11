@@ -358,3 +358,12 @@ services:
     depends_on:
       - rolling_ball
     profiles: ["test"]
+
+  registration_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/registration/tests/Dockerfile_Test
+    image: annotations/registration:test
+    depends_on:
+      - registration
+    profiles: ["test"]
