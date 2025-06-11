@@ -1,0 +1,86 @@
+# base_docker_images/Dockerfile.image_processing_worker_base
+FROM ubuntu:jammy AS base
+LABEL isUPennContrastWorkerBase=True
+LABEL isUPennContrastWorker=True
+
+# Common APT installs (same for both architectures)
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
+  apt-get install -qy software-properties-common python3-software-properties && \
+  apt-get update && apt-get install -qy \
+  build-essential \
+  wget \
+  python3 \
+  r-base \
+  libffi-dev \
+  libssl-dev \
+  libjpeg-dev \
+  zlib1g-dev \
+  r-base \
+  git \
+  libpython3-dev \
+  libtiff-dev \
+  libvips-dev \
+  libopenjp2-7-dev \
+  libwebp-dev \
+  openslide-tools \
+  python3-openslide && \
+  apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Conda based on TARGETARCH (Automatic build argument)
+ARG TARGETARCH
+RUN case ${TARGETARCH} in \
+      amd64) \
+        CONDA_INSTALLER=Miniforge3-Linux-x86_64.sh && \
+        CONDA_URL=https://github.com/conda-forge/miniforge/releases/latest/download/${CONDA_INSTALLER} && \
+        CONDA_PATH=/root/miniforge3 \
+        ;; \
+      arm64) \
+        CONDA_INSTALLER=Miniconda3-latest-Linux-aarch64.sh && \
+        CONDA_URL=https://repo.anaconda.com/miniconda/${CONDA_INSTALLER} && \
+        CONDA_PATH=/root/miniconda3 \
+        ;; \
+      *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    wget ${CONDA_URL} && \
+    mkdir -p /root/.conda && \
+    bash ${CONDA_INSTALLER} -b -p ${CONDA_PATH} && \
+    rm -f ${CONDA_INSTALLER}
+
+# Set PATH for conda
+ENV PATH="${CONDA_PATH}/bin:$PATH"
+
+FROM base AS build
+
+# For multi-arch support, add both possible conda paths to environment
+ENV PATH="/root/miniforge3/bin:/root/miniconda3/bin:$PATH"
+
+# Copy environment file (worker-specific files will override this)
+COPY ./workers/base_docker_images/environment.image_processing.yml /tmp/
+RUN conda env create -n worker --file /tmp/environment.image_processing.yml
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+
+# Install UPennContrast client
+RUN git clone https://github.com/arjunrajlaboratory/NimbusImage/
+RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /NimbusImage/devops/girder/annotation_client/
+
+# Install annotation utilities
+COPY ./annotation_utilities /annotation_utilities
+WORKDIR /annotation_utilities
+RUN pip install .
+
+# Install worker client
+COPY ./worker_client /worker_client
+WORKDIR /worker_client
+RUN pip install .
+
+# Install image processing specific packages
+RUN pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+RUN pip install large-image-source-tiff large-image-source-zarr large-image-source-gdal large-image-converter large-image --find-links https://girder.github.io/large_image_wheels
+
+# Reset WORKDIR for worker entrypoint
+WORKDIR /
+
+# Base image setup is complete.
+# Image processing worker images will build FROM this, COPY their specific environment.yml,
+# run conda env update, COPY their entrypoint.py, and set ENTRYPOINT/LABELs. 
