@@ -165,7 +165,7 @@ services:
   histogram_matching:
     build:
       context: .
-      dockerfile: ./workers/annotations/histogram_matching/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/histogram_matching/Dockerfile
     image: annotations/histogram_matching:latest
     profiles: ["worker", "image-processing"]
 
