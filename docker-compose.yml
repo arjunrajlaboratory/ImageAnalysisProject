@@ -158,7 +158,7 @@ services:
   crop:
     build:
       context: .
-      dockerfile: ./workers/annotations/crop/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/crop/Dockerfile
     image: annotations/crop:latest
     profiles: ["worker", "image-processing"]
 
