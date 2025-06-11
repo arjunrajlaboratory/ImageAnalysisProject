@@ -761,3 +761,70 @@ def test_xy_coordinate_parsing():
 
         # Verify range parsing was called correctly
         mock_process_range.assert_called_with('1-2,4', convert_one_to_zero_index=True)
+
+
+def test_compute_apply_xy_is_always_list():
+    """Test that apply_XY is always converted to a list for JSON serialization"""
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Translation',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',  # Empty - should become list, not range
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': {'0': True},
+            'Reference region tag': None,
+            'Control point tag': None
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('large_image.new'), \
+            patch('pystackreg.StackReg') as mock_stackreg, \
+            patch('entrypoint.sendProgress'):
+
+        client = mock_tile_client.return_value
+        client.tiles = {
+            'IndexRange': {'IndexXY': 2, 'IndexT': 2},
+            'frames': [
+                {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
+                {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
+            ],
+            'channels': ['DAPI'],
+            'mm_x': 1.0, 'mm_y': 1.0, 'magnification': 40
+        }
+        client.getRegion.return_value = np.zeros((100, 100))
+        client.coordinatesToFrameIndex.return_value = 0
+
+        mock_gc = MagicMock()
+        client.client = mock_gc
+        mock_gc.uploadFileToFolder.return_value = {'itemId': 'test'}
+
+        # Mock StackReg
+        sr = mock_stackreg.return_value
+        sr.register.return_value = np.eye(3)
+        sr.transform.return_value = np.zeros((100, 100))
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        # Verify addMetadataToItem was called
+        mock_gc.addMetadataToItem.assert_called_once()
+
+        # Extract the metadata that was passed
+        call_args = mock_gc.addMetadataToItem.call_args
+        metadata = call_args[0][1]  # Second argument is the metadata dict
+
+        # Verify apply_XY is a list, not a range
+        assert isinstance(
+            metadata['apply_XY'], list), f"apply_XY should be a list, got {type(metadata['apply_XY'])}"
+
+        # Verify the metadata is JSON serializable
+        import json
+        try:
+            json.dumps(metadata)
+        except TypeError as e:
+            pytest.fail(f"Metadata should be JSON serializable, but got error: {e}")
