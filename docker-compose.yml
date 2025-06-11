@@ -148,6 +148,13 @@ services:
     image: annotations/rolling_ball:latest
     profiles: ["worker", "image-processing"]
 
+  gaussian_blur:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/gaussian_blur/${DOCKERFILE:-Dockerfile}
+    image: annotations/gaussian_blur:latest
+    profiles: ["worker", "image-processing"]
+
   crop:
     build:
       context: .
@@ -323,4 +330,13 @@ services:
     image: annotations/crop:test
     depends_on:
       - crop
+    profiles: ["test"]
+
+  gaussian_blur_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/gaussian_blur/tests/Dockerfile_Test
+    image: annotations/gaussian_blur:test
+    depends_on:
+      - gaussian_blur
     profiles: ["test"]
