@@ -172,7 +172,7 @@ services:
   registration:
     build:
       context: .
-      dockerfile: ./workers/annotations/registration/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/registration/Dockerfile
     image: annotations/registration:latest
     profiles: ["worker", "image-processing"]
 
