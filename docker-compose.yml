@@ -144,28 +144,35 @@ services:
   rolling_ball:
     build:
       context: .
-      dockerfile: ./workers/annotations/rolling_ball/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/rolling_ball/Dockerfile
     image: annotations/rolling_ball:latest
+    profiles: ["worker", "image-processing"]
+
+  gaussian_blur:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/gaussian_blur/Dockerfile
+    image: annotations/gaussian_blur:latest
     profiles: ["worker", "image-processing"]
 
   crop:
     build:
       context: .
-      dockerfile: ./workers/annotations/crop/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/crop/Dockerfile
     image: annotations/crop:latest
     profiles: ["worker", "image-processing"]
 
   histogram_matching:
     build:
       context: .
-      dockerfile: ./workers/annotations/histogram_matching/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/histogram_matching/Dockerfile
     image: annotations/histogram_matching:latest
     profiles: ["worker", "image-processing"]
 
   registration:
     build:
       context: .
-      dockerfile: ./workers/annotations/registration/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/registration/Dockerfile
     image: annotations/registration:latest
     profiles: ["worker", "image-processing"]
 
@@ -314,4 +321,49 @@ services:
     image: annotations/h_and_e_deconvolution:test
     depends_on:
       - h_and_e_deconvolution
+    profiles: ["test"]
+
+  crop_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/crop/tests/Dockerfile_Test
+    image: annotations/crop:test
+    depends_on:
+      - crop
+    profiles: ["test"]
+
+  gaussian_blur_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/gaussian_blur/tests/Dockerfile_Test
+    image: annotations/gaussian_blur:test
+    depends_on:
+      - gaussian_blur
+    profiles: ["test"]
+
+  histogram_matching_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/histogram_matching/tests/Dockerfile_Test
+    image: annotations/histogram_matching:test
+    depends_on:
+      - histogram_matching
+    profiles: ["test"]
+
+  rolling_ball_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/rolling_ball/tests/Dockerfile_Test
+    image: annotations/rolling_ball:test
+    depends_on:
+      - rolling_ball
+    profiles: ["test"]
+
+  registration_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/registration/tests/Dockerfile_Test
+    image: annotations/registration:test
+    depends_on:
+      - registration
     profiles: ["test"]

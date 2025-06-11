@@ -177,7 +177,7 @@ def compute(datasetId, apiUrl, token, params):
 
     workerInterface = params['workerInterface']
     if workerInterface['Apply to XY coordinates'] == "":
-        apply_XY = range_xy
+        apply_XY = list(range_xy)
     else:
         apply_XY = batch_argument_parser.process_range_list(
             workerInterface['Apply to XY coordinates'], convert_one_to_zero_index=True)
