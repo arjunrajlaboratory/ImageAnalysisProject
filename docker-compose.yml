@@ -340,3 +340,12 @@ services:
     depends_on:
       - gaussian_blur
     profiles: ["test"]
+
+  histogram_matching_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/histogram_matching/tests/Dockerfile_Test
+    image: annotations/histogram_matching:test
+    depends_on:
+      - histogram_matching
+    profiles: ["test"]
