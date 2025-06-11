@@ -144,7 +144,7 @@ services:
   rolling_ball:
     build:
       context: .
-      dockerfile: ./workers/annotations/rolling_ball/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/rolling_ball/Dockerfile
     image: annotations/rolling_ball:latest
     profiles: ["worker", "image-processing"]
 
