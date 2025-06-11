@@ -349,3 +349,12 @@ services:
     depends_on:
       - histogram_matching
     profiles: ["test"]
+
+  rolling_ball_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/rolling_ball/tests/Dockerfile_Test
+    image: annotations/rolling_ball:test
+    depends_on:
+      - rolling_ball
+    profiles: ["test"]
