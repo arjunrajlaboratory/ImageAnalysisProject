@@ -101,16 +101,18 @@ services:
       context: .
       dockerfile: ./workers/properties/connections/children_count_worker/Dockerfile
     image: properties/children_count:latest
+    profiles: ["worker", "properties"]
     depends_on:
       - worker-base
-    profiles: ["worker", "properties"]
 
   parent_child:
     build:
       context: .
-      dockerfile: ./workers/properties/connections/parent_child_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/connections/parent_child_worker/Dockerfile
     image: properties/parent_child:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   # Property workers - points
   point_metrics:
