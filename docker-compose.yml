@@ -57,9 +57,11 @@ services:
   blob_overlap:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_overlap_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_overlap_worker/Dockerfile
     image: properties/blob_overlap:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   blob_intensity:
     build:
