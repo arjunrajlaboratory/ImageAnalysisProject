@@ -494,3 +494,4 @@ def test_different_coordinate_string_formats():
         client.client.addMetadataToItem.assert_called_once_with(
             'test', expected_metadata
         )
+ 

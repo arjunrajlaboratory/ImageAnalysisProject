@@ -328,6 +328,15 @@ services:
       - point_intensity
     profiles: ["test"]
 
+  point_to_nearest_blob_distance_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/points/point_to_nearest_blob_distance/tests/Dockerfile_Test
+    image: properties/point_to_nearest_blob_distance:test
+    profiles: ["test"]
+    depends_on:
+      - point_to_nearest_blob_distance
+
   children_count_test:
     build:
       context: .
