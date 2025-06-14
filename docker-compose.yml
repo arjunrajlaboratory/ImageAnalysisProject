@@ -257,6 +257,15 @@ services:
     depends_on:
       - connect_to_nearest
     profiles: ["test"]
+
+  connect_sequential_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_sequential/tests/Dockerfile_Test
+    image: annotations/connect_sequential:test
+    profiles: ["test"]
+    depends_on:
+      - connect_sequential
       
   blob_intensity_test:
     build:
