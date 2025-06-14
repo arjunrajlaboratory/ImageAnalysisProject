@@ -147,6 +147,8 @@ services:
       dockerfile: ./workers/annotations/rolling_ball/Dockerfile
     image: annotations/rolling_ball:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   gaussian_blur:
     build:
@@ -154,6 +156,8 @@ services:
       dockerfile: ./workers/annotations/gaussian_blur/Dockerfile
     image: annotations/gaussian_blur:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   crop:
     build:
@@ -161,6 +165,8 @@ services:
       dockerfile: ./workers/annotations/crop/Dockerfile
     image: annotations/crop:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   histogram_matching:
     build:
@@ -168,6 +174,8 @@ services:
       dockerfile: ./workers/annotations/histogram_matching/Dockerfile
     image: annotations/histogram_matching:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   registration:
     build:
@@ -175,6 +183,8 @@ services:
       dockerfile: ./workers/annotations/registration/Dockerfile
     image: annotations/registration:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   h_and_e_deconvolution:
     build:
