@@ -218,6 +218,12 @@ def compute(datasetId, apiUrl, token, params):
 
     object_df = pd.DataFrame(object_data)
 
+    # Check if we have any objects to process
+    if object_df.empty:
+        print("No objects found to connect")
+        annotationClient.createMultipleConnections([])
+        return
+
     gdf_object = gpd.GeoDataFrame(
         object_df, geometry=gpd.points_from_xy(object_df.x, object_df.y))
 

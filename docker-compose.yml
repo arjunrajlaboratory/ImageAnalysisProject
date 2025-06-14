@@ -24,9 +24,11 @@ services:
   connect_sequential:
     build:
       context: .
-      dockerfile: ./workers/annotations/connect_sequential/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/connect_sequential/Dockerfile
     image: annotations/connect_sequential:latest
     profiles: ["worker", "annotations"]
+    depends_on:
+      - worker-base
 
   connect_time_lapse:
     build:
@@ -57,9 +59,11 @@ services:
   blob_overlap:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_overlap_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_overlap_worker/Dockerfile
     image: properties/blob_overlap:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   blob_intensity:
     build:
@@ -99,38 +103,48 @@ services:
   children_count:
     build:
       context: .
-      dockerfile: ./workers/properties/connections/children_count_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/connections/children_count_worker/Dockerfile
     image: properties/children_count:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   parent_child:
     build:
       context: .
-      dockerfile: ./workers/properties/connections/parent_child_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/connections/parent_child_worker/Dockerfile
     image: properties/parent_child:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   # Property workers - points
   point_metrics:
     build:
       context: .
-      dockerfile: ./workers/properties/points/point_metrics_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/points/point_metrics_worker/Dockerfile
     image: properties/point_metrics:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   point_intensity:
     build:
       context: .
-      dockerfile: ./workers/properties/points/point_circle_intensity_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/points/point_circle_intensity_worker/Dockerfile
     image: properties/point_intensity:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   point_to_nearest_blob_distance:
     build:
       context: .
-      dockerfile: ./workers/properties/points/point_to_nearest_blob_distance/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/points/point_to_nearest_blob_distance/Dockerfile
     image: properties/point_to_nearest_blob_distance:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   # Property workers - lines
   line_scan_worker:
@@ -147,6 +161,8 @@ services:
       dockerfile: ./workers/annotations/rolling_ball/Dockerfile
     image: annotations/rolling_ball:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   gaussian_blur:
     build:
@@ -154,6 +170,8 @@ services:
       dockerfile: ./workers/annotations/gaussian_blur/Dockerfile
     image: annotations/gaussian_blur:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   crop:
     build:
@@ -161,6 +179,8 @@ services:
       dockerfile: ./workers/annotations/crop/Dockerfile
     image: annotations/crop:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   histogram_matching:
     build:
@@ -168,6 +188,8 @@ services:
       dockerfile: ./workers/annotations/histogram_matching/Dockerfile
     image: annotations/histogram_matching:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   registration:
     build:
@@ -175,6 +197,8 @@ services:
       dockerfile: ./workers/annotations/registration/Dockerfile
     image: annotations/registration:latest
     profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
 
   h_and_e_deconvolution:
     build:
@@ -211,6 +235,15 @@ services:
       - blob_metrics
     profiles: ["test"]
 
+  blob_overlap_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_overlap_worker/tests/Dockerfile_Test
+    image: properties/blob_overlap:test
+    depends_on:
+      - blob_overlap
+    profiles: ["test"]
+
   connect_time_lapse_test:
     build:
       context: .
@@ -228,6 +261,15 @@ services:
     depends_on:
       - connect_to_nearest
     profiles: ["test"]
+
+  connect_sequential_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/connect_sequential/tests/Dockerfile_Test
+    image: annotations/connect_sequential:test
+    profiles: ["test"]
+    depends_on:
+      - connect_sequential
       
   blob_intensity_test:
     build:
@@ -287,6 +329,15 @@ services:
     depends_on:
       - point_intensity
     profiles: ["test"]
+
+  point_to_nearest_blob_distance_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/points/point_to_nearest_blob_distance/tests/Dockerfile_Test
+    image: properties/point_to_nearest_blob_distance:test
+    profiles: ["test"]
+    depends_on:
+      - point_to_nearest_blob_distance
 
   children_count_test:
     build:
