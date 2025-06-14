@@ -229,6 +229,15 @@ services:
       - blob_metrics
     profiles: ["test"]
 
+  blob_overlap_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/blobs/blob_overlap_worker/tests/Dockerfile_Test
+    image: properties/blob_overlap:test
+    depends_on:
+      - blob_overlap
+    profiles: ["test"]
+
   connect_time_lapse_test:
     build:
       context: .
