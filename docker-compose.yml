@@ -24,9 +24,11 @@ services:
   connect_sequential:
     build:
       context: .
-      dockerfile: ./workers/annotations/connect_sequential/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/connect_sequential/Dockerfile
     image: annotations/connect_sequential:latest
     profiles: ["worker", "annotations"]
+    depends_on:
+      - worker-base
 
   connect_time_lapse:
     build:
