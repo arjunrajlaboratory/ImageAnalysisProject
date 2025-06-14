@@ -118,9 +118,11 @@ services:
   point_metrics:
     build:
       context: .
-      dockerfile: ./workers/properties/points/point_metrics_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/points/point_metrics_worker/Dockerfile
     image: properties/point_metrics:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   point_intensity:
     build:
