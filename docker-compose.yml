@@ -140,9 +140,11 @@ services:
   point_to_nearest_blob_distance:
     build:
       context: .
-      dockerfile: ./workers/properties/points/point_to_nearest_blob_distance/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/points/point_to_nearest_blob_distance/Dockerfile
     image: properties/point_to_nearest_blob_distance:latest
     profiles: ["worker", "properties"]
+    depends_on:
+      - worker-base
 
   # Property workers - lines
   line_scan_worker:
