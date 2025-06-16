@@ -59,6 +59,10 @@ def extract_spatial_annotation_data(obj_list):
             'Z': obj['location']['Z']
         })
 
+    # Handle empty data case
+    if not data:
+        return gpd.GeoDataFrame(columns=['_id', 'geometry', 'Time', 'XY', 'Z'])
+    
     # Create GeoDataFrame directly
     gdf = gpd.GeoDataFrame(data, geometry='geometry')
     return gdf
@@ -97,6 +101,10 @@ def compute(datasetId, apiUrl, token, params):
     gdf1 = extract_spatial_annotation_data(annotation1List)
     gdf2 = extract_spatial_annotation_data(annotation2List)
 
+    # Early return if no valid annotations after spatial processing
+    if gdf1.empty or gdf2.empty:
+        return
+
     # Group by location
     grouped = gdf1.groupby(['Time', 'XY', 'Z'])
     total_groups = len(grouped)
@@ -119,7 +127,7 @@ def compute(datasetId, apiUrl, token, params):
             for idx, row in group1.iterrows():
                 # Filter intersections for current source annotation
                 mask = intersections.geometry.intersects(row.geometry)
-                if mask.any():
+                if mask.any() and row.geometry.area > 0:
                     total_overlap = intersections[mask].area.sum(
                     ) / row.geometry.area
                     if compute_reverse_overlaps:
@@ -138,7 +146,7 @@ def compute(datasetId, apiUrl, token, params):
             if not intersections.empty:
                 for idx, row in group2.iterrows():
                     mask = intersections.geometry.intersects(row.geometry)
-                    if mask.any():
+                    if mask.any() and row.geometry.area > 0:
                         total_overlap = intersections[mask].area.sum(
                         ) / row.geometry.area
                         property_value_dict[row['_id']] = {
@@ -151,12 +159,13 @@ def compute(datasetId, apiUrl, token, params):
                      'Computing overlaps',
                      f"Processing group {processed_groups}/{total_groups}")
 
-    # Send results to server
-    dataset_property_value_dict = {datasetId: property_value_dict}
-    sendProgress(1.0, 'Done computing',
-                 'Sending computed metrics to the server')
-    workerClient.add_multiple_annotation_property_values(
-        dataset_property_value_dict)
+    # Send results to server only if there are results
+    if property_value_dict:
+        dataset_property_value_dict = {datasetId: property_value_dict}
+        sendProgress(1.0, 'Done computing',
+                     'Sending computed metrics to the server')
+        workerClient.add_multiple_annotation_property_values(
+            dataset_property_value_dict)
 
 
 if __name__ == '__main__':
