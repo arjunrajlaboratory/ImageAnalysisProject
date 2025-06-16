@@ -40,10 +40,10 @@ COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/Kitware/UPennContrast/
+RUN git clone https://github.com/arjunrajlaboratory/NimbusImage
 
-RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
-RUN pip install -e /UPennContrast/devops/girder/annotation_client/
+RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 RUN pip install -U "jax[cuda12]" piscis
 # RUN pip install -U "jax[cuda12_pip]==0.4.26" "jaxlib==0.4.26+cuda12.cudnn89" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip install rasterio shapely
