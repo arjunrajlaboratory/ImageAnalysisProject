@@ -32,7 +32,7 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/annotations/sam2_propagate/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -54,11 +54,11 @@ RUN ./download_ckpts.sh
 # Change back to the root directory
 WORKDIR /
 
-COPY ./utils.py /
-COPY ./entrypoint.py /
+COPY ./workers/annotations/sam2_propagate/utils.py /
+COPY ./workers/annotations/sam2_propagate/entrypoint.py /
 
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-RUN pip install /ImageAnalysisProject/annotation_utilities
+COPY ./annotation_utilities /annotation_utilities
+RUN pip install /annotation_utilities
 
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \

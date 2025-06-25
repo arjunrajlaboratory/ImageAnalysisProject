@@ -40,12 +40,10 @@ docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile
 # docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile_M1 -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
 
 echo "Building SAM2 propagate worker"
-docker build -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/ $NO_CACHE
-# docker build -f ./workers/annotations/sam2_propagate/Dockerfile_M1 -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/
+docker build . -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest $NO_CACHE
 
 echo "Building SAM2 video worker"
-docker build -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sam2_video_worker:latest ./workers/annotations/sam2_video/ $NO_CACHE
-# docker build -f ./workers/annotations/sam2_video/Dockerfile_M1 -t annotations/sam2_video_worker:latest ./workers/annotations/sam2_video/
+docker build . -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sam2_video_worker:latest $NO_CACHE
 
 # These are some legacy workers that are no longer used.
 #docker build ./workers/annotations/cellori_segmentation/ -t annotations/cellori_segmentation_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellori" --label "interfaceCategory=Cellori"
