@@ -35,7 +35,9 @@ echo "Building Stardist worker"
 docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest $NO_CACHE
 
 echo "Building SAM2 automatic mask generator worker"
-docker build ./workers/annotations/sam2_automatic_mask_generator/ -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
+docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
+# Command for M1:
+# docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile_M1 -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
 
 echo "Building SAM2 propagate worker"
 docker build -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest ./workers/annotations/sam2_propagate/ $NO_CACHE
