@@ -65,6 +65,7 @@ LABEL isUPennContrastWorker="" \
       interfaceName="SAM2 video" \
       interfaceCategory="SAM2" \
       description="Uses SAM2 to track video through time or Z" \
-      annotationShape="polygon"
+      annotationShape="polygon" \
+      defaultToolName="SAM2 video"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

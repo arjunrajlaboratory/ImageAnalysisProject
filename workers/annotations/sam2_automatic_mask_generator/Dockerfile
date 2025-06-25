@@ -65,6 +65,7 @@ LABEL isUPennContrastWorker="" \
       interfaceName="SAM2 automatic mask generator" \
       interfaceCategory="SAM2" \
       description="Uses SAM2 to find all masks in the image" \
-      annotationShape="polygon"
+      annotationShape="polygon" \
+      defaultToolName="SAM2 masks"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
