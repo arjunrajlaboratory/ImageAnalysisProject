@@ -32,7 +32,7 @@ RUN wget \
 
 FROM base as build
 
-COPY ./workers/annotations/sam2_video/environment.yml /
+COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -54,18 +54,17 @@ RUN ./download_ckpts.sh
 # Change back to the root directory
 WORKDIR /
 
-COPY ./workers/annotations/sam2_video/utils.py /
-COPY ./workers/annotations/sam2_video/entrypoint.py /
+COPY ./utils.py /
+COPY ./entrypoint.py /
 
-COPY ./annotation_utilities /annotation_utilities
-RUN pip install /annotation_utilities
+RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
+RUN pip install /ImageAnalysisProject/annotation_utilities
 
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="SAM2 video" \
       interfaceCategory="SAM2" \
       description="Uses SAM2 to track video through time or Z" \
-      annotationShape="polygon" \
-      defaultToolName="SAM2 video"
+      annotationShape="polygon"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

@@ -35,16 +35,16 @@ RUN wget \
 
 FROM base as build
 
-COPY ./workers/annotations/sam2_automatic_mask_generator/environment.yml /
+COPY ./environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN pip install rtree shapely
 
-RUN git clone https://github.com/arjunrajlaboratory/NimbusImage/
+RUN git clone https://github.com/Kitware/UPennContrast/
 
-RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
-RUN pip install -e /NimbusImage/devops/girder/annotation_client/
+RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
 RUN mkdir -p /code
 RUN git clone https://github.com/facebookresearch/sam2.git /code/sam2
@@ -57,18 +57,17 @@ RUN ./download_ckpts.sh
 # Change back to the root directory
 WORKDIR /
 
-COPY ./workers/annotations/sam2_automatic_mask_generator/utils.py /
-COPY ./workers/annotations/sam2_automatic_mask_generator/entrypoint.py /
+COPY ./utils.py /
+COPY ./entrypoint.py /
 
-COPY ./annotation_utilities /annotation_utilities
-RUN pip install /annotation_utilities
+RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
+RUN pip install /ImageAnalysisProject/annotation_utilities
 
 LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="SAM2 automatic mask generator" \
       interfaceCategory="SAM2" \
       description="Uses SAM2 to find all masks in the image" \
-      annotationShape="polygon" \
-      defaultToolName="SAM2 mask generator"
+      annotationShape="polygon"
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
