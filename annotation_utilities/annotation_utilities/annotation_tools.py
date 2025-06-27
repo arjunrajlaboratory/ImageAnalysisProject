@@ -24,14 +24,18 @@ def create_points_from_annotations(elements):
         points.append(point)
     return points
 
+
 def filter_elements_T_XY(elements, time_value, xy_value):
     return [element for element in elements if element['location']['Time'] == time_value and element['location']['XY'] == xy_value]
+
 
 def filter_elements_T_XY_Z(elements, time_value, xy_value, z_value):
     return [element for element in elements if element['location']['Time'] == time_value and element['location']['XY'] == xy_value and element['location']['Z'] == z_value]
 
+
 def filter_elements_Z_XY(elements, z_value, xy_value):
     return [element for element in elements if element['location']['Z'] == z_value and element['location']['XY'] == xy_value]
+
 
 def get_annotations_with_tags(elements, tags, exclusive=False):
     result = []
@@ -52,6 +56,7 @@ def get_annotations_with_tags(elements, tags, exclusive=False):
             if (tags_set & element_tags_set) or (not tags_set and not element_tags_set):
                 result.append(element)
     return result
+
 
 def get_annotations_with_tag(elements, tag, exclusive=False):
     result = []
@@ -95,31 +100,32 @@ def find_matching_annotations_by_location(source, target_list, Time=True, XY=Tru
     params = {'Time': Time, 'XY': XY, 'Z': Z}
     return [target for target in target_list if all(source['location'].get(attr) == target['location'].get(attr) for attr, value in params.items() if value)]
 
+
 def annotations_to_polygons(annotations):
     """
     Convert annotations to shapely Polygon objects.
-    
+
     Args:
     annotations (list or dict): A single annotation dictionary or a list of annotation dictionaries.
-    
+
     Returns:
     list: A list of shapely Polygon objects.
     """
     if isinstance(annotations, dict):
         annotations = [annotations]
-    
+
     polygons = []
     for annotation in annotations:
         coords = [(point['x'], point['y']) for point in annotation['coordinates']]
         polygons.append(Polygon(coords))
-    
+
     return polygons
 
 
 def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0):
     """
     Convert shapely Polygon objects to a list of annotations.
-    
+
     Args:
     polygons (list): A list of shapely Polygon objects.
     XY (int): The XY position for all annotations. Default is 0.
@@ -128,17 +134,18 @@ def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, c
     tags (list): A list of tags to apply to all annotations. Default is None.
     channel (int): The channel for all annotations. Default is 0.
     datasetId (str): The datasetId for all annotations.
-    
+
     Returns:
     list: A list of annotation dictionaries.
     """
     if not isinstance(polygons, list):
         polygons = [polygons]
-    
+
     annotations = []
     for polygon in polygons:
-        coordinates = [{'x': float(y), 'y': float(x)} for x, y in list(polygon.exterior.coords)[:-1]]  # Exclude the last point as it's the same as the first
-        
+        coordinates = [{'x': float(y), 'y': float(x)} for x, y in list(polygon.exterior.coords)[
+            :-1]]  # Exclude the last point as it's the same as the first
+
         annotation = {
             'coordinates': coordinates,
             'location': {'XY': XY, 'Time': Time, 'Z': Z},
@@ -146,40 +153,42 @@ def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, c
             'channel': channel,
             'datasetId': datasetId
         }
-        
+
         if tags:
             annotation['tags'] = tags
-        
+
         annotations.append(annotation)
-    
+
     return annotations
+
 
 def annotations_to_points(annotations):
     """
     Convert annotations to shapely Point objects.
-    
+
     Args:
     annotations (list or dict): A single annotation dictionary or a list of annotation dictionaries.
-    
+
     Returns:
     list: A list of shapely Point objects.
     """
     if isinstance(annotations, dict):
         annotations = [annotations]
-    
+
     points = []
     for annotation in annotations:
         coords = annotation['coordinates'][0]  # Assume there is only one coordinate in the list
         y, x = coords['x'], coords['y']
         point = Point(x, y)
         points.append(point)
-    
+
     return points
+
 
 def points_to_annotations(points, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0):
     """
     Convert shapely Point objects to a list of annotations.
-    
+
     Args:
     points (list): A list of shapely Point objects.
     XY (int): The XY position for all annotations. Default is 0.
@@ -197,8 +206,9 @@ def points_to_annotations(points, datasetId, XY=0, Time=0, Z=0, tags=None, chann
             'datasetId': datasetId
         }
         annotations.append(annotation)
-    
+
     return annotations
+
 
 def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):
     """
@@ -214,11 +224,12 @@ def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):
         images.append(image)
     return images
 
+
 def get_layers(GirderClient, datasetId):
     """
     This function takes a datasetId and a client, and returns the layers 
     with information about contrast settings that are currently being applied.
-    
+
     Note: A dataset can belong to multiple configurations, so there is some ambiguity here.
     The function takes the first configuration it finds. To do this properly would require 
     extensive reworking, because the front end and worker interface would all have to change 
@@ -227,23 +238,24 @@ def get_layers(GirderClient, datasetId):
     """
     configurations = GirderClient.get("dataset_view", parameters={'datasetId': datasetId})
     configurationId = configurations[0]['configurationId']
-    configuration = GirderClient.get("item/" + configurationId)
+    configuration = GirderClient.get("upenn_collection/" + configurationId)
     layers = configuration['meta']['layers']
     return layers
+
 
 def process_and_merge_channels(images, layers, mode='lighten'):
     layers = sorted(layers, key=lambda x: x['channel'])
     processed_channels = []
-    
+
     for img, layer in zip(images, layers):
         if layer['visible'] == False:
             continue
         img = np.squeeze(img)
-        
+
         contrast_mode = layer['contrast']['mode']
         black_point = layer['contrast']['blackPoint']
         white_point = layer['contrast']['whitePoint']
-        
+
         if contrast_mode == 'percentile':
             black_value = np.percentile(img, black_point)
             white_value = np.percentile(img, white_point)
@@ -252,14 +264,14 @@ def process_and_merge_channels(images, layers, mode='lighten'):
             white_value = white_point
         else:
             raise ValueError(f"Unsupported contrast mode: {contrast_mode}")
-        
+
         img_normalized = np.clip((img - black_value) / (white_value - black_value), 0, 1)
-        
+
         color = np.array(mcolors.to_rgb(layer['color']))
-        img_colored = img_normalized[:,:,np.newaxis] * color
-        
+        img_colored = img_normalized[:, :, np.newaxis] * color
+
         processed_channels.append(img_colored)
-    
+
     if mode == 'lighten':
         merged_image = np.max(processed_channels, axis=0)
     elif mode == 'add':
@@ -269,5 +281,5 @@ def process_and_merge_channels(images, layers, mode='lighten'):
         merged_image = 1 - np.prod(1 - np.array(processed_channels), axis=0)
     else:
         raise ValueError("Unsupported mode. Choose 'lighten', 'add', or 'screen'.")
-    
+
     return merged_image
