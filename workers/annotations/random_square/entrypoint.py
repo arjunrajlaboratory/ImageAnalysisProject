@@ -22,6 +22,41 @@ from skimage.feature import peak_local_max
 
 from shapely.geometry import Polygon
 
+# --- signal debug shim ---
+import signal, threading, os
+
+_SIGNAL_SEEN = threading.Event()
+_LAST_SIG = {"num": None}
+
+def _log_signal(signum):
+    try:
+        name = signal.Signals(signum).name
+    except Exception:
+        name = str(signum)
+    print(json.dumps({
+        "type": "debug",
+        "event": "signal_received",
+        "signal": name,
+        "signum": int(signum),
+        "pid": os.getpid()
+    }))
+    sys.stdout.flush()
+
+def _on_signal(signum, frame):
+    # only log the first time, but remember which one
+    if not _SIGNAL_SEEN.is_set():
+        _LAST_SIG["num"] = int(signum)
+        _SIGNAL_SEEN.set()
+        _log_signal(signum)
+
+# Catch what Docker/`docker stop`/tini will forward
+for _s in (signal.SIGTERM, signal.SIGINT, signal.SIGQUIT):
+    try:
+        signal.signal(_s, _on_signal)
+    except Exception:
+        pass
+# --- end signal debug shim ---
+
 
 # REMOVE THE BELOW
 def preview(datasetId, apiUrl, token, params, bimage):

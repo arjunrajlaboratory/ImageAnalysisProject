@@ -128,7 +128,7 @@ docker build -f ./workers/annotations/registration/$DOCKERFILE -t annotations/re
 # echo "Building property worker: test_file_creation_worker"
 # docker build -f ./workers/properties/lines/test_file_creation_worker/$DOCKERFILE -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
 # docker build -f ./workers/properties/lines/test_file_creation_worker/Dockerfile_M1 -t properties/test_file_creation:latest ./workers/properties/lines/test_file_creation_worker/
-# docker build -f ./workers/annotations/random_square/Dockerfile_M1 -t annotations/random_square:latest ./workers/annotations/random_square/
+# docker build -f ./workers/annotations/random_square/Dockerfile_M1 -t annotations/random_square:latest .
 # docker build -f ./workers/annotations/gaussian_blur/Dockerfile_M1 -t annotations/gaussian_blur:latest ./workers/annotations/gaussian_blur/
 # docker build -f ./workers/annotations/rolling_ball/Dockerfile_M1 -t annotations/rolling_ball:latest ./workers/annotations/rolling_ball/
 # docker build -f ./workers/annotations/crop/Dockerfile_M1 -t annotations/crop:latest ./workers/annotations/crop/
