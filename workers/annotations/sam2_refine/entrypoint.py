@@ -2,9 +2,8 @@ import argparse
 import json
 import sys
 import os
-from functools import partial
+from collections import defaultdict
 from itertools import product
-import uuid
 
 import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers
@@ -13,19 +12,21 @@ import annotation_client.tiles as tiles
 import annotation_utilities.annotation_tools as annotation_tools
 import annotation_utilities.batch_argument_parser as batch_argument_parser
 
-import numpy as np  # library for array manipulation
+import numpy as np
 from shapely.geometry import Polygon
 from skimage.measure import find_contours
-from shapely.geometry import Polygon
 
 import torch
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
-from PIL import Image
 
 from annotation_client.utils import sendProgress
 
+
 def interface(image, apiUrl, token):
+    """
+    Define the user interface for the SAM2 Refiner tool.
+    """
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     # List all .pt files in the /sam2/checkpoints directory
@@ -34,13 +35,12 @@ def interface(image, apiUrl, token):
     # Set the default model
     default_model = 'sam2.1_hiera_small.pt' if 'sam2.1_hiera_small.pt' in models else models[0] if models else None
 
-    # Available types: number, text, tags, layer
     interface = {
-        'SAM2 Propagate': {
+        'SAM2 Refiner': {
             'type': 'notes',
-            'value': 'This tool uses the SAM2 model to take an existing annotation and propagate it through time or z-slices.'
-                     'It uses the existing annotation as a mask to segment the object in the next frame.'
-                     'It is useful for e.g. time-lapse microscopy in cases where the objects change in character over time.',
+            'value': 'This tool uses the SAM2 model to refine existing annotations. '
+                     'It takes existing annotations, uses them as prompts (via bounding boxes), '
+                     'and generates refined segmentation masks that better match the underlying image data.',
             'displayOrder': 0,
         },
         'Batch XY': {
@@ -58,10 +58,10 @@ def interface(image, apiUrl, token):
             'type': 'text',
             'vueAttrs': {
                 'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Z positions you want to process/propagate through',
+                'label': 'Enter the Z positions you want to process',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Z positions to process/propagate through. Separate multiple groups with a comma.'
+                'tooltip': 'Enter the Z positions to process. Separate multiple groups with a comma.'
             },
             'displayOrder': 2
         },
@@ -69,48 +69,30 @@ def interface(image, apiUrl, token):
             'type': 'text',
             'vueAttrs': {
                 'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Time positions you want to process/propagate through',
+                'label': 'Enter the Time positions you want to process',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Time positions to process/propagate through. Separate multiple groups with a comma.'
+                'tooltip': 'Enter the Time positions to process. Separate multiple groups with a comma.'
             },
             'displayOrder': 3
         },
-        'Tag of objects to propagate': {
+        'Tag of objects to refine': {
             'type': 'tags',
-            'displayOrder': 6
-        },
-        'Propagate across': {
-            'type': 'select',
-            'items': ['Time', 'Z'],
-            'default': 'Time',
             'displayOrder': 4
-        },
-        'Propagation direction': {
-            'type': 'select',
-            'items': ['Forward', 'Backward'],
-            'default': 'Forward',
-            'displayOrder': 5
         },
         'Model': {
             'type': 'select',
             'items': models,
             'default': default_model,
-            'tooltip': 'The SAM2 model to use for propagation. The large model may give slightly better results,\n'
-                       'but is slower and uses more memory, and so may not work for large numbers of objects.',
+            'tooltip': 'The SAM2 model to use for refinement. Larger models may give slightly better results, '
+                       'but are slower and use more memory.',
+            'displayOrder': 5
+        },
+        'Delete original annotations': {
+            'type': 'checkbox',
+            'default': False,
+            'tooltip': 'If checked, the original annotations will be deleted after refinement.',
             'displayOrder': 6
-        },
-        'Resegment propagation objects': {
-            'type': 'checkbox',
-            'default': True,
-            'tooltip': 'If checked, the tool will run the SAM2 model on the current image and create new annotations for the propagated objects.\n'
-                       'This maintains consistency between the propagated objects and the original objects.',
-            'displayOrder': 8
-        },
-        'Connect sequentially': {
-            'type': 'checkbox',
-            'default': True,
-            'displayOrder': 9
         },
         'Padding': {
             'type': 'number',
@@ -118,8 +100,8 @@ def interface(image, apiUrl, token):
             'max': 20,
             'default': 0,
             'unit': 'Pixels',
-            'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon.',
-            'displayOrder': 11,
+            'tooltip': 'Padding will expand (or, if negative, contract) the polygon boundary.',
+            'displayOrder': 7,
         },
         'Smoothing': {
             'type': 'number',
@@ -127,9 +109,10 @@ def interface(image, apiUrl, token):
             'max': 3,
             'default': 0.7,
             'tooltip': 'Smoothing is used to simplify the polygons; a value of 0.7 is a good default.',
-            'displayOrder': 12,
+            'displayOrder': 8,
         },
     }
+
     # Send the interface object to the server
     client.setWorkerImageInterface(image, interface)
 
@@ -139,185 +122,89 @@ def sam2_masks_to_polygons(masks, smoothing, padding):
     Convert SAM2 masks to simplified polygons.
 
     Args:
-    masks (numpy.ndarray): Array of masks from SAM2 prediction.
-    smoothing (float): Smoothing factor for polygon simplification.
+        masks (numpy.ndarray): Array of masks from SAM2 prediction.
+        smoothing (float): Smoothing factor for polygon simplification.
+        padding (float): Padding to expand/contract polygons.
 
     Returns:
-    list: List of simplified Shapely Polygon objects.
+        list: List of simplified Shapely Polygon objects.
     """
     polygons = []
     for mask in masks:
-        # Sometimes you get multiple masks (from multiple boxes), in which case you'll need to squeeze it.
-        # But if you only get one mask, don't squeeze it.
+        # Handle different mask dimensions
         if mask.ndim == 3:
             mask = mask.squeeze(0)
+
         contours = find_contours(mask, 0.5)
         if contours:  # Check if contours were found
-            polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
-            polygon = polygon.buffer(padding)
-            polygons.append(polygon)
+            try:
+                polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
+                if padding != 0:
+                    polygon = polygon.buffer(padding)
+                if not polygon.is_empty and polygon.is_valid:
+                    polygons.append(polygon)
+            except Exception as e:
+                print(f"Warning: Failed to create polygon from contour: {e}")
+                continue
+
     return polygons
 
 
-def assign_temporary_ids(annotations):
+def group_annotations_by_location(annotations):
     """
-    Assigns a unique temporary ID to each annotation.
-
+    Group annotations by their location (XY, Z, Time) to minimize image loading.
+    
     Args:
         annotations (list): List of annotation dictionaries.
-
+    
     Returns:
-        list: List of annotations with added 'tempId'.
+        dict: Dictionary with (XY, Z, Time) tuples as keys and lists of annotations as values.
     """
+    grouped = defaultdict(list)
     for ann in annotations:
-        ann['tempId'] = str(uuid.uuid4())
-    return annotations
-
-
-def assign_parent_ids(annotations, parent_annotations):
-    """
-    Assigns the 'parentId' to each annotation based on the corresponding parent annotation.
-
-    Args:
-        annotations (list): List of child annotation dictionaries.
-        parent_annotations (list): List of parent annotation dictionaries.
-
-    Returns:
-        list: List of child annotations with added 'parentId'.
-    """
-    if len(annotations) != len(parent_annotations):
-        raise ValueError("The number of annotations and parent_annotations must be the same.")
-
-    for child_ann, parent_ann in zip(annotations, parent_annotations):
-        # Attempt to get 'tempId'; if not present, fallback to '_id'; else None
-        child_ann['parentId'] = parent_ann.get('tempId') or parent_ann.get('_id', None)
-    return annotations
-
-
-def strip_ids(annotations):
-    """
-    Strips 'tempId' and 'parentId' from each annotation.
-
-    Args:
-        annotations (list): List of annotation dictionaries with 'tempId' and 'parentId'.
-
-    Returns:
-        list: List of annotations without 'tempId' and 'parentId'.
-        list: List of dictionaries containing 'tempId' and 'parentId' for mapping.
-    """
-    # stripped_annotations = []
-    id_mappings = []
-
-    for ann in annotations:
-        temp_id = ann.pop('tempId', None)
-        parent_id = ann.pop('parentId', None)
-        # stripped_annotations.append(ann)
-        id_mappings.append({
-            'tempId': temp_id,
-            'parentId': parent_id
-        })
-
-    return annotations, id_mappings
-    # return stripped_annotations, id_mappings
-
-
-def generate_connections(annotations_from_server, id_mappings, datasetId, tags, propagation_direction):
-    """
-    Generates a list of connection dictionaries mapping parent IDs to child IDs.
-
-    Args:
-        annotations_from_server (list): List of annotation dictionaries returned from the server with '_id'.
-        id_mappings (list): List of dictionaries containing 'tempId' and 'parentId'.
-
-    Returns:
-        list: List of connection dictionaries with 'parentId' and 'childId'.
-    """
-    if len(annotations_from_server) != len(id_mappings):
-        raise ValueError("The number of annotations_from_server and id_mappings must be the same.")
-
-    # Create a mapping from tempId to server-assigned _id
-    temp_to_server_id = {}
-    for server_ann, mapping in zip(annotations_from_server, id_mappings):
-        temp_id = mapping.get('tempId')
-        server_id = server_ann.get('_id')
-        if temp_id and server_id:
-            temp_to_server_id[temp_id] = server_id
-
-    # Generate connections
-    connections = []
-    for mapping in id_mappings:
-        parent_temp_id = mapping.get('parentId')
-        child_temp_id = mapping.get('tempId')
-
-        parent_server_id = temp_to_server_id.get(parent_temp_id, parent_temp_id) # If the parent_temp_id is not in the temp_to_server_id, then use the parent_temp_id as the server_id, which should be the original annotationId.
-        if parent_server_id is None: # If there is truly no match, either mapped or original, then skip.
-            continue
-        child_server_id = temp_to_server_id.get(child_temp_id)
-
-        if child_server_id:
-            if propagation_direction == 'Forward': # Always make the earlier in Time/Z be the parent
-                connections.append({
-                    'parentId': parent_server_id,
-                    'childId': child_server_id,
-                    'tags': tags,
-                    'datasetId': datasetId
-                })
-            else:
-                connections.append({
-                    'parentId': child_server_id,
-                    'childId': parent_server_id,
-                    'tags': tags,
-                    'datasetId': datasetId
-                })
-
-    return connections
+        location = ann.get('location', {})
+        key = (
+            location.get('XY', 0),
+            location.get('Z', 0),
+            location.get('Time', 0)
+        )
+        grouped[key].append(ann)
+    return grouped
 
 
 def compute(datasetId, apiUrl, token, params):
     """
-    params (could change):
-        configurationId,
-        datasetId,
-        description: tool description,
-        type: tool type,
-        id: tool id,
-        name: tool name,
-        image: docker image,
-        channel: annotation channel,
-        assignment: annotation assignment ({XY, Z, Time}),
-        tags: annotation tags (list of strings),
-        tile: tile position (TODO: roi) ({XY, Z, Time}),
-        connectTo: how new annotations should be connected
+    Main compute function for SAM2 Refiner.
+    
+    Refines existing annotations by using them as prompts for SAM2 segmentation.
     """
 
+    # Initialize clients
     annotationClient = annotations_client.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
+    # Get parameters from interface
     model = params['workerInterface']['Model']
     padding = float(params['workerInterface']['Padding'])
     smoothing = float(params['workerInterface']['Smoothing'])
-    propagate_tags = params['workerInterface']['Tag of objects to propagate']
-    resegment_propagation_objects = params['workerInterface']['Resegment propagation objects']
-    connect_sequentially = params['workerInterface']['Connect sequentially']
-    propagate_across = params['workerInterface']['Propagate across']
-    propagation_direction = params['workerInterface']['Propagation direction']
-    batch_xy = params['workerInterface']['Batch XY']
-    batch_z = params['workerInterface']['Batch Z']
-    batch_time = params['workerInterface']['Batch Time']
+    refine_tags = params['workerInterface']['Tag of objects to refine']
+    delete_original = params['workerInterface']['Delete original annotations']
+    batch_xy = params['workerInterface'].get('Batch XY', '')
+    batch_z = params['workerInterface'].get('Batch Z', '')
+    batch_time = params['workerInterface'].get('Batch Time', '')
 
+    # Parse batch parameters
     batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
     batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
     batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
 
+    # Get annotation context
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
 
-    XY = tile['XY']
-    Z = tile['Z']
-    Time = tile['Time']
-
+    # Use tile values as defaults if batch parameters not specified
     if batch_xy is None:
         batch_xy = [tile['XY']]
     if batch_z is None:
@@ -329,31 +216,55 @@ def compute(datasetId, apiUrl, token, params):
     batch_z = list(batch_z)
     batch_time = list(batch_time)
 
-    # If the propagation_direction is forward, then we are fine.
-    # If the propagation_direction is backward, then we need to reverse the variable specified by propagate_across.
-    if propagation_direction == 'Backward':
-        if propagate_across == 'Time':
-            batch_time = list(reversed(list(batch_time)))
-        elif propagate_across == 'Z':
-            batch_z = list(reversed(list(batch_z)))
+    sendProgress(0.05, "Fetching annotations", "Retrieving annotations to refine")
 
-    batches = list(product(batch_xy, batch_z, batch_time))
-    total_batches = len(batches)
-    processed_batches = 0
-
+    # Get all polygon annotations with specified tags
     annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
-    annotationList = annotation_tools.get_annotations_with_tags(annotationList, propagate_tags, exclusive=False)
+    
+    # Also try to get blob annotations if they exist
+    try:
+        blob_annotations = workerClient.get_annotation_list_by_shape('blob', limit=0)
+        annotationList.extend(blob_annotations)
+    except Exception:
+        # Blob shape might not be supported on all servers
+        pass
+    
+    # Filter by tags if specified
+    if refine_tags:
+        annotationList = annotation_tools.get_annotations_with_tags(annotationList, refine_tags, exclusive=False)
 
-    # use bfloat16 for the entire notebook
-    torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+    # Filter annotations to only include those in our batch ranges
+    filtered_annotations = []
+    for ann in annotationList:
+        location = ann.get('location', {})
+        if (location.get('XY', 0) in batch_xy and 
+            location.get('Z', 0) in batch_z and 
+            location.get('Time', 0) in batch_time):
+            filtered_annotations.append(ann)
 
-    if torch.cuda.get_device_properties(0).major >= 8:
-        # turn on tfloat32 for Ampere GPUs (https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices)
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+    if len(filtered_annotations) == 0:
+        sendProgress(1.0, "Complete", "No annotations found to refine")
+        return
 
+    # Group annotations by location to minimize image loading
+    grouped_annotations = group_annotations_by_location(filtered_annotations)
+    total_locations = len(grouped_annotations)
+
+    sendProgress(0.1, "Initializing SAM2", f"Loading {model}")
+
+    # Setup GPU acceleration if available
+    use_cuda = torch.cuda.is_available()
+    device = 'cuda' if use_cuda else 'cpu'
+
+    if use_cuda:
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+        if torch.cuda.get_device_properties(0).major >= 8:
+            # Enable TF32 for Ampere GPUs
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+
+    # Setup SAM2 model
     checkpoint_path = f"/code/sam2/checkpoints/{model}"
-    # This needless naming change is making me sad.
     model_to_cfg = {
         'sam2.1_hiera_base_plus.pt': 'sam2.1_hiera_b+.yaml',
         'sam2.1_hiera_large.pt': 'sam2.1_hiera_l.yaml',
@@ -361,140 +272,130 @@ def compute(datasetId, apiUrl, token, params):
         'sam2.1_hiera_tiny.pt': 'sam2.1_hiera_t.yaml',
     }
     model_cfg = f"configs/sam2.1/{model_to_cfg[model]}"
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
-    predictor = SAM2ImagePredictor(sam2_model)
 
-    rangeXY = tileClient.tiles['IndexRange'].get('IndexXY', 1)
-    rangeZ = tileClient.tiles['IndexRange'].get('IndexZ', 1)
-    rangeTime = tileClient.tiles['IndexRange'].get('IndexT', 1)
+    try:
+        sam2_model = build_sam2(model_cfg, checkpoint_path, device=device, apply_postprocessing=False)
+        predictor = SAM2ImagePredictor(sam2_model)
+    except Exception as e:
+        sendProgress(1.0, "Error", f"Failed to initialize SAM2 model: {str(e)}")
+        return
+
+    # Get layers for image processing
+    layers = annotation_tools.get_layers(tileClient.client, datasetId)
 
     new_annotations = []
+    annotations_to_delete = []
+    processed_locations = 0
+    total_annotations_processed = 0
+    total_annotations = len(filtered_annotations)
 
-    for batch in batches:
-        XY, Z, Time = batch
-        # Search the annotationList for annotations with the current Time, XY, and Z.
-        sliced_annotations = annotation_tools.filter_elements_T_XY_Z(annotationList, Time, XY, Z)
-        if resegment_propagation_objects and len(sliced_annotations) > 0:
-            # If we are resegmenting, then we will load the current image and run the predictor.
-            # Slightly inefficient because we are loading the image twice, but it's not a big deal.
+    # Process each location group
+    for (XY, Z, Time), location_annotations in grouped_annotations.items():
+        processed_locations += 1
+        sendProgress(
+            0.2 + (0.6 * processed_locations / total_locations),
+            "Processing locations",
+            f"Location {processed_locations}/{total_locations} (XY:{XY+1}, Z:{Z+1}, Time:{Time+1})"
+        )
 
-            # Get the images for the current Time and XY and Z
+        try:
+            # Load image for this location once
             images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, Z, Time)
-            layers = annotation_tools.get_layers(tileClient.client, datasetId)
-
             merged_image = annotation_tools.process_and_merge_channels(images, layers)
             image = merged_image.astype(np.float32)
 
             predictor.set_image(image)
 
-            polygons = annotation_tools.annotations_to_polygons(sliced_annotations)
+            # Convert annotations to polygons and get bounding boxes
+            polygons = annotation_tools.annotations_to_polygons(location_annotations)
+            if not polygons:
+                continue
+
             boxes = [polygon.bounds for polygon in polygons]
-            input_boxes = np.array(boxes)
 
+            # Process each box individually (correct SAM2 API usage)
             masks = []
-            for input_box in input_boxes:
-                temp_masks, _, _ = predictor.predict(
-                    point_coords=None,
-                    point_labels=None,
-                    box=input_box,
-                    multimask_output=False,
+            for i, box in enumerate(boxes):
+                try:
+                    # SAM2 expects box as [x_min, y_min, x_max, y_max]
+                    input_box = np.array(box, dtype=np.float32)
+                    
+                    temp_masks, scores, logits = predictor.predict(
+                        point_coords=None,
+                        point_labels=None,
+                        box=input_box,  # Single box
+                        multimask_output=False,
+                    )
+                    masks.append(temp_masks[0])
+
+                    total_annotations_processed += 1
+
+                except Exception as e:
+                    print(f"Warning: Failed to process annotation {i+1}/{len(boxes)}: {e}")
+                    continue
+
+            if not masks:
+                continue
+
+            # Convert masks to polygons
+            refined_polygons = sam2_masks_to_polygons(masks, smoothing, padding)
+
+            if refined_polygons:
+                # Create new annotations from refined polygons
+                refined_annotations = annotation_tools.polygons_to_annotations(
+                    refined_polygons, 
+                    datasetId, 
+                    XY=XY, 
+                    Time=Time, 
+                    Z=Z, 
+                    tags=tags, 
+                    channel=channel
                 )
-                masks.append(temp_masks[0])
-            
-            # Find contours in the mask
-            temp_polygons = sam2_masks_to_polygons(masks, smoothing, padding)
-            temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=Time, Z=Z, tags=tags, channel=channel)
-            temp_annotations = assign_temporary_ids(temp_annotations) # Assign a temporary id to each annotation
-            # In this case, we do not need to assign parentIds, because these are the "root" annotations
-            new_annotations.extend(temp_annotations)  # Add the new annotations to the new_annotations list for downstream processing
 
-        sliced_new_annotations = annotation_tools.filter_elements_T_XY_Z(new_annotations, Time, XY, Z)  # This will include the resegmented annotations if they were created
+                new_annotations.extend(refined_annotations)
 
-        if len(sliced_annotations) == 0 and len(sliced_new_annotations) == 0: # If we didn't find any annotations to propagate, skip
+            # Track original annotations for deletion if requested
+            if delete_original:
+                annotations_to_delete.extend([ann['_id'] for ann in location_annotations if '_id' in ann])
+
+        except Exception as e:
+            print(f"Error processing location (XY:{XY}, Z:{Z}, Time:{Time}): {e}")
             continue
 
-        # Propose a location to look for the next image, depending on the propagation_direction and the propagate_across variable (either Time or Z).
-        if propagate_across == 'Time':
-            # find the current index of Time in the batch_time list
-            current_index = batch_time.index(Time)
-            if not current_index == len(batch_time) - 1: # If we're not at the last frame, propagate to the next frame
-                next_Time = batch_time[current_index + 1]
-                next_Z = Z
-            else:
-                continue
-        elif propagate_across == 'Z':
-            current_index = batch_z.index(Z)
-            if not current_index == len(batch_z) - 1:
-                next_Z = batch_z[current_index + 1]
-                next_Time = Time
-            else:
-                continue
+    # Upload new annotations
+    if len(new_annotations) > 0:
+        sendProgress(0.85, "Uploading annotations", f"Sending {len(new_annotations)} refined annotations to server")
+        try:
+            annotationClient.createMultipleAnnotations(new_annotations)
+        except Exception as e:
+            print(f"Error uploading annotations: {e}")
 
-        # Get the images for the next Time and XY and Z
-        images = annotation_tools.get_images_for_all_channels(tileClient, datasetId, XY, next_Z, next_Time)
-        layers = annotation_tools.get_layers(tileClient.client, datasetId)
+         # Delete original annotations if requested
+    if delete_original and len(annotations_to_delete) > 0:
+        sendProgress(0.95, "Cleaning up", f"Deleting {len(annotations_to_delete)} original annotations")
+        try:
+            annotationClient.deleteMultipleAnnotations(annotations_to_delete)
+        except Exception as e:
+            print(f"Warning: Failed to delete original annotations: {e}")
 
-        merged_image = annotation_tools.process_and_merge_channels(images, layers)
-        image = merged_image.astype(np.float32)
-
-        predictor.set_image(image)
-
-        polygons = []
-        if not resegment_propagation_objects:
-            # If we already resegmented the annotations, then the new ones are already in sliced_new_annotations
-            polygons = annotation_tools.annotations_to_polygons(sliced_annotations)
-        polygons.extend(annotation_tools.annotations_to_polygons(sliced_new_annotations))
-        boxes = [polygon.bounds for polygon in polygons]
-        input_boxes = np.array(boxes)
-
-        masks, _, _ = predictor.predict(
-            point_coords=None,
-            point_labels=None,
-            box=input_boxes,
-            multimask_output=False,
-        )
-        
-        # Find contours in the mask
-        temp_polygons = sam2_masks_to_polygons(masks, smoothing, padding)
-
-        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
-        temp_annotations = assign_temporary_ids(temp_annotations) # Assign a temporary id to each annotation
-        if not resegment_propagation_objects:
-            sliced_new_annotations = assign_temporary_ids(sliced_new_annotations)
-            sliced_annotations.extend(sliced_new_annotations)
-            temp_annotations = assign_parent_ids(temp_annotations, sliced_annotations) # Assign a parentId to each annotation
-        else:
-            temp_annotations = assign_parent_ids(temp_annotations, sliced_new_annotations) # Assign a parentId to each annotation
-        new_annotations.extend(temp_annotations)
-
-        # Update progress after each batch
-        processed_batches += 1
-        fraction_done = processed_batches / total_batches
-        sendProgress(fraction_done, "Propagating annotations", f"{processed_batches} of {total_batches} frames processed")
-
-    sendProgress(0.9, "Uploading annotations", f"Sending {len(new_annotations)} annotations to server")
-
-    stripped_annotations, id_mappings = strip_ids(new_annotations)
-
-    annotations_from_server = annotationClient.createMultipleAnnotations(stripped_annotations)
-
-    if connect_sequentially:
-        connections = generate_connections(annotations_from_server, id_mappings, datasetId, ['SAM2_PROPAGATED'], propagation_direction)
-        annotationClient.createMultipleConnections(connections)
-    
+    sendProgress(
+        1.0,
+        "Complete", 
+        f"Refined {len(new_annotations)} annotations from {total_annotations_processed} originals"
+    )
 
 
 if __name__ == '__main__':
     # Define the command-line interface for the entry point
     parser = argparse.ArgumentParser(
-        description='SAM Automatic Mask Generator')
+        description='SAM2 Refiner - Refine existing annotations using SAM2'
+    )
 
     parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
-    parser.add_argument('--parameters', type=str,
-                        required=True, action='store')
+    parser.add_argument('--parameters', type=str, required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 
