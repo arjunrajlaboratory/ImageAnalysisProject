@@ -42,6 +42,9 @@ docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile
 echo "Building SAM2 propagate worker"
 docker build . -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest $NO_CACHE
 
+echo "Building SAM2 refine worker"
+docker build . -f ./workers/annotations/sam2_refine/$DOCKERFILE -t annotations/sam2_refine_worker:latest $NO_CACHE
+
 echo "Building SAM2 video worker"
 docker build . -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sam2_video_worker:latest $NO_CACHE
 
