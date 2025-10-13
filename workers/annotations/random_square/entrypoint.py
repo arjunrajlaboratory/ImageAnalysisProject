@@ -277,8 +277,9 @@ def compute(datasetId, apiUrl, token, params):
         # Append the new annotation to the list
         theAnnotations.append(new_annotation)
         fraction_done = (i + 1) / annotationNumber
-        sendProgress(fraction_done, "Generating random squares",
-                     f"Generated {i + 1} of {int(annotationNumber)} annotations")
+        if i % 10000 == 0:
+            sendProgress(fraction_done, "Generating random squares",
+                         f"Generated {i + 1} of {int(annotationNumber)} annotations")
 
     # sendError("test")
 
