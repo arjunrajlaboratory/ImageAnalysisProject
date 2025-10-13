@@ -121,7 +121,7 @@ def interface(image, apiUrl, token):
         'Number of random annotations': {
             'type': 'number',
             'min': 0,
-            'max': 10000,
+            'max': 300000,
             'default': 100,
             'unit': 'annotations',
             'vueAttr': {
@@ -292,7 +292,7 @@ def compute(datasetId, apiUrl, token, params):
         {"error": "test", "title": "testError2", "type": "error"}))
     sys.stdout.flush()
 
-    time.sleep(60)
+    time.sleep(3)
 
     print(json.dumps(
         {"warning": "test", "title": "testWarning", "type": "warning"}))
