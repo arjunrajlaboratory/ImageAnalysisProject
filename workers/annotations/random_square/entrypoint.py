@@ -121,7 +121,7 @@ def interface(image, apiUrl, token):
         'Number of random annotations': {
             'type': 'number',
             'min': 0,
-            'max': 10000,
+            'max': 300000,
             'default': 100,
             'unit': 'annotations',
             'vueAttr': {
@@ -277,8 +277,9 @@ def compute(datasetId, apiUrl, token, params):
         # Append the new annotation to the list
         theAnnotations.append(new_annotation)
         fraction_done = (i + 1) / annotationNumber
-        sendProgress(fraction_done, "Generating random squares",
-                     f"Generated {i + 1} of {int(annotationNumber)} annotations")
+        if i % 10000 == 0:
+            sendProgress(fraction_done, "Generating random squares",
+                         f"Generated {i + 1} of {int(annotationNumber)} annotations")
 
     # sendError("test")
 
@@ -292,7 +293,7 @@ def compute(datasetId, apiUrl, token, params):
         {"error": "test", "title": "testError2", "type": "error"}))
     sys.stdout.flush()
 
-    time.sleep(60)
+    time.sleep(3)
 
     print(json.dumps(
         {"warning": "test", "title": "testWarning", "type": "warning"}))
