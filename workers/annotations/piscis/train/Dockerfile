@@ -45,7 +45,7 @@ RUN git clone https://github.com/arjunrajlaboratory/NimbusImage
 RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 RUN pip install "jax[cuda12]==0.7.2" "jaxlib==0.7.2" && \
-    pip install piscis
+    pip install "flax<0.12.0" piscis
 # RUN pip install -U "jax[cuda12]" piscis
 # RUN pip install -U "jax[cuda12_pip]==0.4.26" "jaxlib==0.4.26+cuda12.cudnn89" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 RUN pip install rasterio shapely
