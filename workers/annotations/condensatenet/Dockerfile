@@ -31,7 +31,7 @@ RUN wget \
 FROM base as build
 
 # Copy and create conda environment
-COPY ./workers/annotations/condensatenet_worker/environment.yml /
+COPY ./workers/annotations/condensatenet/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -51,7 +51,7 @@ RUN pip install git+https://github.com/arjunrajlaboratory/condensatenet.git
 RUN python -m condensatenet download --output /models/condensatenet
 
 # Copy entrypoint
-COPY ./workers/annotations/condensatenet_worker/entrypoint.py /
+COPY ./workers/annotations/condensatenet/entrypoint.py /
 
 WORKDIR /
 
