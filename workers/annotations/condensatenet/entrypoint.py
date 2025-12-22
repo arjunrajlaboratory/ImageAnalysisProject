@@ -115,7 +115,7 @@ def compute(datasetId, apiUrl, token, params):
         XY, Z, Time = batch
 
         # Get the image for the current channel
-        frame_idx = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel['index'])
+        frame_idx = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel)
         image = np.squeeze(tileClient.getRegion(datasetId, frame=frame_idx))
 
         # Run segmentation
@@ -133,20 +133,18 @@ def compute(datasetId, apiUrl, token, params):
                 # Take the largest contour
                 contour = max(contours, key=len)
                 if len(contour) >= 3:
-                    # Convert from (row, col) to (x, y) format
-                    coords = [(float(c[1]), float(c[0])) for c in contour]
-                    polygon = Polygon(coords).simplify(smoothing, preserve_topology=True)
+                    polygon = Polygon(contour).simplify(smoothing, preserve_topology=True)
                     if polygon.is_valid and not polygon.is_empty:
                         temp_polygons.append(polygon)
 
         # Convert polygons to NimbusImage annotations
         temp_annotations = annotation_tools.polygons_to_annotations(
-            temp_polygons, 
-            datasetId, 
-            XY=XY, 
-            Time=Time, 
-            Z=Z, 
-            tags=tags, 
+            temp_polygons,
+            datasetId,
+            XY=XY,
+            Time=Time,
+            Z=Z,
+            tags=tags,
             channel=channel
         )
         new_annotations.extend(temp_annotations)
