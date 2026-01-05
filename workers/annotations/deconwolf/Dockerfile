@@ -1,12 +1,14 @@
 FROM nimbusimage/image-processing-base:latest
 
-# Install deconwolf build dependencies
+# Install deconwolf build dependencies (including OpenCL for GPU support)
 RUN apt-get update && apt-get install -y \
     cmake \
     libfftw3-dev \
     libgsl-dev \
     libpng-dev \
     libomp-dev \
+    ocl-icd-opencl-dev \
+    opencl-headers \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and build deconwolf

@@ -82,6 +82,12 @@ def interface(image, apiUrl, token):
             'tooltip': 'Number of Richardson-Lucy iterations (higher = sharper but slower, 20-100 typical)',
             'displayOrder': 8,
         },
+        'Use GPU': {
+            'type': 'checkbox',
+            'default': True,
+            'tooltip': 'Use GPU acceleration via OpenCL (requires compatible GPU on server)',
+            'displayOrder': 9,
+        },
     }
     client.setWorkerImageInterface(image, interface)
 
@@ -120,7 +126,7 @@ def generate_psf(NA, wavelength, ni, resxy, resz, nslice, output_path):
     return output_path
 
 
-def deconvolve_stack(z_stack, psf_path, iterations, work_dir):
+def deconvolve_stack(z_stack, psf_path, iterations, work_dir, use_gpu=False):
     """
     Deconvolve a Z-stack using deconwolf's dw command.
 
@@ -129,36 +135,59 @@ def deconvolve_stack(z_stack, psf_path, iterations, work_dir):
         psf_path: Path to PSF TIFF file
         iterations: Number of Richardson-Lucy iterations
         work_dir: Working directory for temporary files
+        use_gpu: Whether to use GPU acceleration via OpenCL
 
     Returns:
-        Deconvolved Z-stack as numpy array
+        Tuple of (deconvolved Z-stack as numpy array, bool indicating if GPU was actually used)
     """
     # Save input stack to temp file
     input_path = os.path.join(work_dir, 'input_stack.tiff')
     tifffile.imwrite(input_path, z_stack, imagej=True)
 
-    # Run deconvolution
-    cmd = [
-        'dw',
-        '--iter', str(iterations),
-        '--threads', str(os.cpu_count() or 4),
-        '--overwrite',
-        input_path,
-        psf_path
-    ]
-    print(f"Running deconvolution: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=work_dir)
-    if result.returncode != 0:
-        raise RuntimeError(f"Deconvolution failed: {result.stderr}")
+    def run_deconvolution(with_gpu):
+        """Helper to run dw with or without GPU"""
+        cmd = [
+            'dw',
+            '--iter', str(iterations),
+            '--threads', str(os.cpu_count() or 4),
+            '--overwrite',
+        ]
+        if with_gpu:
+            cmd.append('--gpu')
+        cmd.extend([input_path, psf_path])
+        print(f"Running deconvolution: {' '.join(cmd)}")
+        return subprocess.run(cmd, capture_output=True, text=True, cwd=work_dir)
+
+    # Try with GPU if requested
+    gpu_actually_used = False
+    if use_gpu:
+        result = run_deconvolution(with_gpu=True)
+        if result.returncode != 0:
+            # Check if it's an OpenCL error
+            if 'cl_util.c' in result.stderr or 'OpenCL' in result.stderr:
+                sendWarning("GPU/OpenCL not available",
+                            info="Falling back to CPU mode.")
+                print(f"GPU failed with OpenCL error, retrying with CPU: {result.stderr}")
+                result = run_deconvolution(with_gpu=False)
+                if result.returncode != 0:
+                    raise RuntimeError(f"Deconvolution failed: {result.stderr}")
+            else:
+                raise RuntimeError(f"Deconvolution failed: {result.stderr}")
+        else:
+            gpu_actually_used = True
+    else:
+        result = run_deconvolution(with_gpu=False)
+        if result.returncode != 0:
+            raise RuntimeError(f"Deconvolution failed: {result.stderr}")
 
     # Output file is prefixed with 'dw_'
     output_path = os.path.join(work_dir, 'dw_input_stack.tiff')
     if not os.path.exists(output_path):
         raise RuntimeError(f"Expected output file not found: {output_path}")
 
-    # Read and return result
+    # Read and return result along with GPU status
     deconvolved = tifffile.imread(output_path)
-    return deconvolved
+    return deconvolved, gpu_actually_used
 
 
 def parse_wavelengths(wavelength_str, channels):
@@ -318,7 +347,8 @@ def compute(datasetId, apiUrl, token, params):
     gc = tileClient.client
 
     if num_z <= 1:
-        sendWarning("Image has only 1 Z-slice. Skipping deconvolution, outputting original image.")
+        sendWarning("Image has only 1 Z-slice.",
+                    info="Skipping deconvolution, outputting original image.")
         copy_image_unchanged(tileClient, datasetId, gc)
         return
 
@@ -331,7 +361,8 @@ def compute(datasetId, apiUrl, token, params):
         if optical_params:
             print(f"Extracted optical parameters from metadata: {optical_params}")
         else:
-            sendWarning("Could not extract ND2 metadata, using manual parameters")
+            sendWarning("Could not extract ND2 metadata.",
+                        info="Using manual parameters.")
 
     # Fall back to manual params
     manual_params = get_manual_params(workerInterface)
@@ -351,6 +382,8 @@ def compute(datasetId, apiUrl, token, params):
 
     # Get deconvolution parameters
     iterations = int(workerInterface.get('Iterations', 50))
+    use_gpu = workerInterface.get('Use GPU', False)
+    print(f"GPU acceleration: {'enabled' if use_gpu else 'disabled'}")
 
     # Calculate PSF size (should be >= 2*num_z - 1)
     psf_nslice = 2 * num_z - 1
@@ -412,13 +445,17 @@ def compute(datasetId, apiUrl, token, params):
                              f"XY={xy}, T={t}, Channel={c}")
 
                 # Deconvolve
-                deconvolved = deconvolve_stack(
+                deconvolved, gpu_was_used = deconvolve_stack(
                     z_stack,
                     channel_psf[c],
                     iterations,
-                    work_dir
+                    work_dir,
+                    use_gpu=use_gpu
                 )
                 deconvolved_stacks[(xy, t, c)] = deconvolved
+                # Track if GPU was actually used (will be False if fallback occurred)
+                if not gpu_was_used and use_gpu:
+                    use_gpu = False  # Don't try GPU again for remaining stacks
 
             processed_groups += 1
 
@@ -470,6 +507,7 @@ def compute(datasetId, apiUrl, token, params):
             'resxy_nm': optical_params['resxy'],
             'resz_nm': optical_params['resz'],
             'wavelengths': channel_wavelengths,
+            'gpu_used': use_gpu,
         })
         print("Uploaded file")
 

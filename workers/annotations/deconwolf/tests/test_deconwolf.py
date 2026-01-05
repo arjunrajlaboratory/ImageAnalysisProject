@@ -556,3 +556,70 @@ def test_auto_extract_fallback(
     psf_args = psf_call[0][0]
     assert '0.9' in psf_args  # Manual NA
     assert '250.0' in psf_args  # Manual resxy (converted to float)
+
+
+def test_gpu_flag_enabled(
+    mock_tile_client, mock_large_image, mock_subprocess, mock_tifffile
+):
+    """Test that --gpu flag is added when GPU is enabled"""
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': {'0': True},
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+            'Use GPU': True,  # GPU enabled
+        }
+    }
+
+    with patch('os.path.exists', return_value=True):
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # Find the deconvolution command (dw, not dw_bw)
+    dw_calls = [c for c in mock_subprocess.call_args_list if c[0][0][0] == 'dw']
+    assert len(dw_calls) >= 1
+    dw_args = dw_calls[0][0][0]
+    assert '--gpu' in dw_args
+
+
+def test_gpu_flag_disabled(
+    mock_tile_client, mock_large_image, mock_subprocess, mock_tifffile
+):
+    """Test that --gpu flag is NOT added when GPU is disabled"""
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': {'0': True},
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+            'Use GPU': False,  # GPU disabled
+        }
+    }
+
+    with patch('os.path.exists', return_value=True):
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # Find the deconvolution command (dw, not dw_bw)
+    dw_calls = [c for c in mock_subprocess.call_args_list if c[0][0][0] == 'dw']
+    assert len(dw_calls) >= 1
+    dw_args = dw_calls[0][0][0]
+    assert '--gpu' not in dw_args
+
+
+def test_interface_has_gpu_option(mock_worker_preview_client):
+    """Test that interface includes GPU option"""
+    interface('test_image', 'http://test-api', 'test-token')
+
+    interface_data = mock_worker_preview_client.setWorkerImageInterface.call_args[0][1]
+
+    assert 'Use GPU' in interface_data
+    assert interface_data['Use GPU']['type'] == 'checkbox'
+    assert interface_data['Use GPU']['default'] == True  # Default to GPU, will fallback if unavailable
