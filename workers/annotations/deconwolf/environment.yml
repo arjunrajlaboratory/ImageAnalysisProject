@@ -1,0 +1,14 @@
+name: worker
+channels:
+- conda-forge
+- defaults
+dependencies:
+- python=3.11
+- pip
+- numpy>=2.0
+- shapely>=2.0.6
+- scikit-image
+- libtiff
+- openslide
+- libvips
+- tifffile

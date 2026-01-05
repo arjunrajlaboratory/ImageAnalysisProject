@@ -209,6 +209,15 @@ services:
     depends_on:
       - image-processing-base
 
+  deconwolf:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/deconwolf/Dockerfile
+    image: annotations/deconwolf:latest
+    profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
+
   # AI workers
   ai_analysis:
     build:
@@ -417,4 +426,13 @@ services:
     image: annotations/registration:test
     depends_on:
       - registration
+    profiles: ["test"]
+
+  deconwolf_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/deconwolf/tests/Dockerfile_Test
+    image: annotations/deconwolf:test
+    depends_on:
+      - deconwolf
     profiles: ["test"]
