@@ -212,7 +212,7 @@ services:
   deconwolf:
     build:
       context: .
-      dockerfile: ./workers/annotations/deconwolf/Dockerfile
+      dockerfile: ./workers/annotations/deconwolf/${DOCKERFILE:-Dockerfile}
     image: annotations/deconwolf:latest
     profiles: ["worker", "image-processing"]
     depends_on:

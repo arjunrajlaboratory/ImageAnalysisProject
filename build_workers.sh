@@ -16,6 +16,10 @@
 #   --run-tests-only     Run tests without rebuilding images
 #   --build-samples-and-samples-tests-only     Build samples and samples tests only
 #
+# Environment Variables:
+#   MAC_DEVELOPMENT_MODE=true    Force use of Dockerfile_M1 (CPU-only, lighter images)
+#                                Useful for Mac development where GPU Dockerfiles won't work
+#
 # Examples:
 #   # Build all workers
 #   ./build_workers.sh
@@ -52,12 +56,16 @@ export COMPOSE_PARALLEL_LIMIT=1
 ARCH=$(uname -m)
 echo "Architecture: $ARCH"
 
-# Set Dockerfile based on architecture
-if [ "$ARCH" == "arm64" ]; then
-    echo "Compiling for M1 architecture"
+# Set Dockerfile based on architecture and development mode
+# MAC_DEVELOPMENT_MODE=true forces use of Dockerfile_M1 (CPU-only, lighter images)
+# This is useful for Mac development where GPU Dockerfiles won't work
+# Note that most workers just use the Dockerfile, so only those with
+# /${DOCKERFILE:-Dockerfile} will use the Dockerfile_M1
+if [ "$ARCH" == "arm64" ] || [ "$MAC_DEVELOPMENT_MODE" == "true" ]; then
+    echo "Compiling for M1/Mac development mode"
     export DOCKERFILE="Dockerfile_M1"
 else
-    echo "Compiling for Intel architecture"
+    echo "Compiling for production (GPU-enabled where available)"
     export DOCKERFILE="Dockerfile"
 fi
 

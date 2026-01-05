@@ -32,6 +32,9 @@ This repository contains Docker-based workers for NimbusImage, a cloud platform 
 
 # Build GPU/ML workers (cellpose, SAM2, piscis, stardist, condensatenet)
 ./build_machine_learning_workers.sh
+
+# Mac development mode (forces CPU-only Dockerfile_M1 for workers with GPU defaults)
+MAC_DEVELOPMENT_MODE=true ./build_workers.sh deconwolf
 ```
 
 ## Architecture
@@ -277,7 +280,10 @@ pixelSize = params['scales']['pixelSize']  # {'unit': 'mm', 'value': 0.000219}
 - Base images defined in `workers/base_docker_images/`
 - Workers inherit from `nimbusimage/worker-base:latest` or `nimbusimage/image-processing-base:latest`
 - Docker labels identify worker type: `isPropertyWorker`, `isAnnotationWorker`, `annotationShape`, `interfaceName`, `interfaceCategory`
-- Architecture-aware builds: `Dockerfile` (x86_64) and `Dockerfile_M1` (arm64)
+- Architecture-aware builds: `Dockerfile` (x86_64/production) and `Dockerfile_M1` (arm64/Mac development)
+- GPU workers (deconwolf, condensatenet, etc.) use NVIDIA CUDA base images by default
+  - Set `MAC_DEVELOPMENT_MODE=true` to build CPU-only versions on Mac
+  - GPU workers have automatic CPU fallback at runtime if OpenCL/CUDA unavailable
 
 ### Testing
 
@@ -300,4 +306,5 @@ When creating new workers, use these as templates:
 - **Property worker (points)**: `workers/properties/points/point_circle_intensity_worker/entrypoint.py`
 - **Annotation worker (ML)**: `workers/annotations/cellposesam/entrypoint.py`
 - **Image processing worker**: `workers/annotations/histogram_matching/entrypoint.py`
+- **Image processing worker (GPU)**: `workers/annotations/deconwolf/entrypoint.py` - GPU-accelerated with CPU fallback
 - **Sample/test interface**: `workers/properties/blobs/sample_interface_worker/entrypoint.py`
