@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04 as base
+FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04 AS base
 LABEL isUPennContrastWorker=True
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 
@@ -22,6 +22,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libfftw3-dev \
   libgsl-dev \
   libpng-dev \
+  libtiff-dev \
   libomp-dev \
   # OpenCL for GPU support
   ocl-icd-opencl-dev \
@@ -47,7 +48,7 @@ RUN git clone https://github.com/elgw/deconwolf.git /deconwolf && \
     cmake --build . -j$(nproc) && \
     cmake --install . --prefix /usr
 
-FROM base as build
+FROM base AS build
 
 # Copy and create conda environment
 COPY ./workers/annotations/deconwolf/environment.yml /
@@ -62,6 +63,9 @@ RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 # Install annotation_utilities
 COPY ./annotation_utilities /annotation_utilities
 RUN pip install /annotation_utilities
+
+# Install large_image for image processing (zarr source supports multi-dimensional images)
+RUN pip install large-image-source-zarr large-image-source-tiff large-image-converter large-image --find-links https://girder.github.io/large_image_wheels
 
 # Copy entrypoint
 COPY ./workers/annotations/deconwolf/entrypoint.py /
