@@ -24,12 +24,15 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libpng-dev \
   libtiff-dev \
   libomp-dev \
-  # OpenCL for GPU support
+  # OpenCL for GPU support (generic loader and headers)
   ocl-icd-opencl-dev \
   opencl-headers \
-  # NVIDIA OpenCL ICD
-  nvidia-opencl-dev && \
+  clinfo && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Register NVIDIA OpenCL driver (ICD file tells loader where to find it)
+RUN mkdir -p /etc/OpenCL/vendors && \
+    echo "libnvidia-opencl.so.1" > /etc/OpenCL/vendors/nvidia.icd
 
 ENV PATH="/root/miniforge3/bin:$PATH"
 ARG PATH="/root/miniforge3/bin:$PATH"

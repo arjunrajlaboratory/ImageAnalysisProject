@@ -623,3 +623,53 @@ def test_interface_has_gpu_option(mock_worker_preview_client):
     assert 'Use GPU' in interface_data
     assert interface_data['Use GPU']['type'] == 'checkbox'
     assert interface_data['Use GPU']['default'] == True  # Default to GPU, will fallback if unavailable
+
+
+def test_gpu_fallback_to_cpu(
+    mock_tile_client, mock_large_image, mock_tifffile
+):
+    """Test that GPU failure triggers automatic fallback to CPU mode"""
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': {'0': True},
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+            'Use GPU': True,  # GPU enabled, but will fail
+        }
+    }
+
+    def mock_run_side_effect(cmd, *args, **kwargs):
+        result = MagicMock()
+        if cmd[0] == 'dw':  # Deconvolution command
+            if '--gpu' in cmd:
+                # First call with GPU fails with OpenCL error
+                result.returncode = 1
+                result.stderr = "Error in cl_util.c: OpenCL initialization failed"
+                result.stdout = ""
+            else:
+                # CPU fallback succeeds
+                result.returncode = 0
+                result.stderr = ""
+                result.stdout = "Deconvolution complete"
+        else:
+            # PSF generation always succeeds
+            result.returncode = 0
+            result.stderr = ""
+            result.stdout = ""
+        return result
+
+    with patch('subprocess.run', side_effect=mock_run_side_effect):
+        with patch('os.path.exists', return_value=True):
+            with patch('entrypoint.sendWarning') as mock_warning:
+                compute('test_dataset', 'http://test-api', 'test-token', params)
+
+                # Verify warning was sent about GPU fallback
+                mock_warning.assert_called()
+                warning_calls = [c for c in mock_warning.call_args_list
+                                 if 'GPU' in str(c) or 'fallback' in str(c).lower()]
+                assert len(warning_calls) >= 1
