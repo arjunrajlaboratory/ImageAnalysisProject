@@ -2,13 +2,11 @@ import numpy as np
 
 from huggingface_hub import get_collection, HfFileSystem
 from piscis import Piscis
-from piscis.paths import CACHE_DIR
 
 Piscis(model_name='20230616')
 Piscis(model_name='20230709')
 Piscis(model_name='20230905')
-
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+Piscis(model_name='20251212')
 
 fs = HfFileSystem()
 collection_name = 'rajlab/raj-lab-piscis-models-6628d842730129abe061bef5'
