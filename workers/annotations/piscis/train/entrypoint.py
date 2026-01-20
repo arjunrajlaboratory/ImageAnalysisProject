@@ -4,7 +4,7 @@ import sys
 import datetime
 
 import numpy as np
-from jax import random
+import torch
 from rasterio.features import rasterize
 from shapely.geometry import Polygon
 
@@ -26,7 +26,7 @@ def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     models = sorted(path.stem for path in MODELS_DIR.glob('*'))
-    girder_models = [model['name'] for model in utils.list_girder_models(client.client)[0]]
+    girder_models = [model['model_name'] for model in utils.list_girder_models(client.client)[0]]
     models = sorted(list(set(models + girder_models)))
 
     current_datetime = datetime.datetime.now()
@@ -43,12 +43,12 @@ def interface(image, apiUrl, token):
         'Initial Model Name': {
             'type': 'select',
             'items': models,
-            'default': '20230905',
+            'default': '20251212',
             'displayOrder': 1,
         },
         'Learning Rate': {
             'type': 'text',
-            'default': 0.2,
+            'default': 0.1,
             'displayOrder': 5,
         },
         'Weight Decay': {
@@ -219,31 +219,26 @@ def compute(datasetId, apiUrl, token, params):
                   info="No valid points were found in any of the training regions. Please ensure your regions contain point annotations.")
         raise ValueError("No valid points found in any region.")
 
-    key, _ = random.split(random.PRNGKey(random_seed), 2)
-    dataset_path = f'{new_model_name}.npz'
-    generate_dataset(dataset_path, images, coords, key, train_size=1., test_size=0.)
+    sq = np.random.SeedSequence(random_seed)
+    child_seeds = sq.generate_state(2, dtype=np.uint32)
+    generate_dataset(new_model_name, images, coords, int(child_seeds[0]), train_size=1., test_size=0.)
 
     gc = annotationClient.client
-    utils.download_girder_cache(gc, mode='train')
+    utils.download_girder_model(gc, initial_model_name)
 
     train_model(
         model_name=new_model_name,
-        dataset_path=dataset_path,
+        dataset_path=new_model_name,
         initial_model_name=initial_model_name,
-        random_seed=random_seed,
+        random_seed=int(child_seeds[1]),
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         epochs=epochs,
         warmup_fraction=0.1,
-        save_checkpoints=False
+        device='cuda' if torch.cuda.is_available() else 'cpu'
     )
 
     utils.upload_girder_model(gc, new_model_name)
-    try:
-        utils.upload_girder_cache(gc, mode='train')
-    except Exception as e:
-        # Log the error but continue execution
-        print(f"Warning: Failed to upload cache: {e}", file=sys.stderr)
 
 
 if __name__ == '__main__':

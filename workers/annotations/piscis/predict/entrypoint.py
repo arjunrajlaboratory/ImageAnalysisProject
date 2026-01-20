@@ -7,6 +7,7 @@ from functools import partial
 import argparse
 import json
 import sys
+import torch
 
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'False'
@@ -16,7 +17,7 @@ def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     models = sorted(path.stem for path in MODELS_DIR.glob('*'))
-    girder_models = [model['name'] for model in utils.list_girder_models(client.client)[0]]
+    girder_models = [model['model_name'] for model in utils.list_girder_models(client.client)[0]]
     models = sorted(list(set(models + girder_models)))
 
     # Available types: number, text, tags, layer
@@ -61,7 +62,7 @@ def interface(image, apiUrl, token):
         'Model': {
             'type': 'select',
             'items': models,
-            'default': '20230905',
+            'default': '20251212',
             'tooltip': 'Select the model to use for segmentation. These can be pre-trained models or\nmodels you have generated yourself with Piscis Train. '
                        'The model determines how sensitive the point detection is.',
             'noCache': True,
@@ -88,7 +89,7 @@ def interface(image, apiUrl, token):
             'type': 'number',
             'min': 0,
             'max': 9,
-            'default': 1.0,
+            'default': 0.5,
             'tooltip': 'The threshold parameter honestly does not change much.\nUse a different model if you need to change specificity.',
             'displayOrder': 11,
         },
@@ -139,18 +140,11 @@ def compute(datasetId, apiUrl, token, params):
 
     gc = worker.annotationClient.client
     utils.download_girder_model(gc, model_name)
-    utils.download_girder_cache(gc, mode='predict')
 
-    model = Piscis(model_name=model_name, batch_size=1)
+    model = Piscis(model_name=model_name, batch_size=1, device='cuda' if torch.cuda.is_available() else 'cpu')
     f_process = partial(run_model, model=model, stack=stack, scale=scale, threshold=threshold)
     worker.process(f_process, f_annotation='point',
                    stack_zs='all' if stack else None, progress_text='Running Piscis')
-
-    try:
-        utils.upload_girder_cache(gc, mode='predict')
-    except Exception as e:
-        # Log the error but continue execution
-        print(f"Warning: Failed to upload cache: {e}", file=sys.stderr)
 
 
 if __name__ == '__main__':

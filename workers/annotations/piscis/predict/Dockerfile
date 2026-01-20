@@ -29,12 +29,15 @@ ENV PATH="/root/miniconda3/bin:$PATH"
 ARG PATH="/root/miniconda3/bin:$PATH"
 
 RUN wget \
-    https://repo.anaconda.com/miniconda/Miniconda3-py39_4.12.0-Linux-x86_64.sh \
+    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
     && mkdir /root/.conda \
-    && bash Miniconda3-py39_4.12.0-Linux-x86_64.sh -b \
-    && rm -f Miniconda3-py39_4.12.0-Linux-x86_64.sh
+    && bash Miniconda3-latest-Linux-x86_64.sh -b \
+    && rm -f Miniconda3-latest-Linux-x86_64.sh
 
 FROM base as build
+
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 COPY ./environment.yml /
 RUN conda env create --file /environment.yml
@@ -44,11 +47,11 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
-RUN pip install "jax[cuda12]==0.7.2" "jaxlib==0.7.2" && \
-    pip install "flax<0.12.0" piscis
-# RUN pip install -U "jax[cuda12_pip]==0.4.26" "jaxlib==0.4.26+cuda12.cudnn89" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-# RUN pip install piscis
 
+RUN pip install piscis==1.0.0
+RUN pip install flax
+
+WORKDIR /
 RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 RUN pip install /ImageAnalysisProject/worker_client
