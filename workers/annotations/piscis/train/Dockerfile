@@ -51,7 +51,6 @@ RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 
 RUN git clone https://github.com/zjniu/Piscis.git
 WORKDIR /Piscis
-RUN git fetch origin pytorch-port && git checkout 609faff
 RUN pip install .
 RUN pip install flax
 

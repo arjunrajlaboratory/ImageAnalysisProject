@@ -48,10 +48,7 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
-RUN git clone https://github.com/zjniu/Piscis.git
-WORKDIR /Piscis
-RUN git fetch origin pytorch-port && git checkout 609faff
-RUN pip install .
+RUN pip install piscis==1.0.0
 RUN pip install flax
 
 WORKDIR /
