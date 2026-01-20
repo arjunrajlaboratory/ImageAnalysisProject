@@ -88,6 +88,22 @@ def interface(image, apiUrl, token):
             'tooltip': 'Use GPU acceleration via OpenCL (requires compatible GPU on server)',
             'displayOrder': 9,
         },
+        'Tile Size (pixels)': {
+            'type': 'number',
+            'min': 256,
+            'max': 8192,
+            'default': 1024,
+            'tooltip': 'Maximum tile size for processing large images. Images larger than this will be processed in tiles.',
+            'displayOrder': 10,
+        },
+        'Tile Overlap (pixels)': {
+            'type': 'number',
+            'min': 0,
+            'max': 500,
+            'default': 100,
+            'tooltip': 'Overlap between tiles to reduce edge artifacts when tiling is used.',
+            'displayOrder': 11,
+        },
     }
     client.setWorkerImageInterface(image, interface)
 
@@ -126,7 +142,8 @@ def generate_psf(NA, wavelength, ni, resxy, resz, nslice, output_path):
     return output_path
 
 
-def deconvolve_stack(z_stack, psf_path, iterations, work_dir, use_gpu=False):
+def deconvolve_stack(z_stack, psf_path, iterations, work_dir, use_gpu=False,
+                     tile_size=1024, tile_overlap=100):
     """
     Deconvolve a Z-stack using deconwolf's dw command.
 
@@ -136,6 +153,8 @@ def deconvolve_stack(z_stack, psf_path, iterations, work_dir, use_gpu=False):
         iterations: Number of Richardson-Lucy iterations
         work_dir: Working directory for temporary files
         use_gpu: Whether to use GPU acceleration via OpenCL
+        tile_size: Maximum tile size in pixels for large images
+        tile_overlap: Overlap between tiles in pixels
 
     Returns:
         Tuple of (deconvolved Z-stack as numpy array, bool indicating if GPU was actually used)
@@ -143,6 +162,10 @@ def deconvolve_stack(z_stack, psf_path, iterations, work_dir, use_gpu=False):
     # Save input stack to temp file
     input_path = os.path.join(work_dir, 'input_stack.tiff')
     tifffile.imwrite(input_path, z_stack, imagej=True)
+
+    # Check if we need tiling based on image dimensions
+    _, height, width = z_stack.shape
+    use_tiling = max(height, width) > tile_size
 
     def run_deconvolution(with_gpu):
         """Helper to run dw with or without GPU"""
@@ -154,6 +177,10 @@ def deconvolve_stack(z_stack, psf_path, iterations, work_dir, use_gpu=False):
         ]
         if with_gpu:
             cmd.append('--gpu')
+        if use_tiling:
+            cmd.extend(['--tilesize', str(tile_size)])
+            cmd.extend(['--tilepad', str(tile_overlap)])
+            print(f"Using tiling: size={tile_size}, overlap={tile_overlap} (image is {width}x{height})")
         cmd.extend([input_path, psf_path])
         print(f"Running deconvolution: {' '.join(cmd)}")
         return subprocess.run(cmd, capture_output=True, text=True, cwd=work_dir)
@@ -385,6 +412,11 @@ def compute(datasetId, apiUrl, token, params):
     use_gpu = workerInterface.get('Use GPU', False)
     print(f"GPU acceleration: {'enabled' if use_gpu else 'disabled'}")
 
+    # Get tiling parameters
+    tile_size = int(workerInterface.get('Tile Size (pixels)', 1024))
+    tile_overlap = int(workerInterface.get('Tile Overlap (pixels)', 100))
+    print(f"Tiling: size={tile_size}, overlap={tile_overlap}")
+
     # Calculate PSF size (should be >= 2*num_z - 1)
     psf_nslice = 2 * num_z - 1
 
@@ -450,7 +482,9 @@ def compute(datasetId, apiUrl, token, params):
                     channel_psf[c],
                     iterations,
                     work_dir,
-                    use_gpu=use_gpu
+                    use_gpu=use_gpu,
+                    tile_size=tile_size,
+                    tile_overlap=tile_overlap
                 )
                 deconvolved_stacks[(xy, t, c)] = deconvolved
                 # Track if GPU was actually used (will be False if fallback occurred)
@@ -508,6 +542,8 @@ def compute(datasetId, apiUrl, token, params):
             'resz_nm': optical_params['resz'],
             'wavelengths': channel_wavelengths,
             'gpu_used': use_gpu,
+            'tile_size': tile_size,
+            'tile_overlap': tile_overlap,
         })
         print("Uploaded file")
 

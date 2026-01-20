@@ -673,3 +673,251 @@ def test_gpu_fallback_to_cpu(
                 warning_calls = [c for c in mock_warning.call_args_list
                                  if 'GPU' in str(c) or 'fallback' in str(c).lower()]
                 assert len(warning_calls) >= 1
+
+
+# ============== Tiling Tests ==============
+
+def test_interface_has_tiling_options(mock_worker_preview_client):
+    """Test that interface includes tiling options"""
+    interface('test_image', 'http://test-api', 'test-token')
+
+    interface_data = mock_worker_preview_client.setWorkerImageInterface.call_args[0][1]
+
+    assert 'Tile Size (pixels)' in interface_data
+    assert interface_data['Tile Size (pixels)']['type'] == 'number'
+    assert interface_data['Tile Size (pixels)']['default'] == 1024
+    assert interface_data['Tile Size (pixels)']['min'] == 256
+    assert interface_data['Tile Size (pixels)']['max'] == 8192
+
+    assert 'Tile Overlap (pixels)' in interface_data
+    assert interface_data['Tile Overlap (pixels)']['type'] == 'number'
+    assert interface_data['Tile Overlap (pixels)']['default'] == 100
+    assert interface_data['Tile Overlap (pixels)']['min'] == 0
+    assert interface_data['Tile Overlap (pixels)']['max'] == 500
+
+
+def test_deconvolve_stack_no_tiling_small_image(mock_subprocess, mock_tifffile):
+    """Test that tiling is NOT used when image is smaller than tile size"""
+    # 512x512 image, tile_size=1024, so no tiling needed
+    z_stack = np.random.randint(0, 1000, (3, 512, 512), dtype=np.uint16)
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        output_path = os.path.join(work_dir, 'dw_input_stack.tiff')
+        with open(output_path, 'w') as f:
+            f.write('fake')
+
+        deconvolve_stack(z_stack, '/tmp/psf.tif', 50, work_dir,
+                         tile_size=1024, tile_overlap=100)
+
+        # Check subprocess was called without tiling flags
+        dw_call = mock_subprocess.call_args[0][0]
+        assert '--tilesize' not in dw_call
+        assert '--tilepad' not in dw_call
+
+
+def test_deconvolve_stack_tiling_large_image(mock_subprocess, mock_tifffile):
+    """Test that tiling IS used when image is larger than tile size"""
+    # 2048x2048 image, tile_size=1024, so tiling should be used
+    z_stack = np.random.randint(0, 1000, (3, 2048, 2048), dtype=np.uint16)
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        output_path = os.path.join(work_dir, 'dw_input_stack.tiff')
+        with open(output_path, 'w') as f:
+            f.write('fake')
+
+        deconvolve_stack(z_stack, '/tmp/psf.tif', 50, work_dir,
+                         tile_size=1024, tile_overlap=100)
+
+        # Check subprocess was called with tiling flags
+        dw_call = mock_subprocess.call_args[0][0]
+        assert '--tilesize' in dw_call
+        assert '--tilepad' in dw_call
+        # Check values
+        tilesize_idx = dw_call.index('--tilesize') + 1
+        tilepad_idx = dw_call.index('--tilepad') + 1
+        assert dw_call[tilesize_idx] == '1024'
+        assert dw_call[tilepad_idx] == '100'
+
+
+def test_deconvolve_stack_tiling_custom_values(mock_subprocess, mock_tifffile):
+    """Test tiling with custom tile size and overlap"""
+    # 4096x4096 image with custom tile settings
+    z_stack = np.random.randint(0, 1000, (3, 4096, 4096), dtype=np.uint16)
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        output_path = os.path.join(work_dir, 'dw_input_stack.tiff')
+        with open(output_path, 'w') as f:
+            f.write('fake')
+
+        deconvolve_stack(z_stack, '/tmp/psf.tif', 50, work_dir,
+                         tile_size=2048, tile_overlap=200)
+
+        dw_call = mock_subprocess.call_args[0][0]
+        tilesize_idx = dw_call.index('--tilesize') + 1
+        tilepad_idx = dw_call.index('--tilepad') + 1
+        assert dw_call[tilesize_idx] == '2048'
+        assert dw_call[tilepad_idx] == '200'
+
+
+def test_deconvolve_stack_tiling_asymmetric_image(mock_subprocess, mock_tifffile):
+    """Test tiling is triggered when only one dimension exceeds tile size"""
+    # 512 height x 2048 width, should trigger tiling because max(512, 2048) > 1024
+    z_stack = np.random.randint(0, 1000, (3, 512, 2048), dtype=np.uint16)
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        output_path = os.path.join(work_dir, 'dw_input_stack.tiff')
+        with open(output_path, 'w') as f:
+            f.write('fake')
+
+        deconvolve_stack(z_stack, '/tmp/psf.tif', 50, work_dir,
+                         tile_size=1024, tile_overlap=100)
+
+        dw_call = mock_subprocess.call_args[0][0]
+        assert '--tilesize' in dw_call
+        assert '--tilepad' in dw_call
+
+
+def test_deconvolve_stack_tiling_edge_case_equal(mock_subprocess, mock_tifffile):
+    """Test that image exactly equal to tile size does NOT trigger tiling"""
+    # 1024x1024 image, tile_size=1024, no tiling (max(h,w) > tile_size is False)
+    z_stack = np.random.randint(0, 1000, (3, 1024, 1024), dtype=np.uint16)
+
+    with tempfile.TemporaryDirectory() as work_dir:
+        output_path = os.path.join(work_dir, 'dw_input_stack.tiff')
+        with open(output_path, 'w') as f:
+            f.write('fake')
+
+        deconvolve_stack(z_stack, '/tmp/psf.tif', 50, work_dir,
+                         tile_size=1024, tile_overlap=100)
+
+        dw_call = mock_subprocess.call_args[0][0]
+        assert '--tilesize' not in dw_call
+        assert '--tilepad' not in dw_call
+
+
+@pytest.fixture
+def mock_tile_client_large_image():
+    """Mock tile client for large images that would trigger tiling"""
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_client:
+        client = mock_client.return_value
+        client.tiles = {
+            'frames': [
+                {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
+                {'IndexXY': 0, 'IndexZ': 1, 'IndexT': 0, 'IndexC': 0},
+                {'IndexXY': 0, 'IndexZ': 2, 'IndexT': 0, 'IndexC': 0},
+            ],
+            'IndexRange': {
+                'IndexXY': 1,
+                'IndexZ': 3,
+                'IndexT': 1,
+                'IndexC': 1
+            },
+            'channels': ['DAPI'],
+            'mm_x': 0.000325,
+            'mm_y': 0.000325,
+            'magnification': 20,
+            'dtype': np.uint16
+        }
+        # Return large 2048x2048 images
+        client.getRegion.return_value = np.random.randint(0, 1000, (2048, 2048), dtype=np.uint16)
+        mock_gc = MagicMock()
+        mock_gc.uploadFileToFolder.return_value = {'itemId': 'test_item_id'}
+        client.client = mock_gc
+        yield client
+
+
+def test_compute_with_tiling_large_image(
+    mock_tile_client_large_image, mock_large_image, mock_subprocess, mock_tifffile
+):
+    """Test full compute workflow with a large image that triggers tiling"""
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': {'0': True},
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+            'Use GPU': False,
+            'Tile Size (pixels)': 1024,
+            'Tile Overlap (pixels)': 100,
+        }
+    }
+
+    with patch('os.path.exists', return_value=True):
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # Find the deconvolution command (dw, not dw_bw)
+    dw_calls = [c for c in mock_subprocess.call_args_list if c[0][0][0] == 'dw']
+    assert len(dw_calls) >= 1
+
+    # Verify tiling was used (since image is 2048x2048 > 1024)
+    dw_args = dw_calls[0][0][0]
+    assert '--tilesize' in dw_args
+    assert '--tilepad' in dw_args
+
+
+def test_compute_without_tiling_small_image(
+    mock_tile_client, mock_large_image, mock_subprocess, mock_tifffile
+):
+    """Test full compute workflow with a small image that doesn't trigger tiling"""
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': {'0': True},
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+            'Use GPU': False,
+            'Tile Size (pixels)': 1024,
+            'Tile Overlap (pixels)': 100,
+        }
+    }
+
+    with patch('os.path.exists', return_value=True):
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # Find the deconvolution command (dw, not dw_bw)
+    dw_calls = [c for c in mock_subprocess.call_args_list if c[0][0][0] == 'dw']
+    assert len(dw_calls) >= 1
+
+    # Verify tiling was NOT used (since image is 512x512 < 1024)
+    dw_args = dw_calls[0][0][0]
+    assert '--tilesize' not in dw_args
+    assert '--tilepad' not in dw_args
+
+
+def test_compute_tiling_metadata_saved(
+    mock_tile_client_large_image, mock_large_image, mock_subprocess, mock_tifffile
+):
+    """Test that tiling parameters are saved in metadata"""
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': {'0': True},
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+            'Use GPU': False,
+            'Tile Size (pixels)': 2048,
+            'Tile Overlap (pixels)': 150,
+        }
+    }
+
+    with patch('os.path.exists', return_value=True):
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # Verify metadata was added with tiling info
+    metadata_call = mock_tile_client_large_image.client.addMetadataToItem.call_args[0][1]
+    assert 'tile_size' in metadata_call
+    assert 'tile_overlap' in metadata_call
+    assert metadata_call['tile_size'] == 2048
+    assert metadata_call['tile_overlap'] == 150
