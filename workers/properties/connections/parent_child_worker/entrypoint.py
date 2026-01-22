@@ -128,18 +128,14 @@ def compute(datasetId, apiUrl, token, params):
         sendProgress(0.3, 'Computing track IDs',
                      "Finding connected components")
 
-        print(connectionList)
         filtered_connections = [
             conn for conn in connectionList
             if (not ignore_self_connections or conn['parentId'] != conn['childId']) and
             conn['childId'] in annotationConnectionList and
             conn['parentId'] in annotationConnectionList
         ]
-        print(filtered_connections)
         track_ids = find_connected_components(
             filtered_connections, annotationConnectionList.keys())
-
-    print(track_ids)
 
     total_connections = len(connectionList)
     for i, connection in enumerate(connectionList):
