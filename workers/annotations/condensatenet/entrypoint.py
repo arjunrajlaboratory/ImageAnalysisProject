@@ -118,8 +118,19 @@ def compute(datasetId, apiUrl, token, params):
         frame_idx = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel)
         image = np.squeeze(tileClient.getRegion(datasetId, frame=frame_idx))
 
+        # Pad image to dimensions divisible by 32 for FPN compatibility
+        original_shape = image.shape[:2]
+        pad_h = (32 - original_shape[0] % 32) % 32
+        pad_w = (32 - original_shape[1] % 32) % 32
+        if pad_h > 0 or pad_w > 0:
+            image = np.pad(image, ((0, pad_h), (0, pad_w)), mode='reflect')
+
         # Run segmentation
         instances = pipeline.segment(image)
+
+        # Crop back to original size
+        if pad_h > 0 or pad_w > 0:
+            instances = instances[:original_shape[0], :original_shape[1]]
         num_instances = instances.max()
         print(f"Frame (XY={XY}, Z={Z}, T={Time}): found {num_instances} condensates")
 
