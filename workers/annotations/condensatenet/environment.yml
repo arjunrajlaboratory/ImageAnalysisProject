@@ -7,5 +7,6 @@ dependencies:
   - pip
   - shapely
   - scikit-image
+  - rasterio
   - pip:
     - rtree
