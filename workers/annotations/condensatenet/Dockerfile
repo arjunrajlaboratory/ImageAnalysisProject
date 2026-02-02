@@ -44,6 +44,14 @@ RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 COPY ./annotation_utilities /annotation_utilities
 RUN pip install /annotation_utilities
 
+# Install DeepTile for tiling support
+RUN git clone https://github.com/arjunrajlaboratory/DeepTile
+RUN pip install -e /DeepTile
+
+# Install worker_client for batch processing
+COPY ./worker_client /worker_client
+RUN pip install /worker_client
+
 # Install CondensateNet package
 RUN pip install git+https://github.com/arjunrajlaboratory/condensatenet.git
 

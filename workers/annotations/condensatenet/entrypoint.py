@@ -1,18 +1,21 @@
 import argparse
 import json
 import sys
-from itertools import product
+from functools import partial
 
-import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers
-import annotation_client.tiles as tiles
-
-import annotation_utilities.annotation_tools as annotation_tools
-import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import numpy as np
 from shapely.geometry import Polygon
-from skimage.measure import find_contours
+
+import deeptile
+from deeptile.core.lift import lift
+from deeptile.core.data import Output
+from deeptile.core.utils import compute_dask
+from deeptile.extensions.segmentation import mask_to_polygons
+from deeptile.extensions.stitch import stitch_polygons
+
+from worker_client import WorkerClient
 
 from condensatenet import CondensateNetPipeline
 
@@ -25,14 +28,32 @@ def interface(image, apiUrl, token):
     interface = {
         'Batch XY': {
             'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the XY positions you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
+            },
             'displayOrder': 0
         },
         'Batch Z': {
             'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Z slices you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
+            },
             'displayOrder': 1
         },
         'Batch Time': {
             'type': 'text',
+            'vueAttrs': {
+                'placeholder': 'ex. 1-3, 5-8',
+                'label': 'Enter the Time points you want to iterate over',
+                'persistentPlaceholder': True,
+                'filled': True,
+            },
             'displayOrder': 2
         },
         'Probability Threshold': {
@@ -40,6 +61,7 @@ def interface(image, apiUrl, token):
             'min': 0.0,
             'max': 1.0,
             'default': 0.15,
+            'tooltip': 'Minimum confidence for detection (0-1)',
             'displayOrder': 3,
         },
         'Min Size': {
@@ -47,6 +69,8 @@ def interface(image, apiUrl, token):
             'min': 1,
             'max': 1000,
             'default': 15,
+            'unit': 'pixels',
+            'tooltip': 'Minimum condensate size in pixels',
             'displayOrder': 4,
         },
         'Max Size': {
@@ -54,6 +78,8 @@ def interface(image, apiUrl, token):
             'min': 10,
             'max': 10000,
             'default': 600,
+            'unit': 'pixels',
+            'tooltip': 'Maximum condensate size in pixels',
             'displayOrder': 5,
         },
         'Smoothing': {
@@ -61,46 +87,60 @@ def interface(image, apiUrl, token):
             'min': 0,
             'max': 3,
             'default': 0.3,
+            'tooltip': 'Polygon simplification tolerance',
             'displayOrder': 6,
+        },
+        'Padding': {
+            'type': 'number',
+            'min': -20,
+            'max': 20,
+            'default': 0,
+            'unit': 'pixels',
+            'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
+            'displayOrder': 7,
+        },
+        'Tile Size': {
+            'type': 'number',
+            'min': 256,
+            'max': 2048,
+            'default': 1024,
+            'unit': 'pixels',
+            'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the model may run out of memory.',
+            'displayOrder': 8,
+        },
+        'Tile Overlap': {
+            'type': 'number',
+            'min': 0,
+            'max': 1,
+            'default': 0.1,
+            'unit': 'Fraction',
+            'tooltip': 'The amount of overlap between tiles. A value of 0.1 means tiles overlap by 10%. '
+                       'Make sure your objects are smaller than the overlap region.',
+            'displayOrder': 9,
         },
     }
     client.setWorkerImageInterface(image, interface)
 
 
-def compute(datasetId, apiUrl, token, params):
-    annotationClient = annotations_client.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
-    workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
-    tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
+def condensatenet_segmentation(prob_threshold, min_size, max_size):
+    """Generate lifted function for CondensateNet segmentation.
 
-    # Get parameters from interface
-    prob_threshold = float(params['workerInterface']['Probability Threshold'])
-    min_size = int(params['workerInterface']['Min Size'])
-    max_size = int(params['workerInterface']['Max Size'])
-    smoothing = float(params['workerInterface']['Smoothing'])
+    Parameters
+    ----------
+    prob_threshold : float
+        Minimum probability for detection.
+    min_size : int
+        Minimum condensate size in pixels.
+    max_size : int
+        Maximum condensate size in pixels.
 
-    batch_xy = params['workerInterface']['Batch XY']
-    batch_z = params['workerInterface']['Batch Z']
-    batch_time = params['workerInterface']['Batch Time']
+    Returns
+    -------
+    func_segment : Callable
+        Lifted function for the CondensateNet segmentation algorithm.
+    """
 
-    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
-
-    tile = params['tile']
-    channel = params['channel']
-    tags = params['tags']
-
-    if batch_xy is None:
-        batch_xy = [tile['XY']]
-    if batch_z is None:
-        batch_z = [tile['Z']]
-    if batch_time is None:
-        batch_time = [tile['Time']]
-
-    batches = list(product(batch_xy, batch_z, batch_time))
-    total_batches = len(batches)
-
-    # Load CondensateNet model from local directory (baked into Docker image)
+    # Load CondensateNet model once
     sendProgress(0, "Loading model", "Initializing CondensateNet...")
     pipeline = CondensateNetPipeline.from_local(
         "/models/condensatenet",
@@ -109,66 +149,147 @@ def compute(datasetId, apiUrl, token, params):
         max_size=max_size
     )
 
-    new_annotations = []
+    @lift
+    def _func_segment(tile, index, tile_index, stitch_index, tiling):
+        tile = compute_dask(tile)
 
-    for i, batch in enumerate(batches):
-        XY, Z, Time = batch
+        # Squeeze out channel dimension if present (from stack_channels)
+        tile = np.squeeze(tile)
 
-        # Get the image for the current channel
-        frame_idx = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel)
-        image = np.squeeze(tileClient.getRegion(datasetId, frame=frame_idx))
-
-        # Pad image to dimensions divisible by 32 for FPN compatibility
-        original_shape = image.shape[:2]
+        # Pad tile to dimensions divisible by 32 for FPN compatibility
+        original_shape = tile.shape[:2]
         pad_h = (32 - original_shape[0] % 32) % 32
         pad_w = (32 - original_shape[1] % 32) % 32
         if pad_h > 0 or pad_w > 0:
-            image = np.pad(image, ((0, pad_h), (0, pad_w)), mode='reflect')
+            tile = np.pad(tile, ((0, pad_h), (0, pad_w)), mode='reflect')
 
         # Run segmentation
-        instances = pipeline.segment(image)
+        mask = pipeline.segment(tile)
 
         # Crop back to original size
         if pad_h > 0 or pad_w > 0:
-            instances = instances[:original_shape[0], :original_shape[1]]
-        num_instances = instances.max()
-        print(f"Frame (XY={XY}, Z={Z}, T={Time}): found {num_instances} condensates")
+            mask = mask[:original_shape[0], :original_shape[1]]
 
-        # Convert instances to polygons
-        temp_polygons = []
-        for inst_id in range(1, num_instances + 1):
-            mask = (instances == inst_id).astype(np.uint8)
-            contours = find_contours(mask, 0.5)
+        # Convert mask to polygons using DeepTile's mask_to_polygons
+        polygons = mask_to_polygons(mask, index, tile_index, stitch_index, tiling)
+        return polygons
 
-            if len(contours) > 0:
-                # Take the largest contour
-                contour = max(contours, key=len)
-                if len(contour) >= 3:
-                    polygon = Polygon(contour).simplify(smoothing, preserve_topology=True)
-                    if polygon.is_valid and not polygon.is_empty:
-                        temp_polygons.append(polygon)
-
-        # Convert polygons to NimbusImage annotations
-        temp_annotations = annotation_tools.polygons_to_annotations(
-            temp_polygons,
-            datasetId,
-            XY=XY,
-            Time=Time,
-            Z=Z,
-            tags=tags,
-            channel=channel
-        )
-        new_annotations.extend(temp_annotations)
-
-        sendProgress(
-            (i + 1) / total_batches * 0.9,  # Reserve 10% for upload
-            "Segmenting condensates", 
-            f"{i + 1} of {total_batches} frames processed ({len(temp_annotations)} condensates)"
+    def func_segment(tiles):
+        return _func_segment(
+            tiles,
+            tiles.index_iterator,
+            tiles.tile_indices_iterator,
+            tiles.stitch_indices_iterator,
+            tiles.profile.tiling
         )
 
-    sendProgress(0.9, "Uploading annotations", f"Sending {len(new_annotations)} annotations to server")
-    annotationClient.createMultipleAnnotations(new_annotations)
-    sendProgress(1.0, "Complete", f"Created {len(new_annotations)} condensate annotations")
+    return func_segment
+
+
+def run_model(image, condensatenet, tile_size, tile_overlap, padding, smoothing):
+    """Run CondensateNet with tiling support.
+
+    Parameters
+    ----------
+    image : ndarray
+        Input image.
+    condensatenet : Callable
+        Lifted CondensateNet segmentation function.
+    tile_size : int
+        Size of tiles in pixels.
+    tile_overlap : float
+        Fraction of overlap between tiles.
+    padding : float
+        Dilation/erosion amount for polygons.
+    smoothing : float
+        Polygon simplification tolerance.
+
+    Returns
+    -------
+    list
+        List of polygon coordinates.
+    """
+    dt = deeptile.load(image)
+    tiles = dt.get_tiles(
+        tile_size=(tile_size, tile_size),
+        overlap=(tile_overlap, tile_overlap)
+    )
+
+    polygons = condensatenet(tiles)
+    polygons = stitch_polygons(polygons)
+
+    # Apply padding (dilation/erosion)
+    if padding != 0:
+        dilated_polygons = []
+        for polygon in polygons:
+            polygon = Polygon(polygon)
+            dilated_polygon = polygon.buffer(padding)
+            if not dilated_polygon.is_empty:
+                dilated_polygons.append(list(dilated_polygon.exterior.coords))
+        polygons = dilated_polygons
+
+    # Apply smoothing
+    if smoothing > 0:
+        smoothed_polygons = []
+        for polygon in polygons:
+            smoothed_polygon = Polygon(polygon).simplify(smoothing, preserve_topology=True)
+            if not smoothed_polygon.is_empty and smoothed_polygon.is_valid:
+                smoothed_polygons.append(list(smoothed_polygon.exterior.coords))
+        return smoothed_polygons
+    else:
+        return polygons
+
+
+def compute(datasetId, apiUrl, token, params):
+    """
+    params (could change):
+        configurationId,
+        datasetId,
+        description: tool description,
+        type: tool type,
+        id: tool id,
+        name: tool name,
+        image: docker image,
+        channel: annotation channel,
+        assignment: annotation assignment ({XY, Z, Time}),
+        tags: annotation tags (list of strings),
+        tile: tile position ({XY, Z, Time}),
+        connectTo: how new annotations should be connected
+    """
+
+    worker = WorkerClient(datasetId, apiUrl, token, params)
+
+    # Get parameters from interface
+    prob_threshold = float(worker.workerInterface['Probability Threshold'])
+    min_size = int(worker.workerInterface['Min Size'])
+    max_size = int(worker.workerInterface['Max Size'])
+    smoothing = float(worker.workerInterface['Smoothing'])
+    padding = float(worker.workerInterface['Padding'])
+    tile_size = int(worker.workerInterface['Tile Size'])
+    tile_overlap = float(worker.workerInterface['Tile Overlap'])
+
+    channel = worker.channel
+
+    # Create the lifted segmentation function (loads model once)
+    condensatenet = condensatenet_segmentation(prob_threshold, min_size, max_size)
+
+    # Create the processing function with all parameters bound
+    f_process = partial(
+        run_model,
+        condensatenet=condensatenet,
+        tile_size=tile_size,
+        tile_overlap=tile_overlap,
+        padding=padding,
+        smoothing=smoothing
+    )
+
+    # Process all batches using WorkerClient
+    worker.process(
+        f_process,
+        f_annotation='polygon',
+        stack_channels=[channel],
+        progress_text='Running CondensateNet'
+    )
 
 
 if __name__ == '__main__':
