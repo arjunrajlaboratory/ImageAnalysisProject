@@ -1,0 +1,14 @@
+# Use the existing sam2_fewshot_segmentation worker as the base
+FROM annotations/sam2_fewshot_segmentation:latest AS test
+
+# Install test dependencies
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+RUN pip install pytest pytest-mock
+
+# Copy test files
+RUN mkdir -p /tests
+COPY ./workers/annotations/sam2_fewshot_segmentation/tests/*.py /tests
+WORKDIR /tests
+
+# Command to run tests
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"]
