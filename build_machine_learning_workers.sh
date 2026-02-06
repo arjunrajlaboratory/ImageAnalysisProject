@@ -39,6 +39,11 @@ docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile
 # Command for M1:
 # docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile_M1 -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
 
+echo "Building SAM2 few-shot segmentation worker"
+docker build . -f ./workers/annotations/sam2_fewshot_segmentation/Dockerfile -t annotations/sam2_fewshot_segmentation:latest $NO_CACHE
+# Command for M1:
+# docker build . -f ./workers/annotations/sam2_fewshot_segmentation/Dockerfile_M1 -t annotations/sam2_fewshot_segmentation:latest $NO_CACHE
+
 echo "Building SAM2 propagate worker"
 docker build . -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest $NO_CACHE
 
