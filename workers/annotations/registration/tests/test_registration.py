@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
-from entrypoint import interface, compute, safe_astype, register_images
+from entrypoint import interface, compute, safe_astype, register_images, apply_transform
 
 
 def test_interface():
@@ -203,11 +203,13 @@ def test_compute_basic_functionality():
             patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
             patch('large_image.new') as mock_sink, \
             patch('entrypoint.StackReg') as mock_stackreg, \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexXY': 2, 'IndexT': 3, 'IndexZ': 1},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0},
@@ -225,7 +227,6 @@ def test_compute_basic_functionality():
         # Mock StackReg
         sr = mock_stackreg.return_value
         sr.register.return_value = np.eye(3)
-        sr.transform.return_value = np.zeros((100, 100))
 
         # Mock sink
         sink = mock_sink.return_value
@@ -262,12 +263,14 @@ def test_compute_with_reference_region():
             patch('annotation_client.annotations.UPennContrastAnnotationClient') as mock_annotation_client, \
             patch('large_image.new'), \
             patch('pystackreg.StackReg'), \
+            patch('entrypoint.apply_transform', return_value=np.zeros((50, 50))), \
             patch('annotation_utilities.annotation_tools.get_annotations_with_tags') as mock_get_tags, \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexT': 2},
+            'sizeX': 50, 'sizeY': 50,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
@@ -326,12 +329,14 @@ def test_compute_with_control_points():
             patch('annotation_client.annotations.UPennContrastAnnotationClient') as mock_annotation_client, \
             patch('large_image.new'), \
             patch('pystackreg.StackReg') as mock_stackreg, \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
             patch('annotation_utilities.annotation_tools.get_annotations_with_tags') as mock_get_tags, \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexT': 2},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
@@ -361,7 +366,6 @@ def test_compute_with_control_points():
 
         # Mock StackReg
         sr = mock_stackreg.return_value
-        sr.transform.return_value = np.zeros((100, 100))
 
         compute('test_dataset', 'http://test-api', 'test-token', params)
 
@@ -397,11 +401,13 @@ def test_compute_different_algorithms():
                 patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
                 patch('large_image.new'), \
                 patch('entrypoint.StackReg') as mock_stackreg, \
+                patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
                 patch('entrypoint.sendProgress'):
 
             client = mock_tile_client.return_value
             client.tiles = {
                 'IndexRange': {'IndexT': 2},
+                'sizeX': 100, 'sizeY': 100,
                 'frames': [
                     {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                     {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
@@ -417,7 +423,6 @@ def test_compute_different_algorithms():
             # Mock StackReg
             sr = mock_stackreg.return_value
             sr.register.return_value = np.eye(3)
-            sr.transform.return_value = np.zeros((100, 100))
 
             compute('test_dataset', 'http://test-api', 'test-token', params)
 
@@ -447,12 +452,14 @@ def test_compute_apply_algorithm_after_control_points():
             patch('annotation_client.annotations.UPennContrastAnnotationClient') as mock_annotation_client, \
             patch('large_image.new'), \
             patch('entrypoint.StackReg') as mock_stackreg, \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))) as mock_apply_transform, \
             patch('annotation_utilities.annotation_tools.get_annotations_with_tags') as mock_get_tags, \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexT': 2},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
@@ -480,16 +487,18 @@ def test_compute_apply_algorithm_after_control_points():
             }
         ]
 
-        # Mock StackReg
+        # Mock StackReg - sr.transform still used in matrix calc phase
         sr = mock_stackreg.return_value
         sr.register.return_value = np.eye(3)
         sr.transform.side_effect = lambda img, tmat: img  # Return transformed image
 
         compute('test_dataset', 'http://test-api', 'test-token', params)
 
-        # Verify both control point transformation and algorithm registration were applied
+        # Verify sr.transform was called in matrix calc (control points + algorithm)
         sr.transform.assert_called()
         sr.register.assert_called()
+        # Verify apply_transform was called in the output loop
+        mock_apply_transform.assert_called()
 
 
 def test_compute_reference_time_adjustment():
@@ -514,11 +523,13 @@ def test_compute_reference_time_adjustment():
             patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
             patch('large_image.new'), \
             patch('pystackreg.StackReg') as mock_stackreg, \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexT': 3},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0},
@@ -535,7 +546,6 @@ def test_compute_reference_time_adjustment():
         # Mock StackReg
         sr = mock_stackreg.return_value
         sr.register.return_value = np.eye(3)
-        sr.transform.return_value = np.zeros((100, 100))
 
         compute('test_dataset', 'http://test-api', 'test-token', params)
 
@@ -565,11 +575,13 @@ def test_compute_metadata_preservation():
             patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
             patch('large_image.new') as mock_sink, \
             patch('pystackreg.StackReg'), \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexT': 2},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
@@ -618,11 +630,13 @@ def test_compute_progress_reporting():
             patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
             patch('large_image.new'), \
             patch('pystackreg.StackReg'), \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
             patch('entrypoint.sendProgress') as mock_progress:
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexXY': 2, 'IndexT': 3},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0},
@@ -736,12 +750,14 @@ def test_xy_coordinate_parsing():
             patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
             patch('large_image.new'), \
             patch('pystackreg.StackReg'), \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
             patch('annotation_utilities.batch_argument_parser.process_range_list') as mock_process_range, \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexXY': 5, 'IndexT': 2},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
@@ -785,11 +801,13 @@ def test_compute_apply_xy_is_always_list():
             patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
             patch('large_image.new'), \
             patch('pystackreg.StackReg') as mock_stackreg, \
+            patch('entrypoint.apply_transform', return_value=np.zeros((100, 100))), \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
         client.tiles = {
             'IndexRange': {'IndexXY': 2, 'IndexT': 2},
+            'sizeX': 100, 'sizeY': 100,
             'frames': [
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 0, 'IndexC': 0},
                 {'IndexXY': 0, 'IndexZ': 0, 'IndexT': 1, 'IndexC': 0}
@@ -807,7 +825,6 @@ def test_compute_apply_xy_is_always_list():
         # Mock StackReg
         sr = mock_stackreg.return_value
         sr.register.return_value = np.eye(3)
-        sr.transform.return_value = np.zeros((100, 100))
 
         compute('test_dataset', 'http://test-api', 'test-token', params)
 
@@ -828,3 +845,39 @@ def test_compute_apply_xy_is_always_list():
             json.dumps(metadata)
         except TypeError as e:
             pytest.fail(f"Metadata should be JSON serializable, but got error: {e}")
+
+
+def test_apply_transform_identity():
+    """Test apply_transform with identity matrix returns unchanged image"""
+    image = np.array([[1, 2], [3, 4]], dtype=np.uint16)
+    tmat = np.eye(3)
+    result = apply_transform(image, tmat)
+    np.testing.assert_array_almost_equal(result, image.astype(np.float32), decimal=5)
+
+
+def test_apply_transform_translation():
+    """Test apply_transform with a translation matrix"""
+    # Create a 10x10 image with a known pattern
+    image = np.zeros((10, 10), dtype=np.float32)
+    image[2:4, 2:4] = 1.0
+
+    # Translate by (1, 1) pixels
+    tmat = np.array([[1, 0, 1],
+                     [0, 1, 1],
+                     [0, 0, 1]], dtype=np.float64)
+    result = apply_transform(image, tmat)
+
+    # The bright region should have shifted
+    assert result.shape == image.shape
+    # Original location should now be ~0
+    assert result[2, 2] < 0.5
+    # Translated location should be bright
+    assert result[3, 3] > 0.5
+
+
+def test_apply_transform_output_dtype():
+    """Test that apply_transform returns float32 output"""
+    image = np.ones((5, 5), dtype=np.uint16)
+    tmat = np.eye(3)
+    result = apply_transform(image, tmat)
+    assert result.dtype == np.float32

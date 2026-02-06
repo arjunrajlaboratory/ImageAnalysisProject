@@ -1,5 +1,6 @@
 import base64
 import argparse
+import gc as gc_module
 import json
 import sys
 import pprint
@@ -17,6 +18,7 @@ import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import imageio
 import numpy as np
+from scipy.ndimage import affine_transform as scipy_affine_transform
 
 from worker_client import WorkerClient
 
@@ -125,6 +127,17 @@ def register_images(image1, image2, algorithm, sr):
         return np.eye(3)
     else:
         return sr.register(image1, image2)
+
+
+def apply_transform(image, tmat):
+    """Memory-efficient alternative to sr.transform() using float32 instead of float64."""
+    inv_mat = np.linalg.inv(tmat)
+    matrix = inv_mat[:2, :2]
+    offset = inv_mat[:2, 2]
+    image_f32 = image.astype(np.float32)
+    result = scipy_affine_transform(image_f32, matrix, offset=offset, order=1, mode='constant', cval=0.0)
+    del image_f32
+    return result
 
 
 def compute(datasetId, apiUrl, token, params):
@@ -258,6 +271,24 @@ def compute(datasetId, apiUrl, token, params):
 
             print(
                 f"Reference region dimensions - left: {reference_region_left}, top: {reference_region_top}, right: {reference_region_right}, bottom: {reference_region_bottom}")
+
+    if not should_use_reference_region:
+        # Auto-crop large images for registration computation
+        AUTO_CROP_SIZE = 2048
+        if tileInfo.get('sizeX', 0) > AUTO_CROP_SIZE or tileInfo.get('sizeY', 0) > AUTO_CROP_SIZE:
+            center_x = tileInfo.get('sizeX', 0) / 2
+            center_y = tileInfo.get('sizeY', 0) / 2
+            reference_region_left = center_x - AUTO_CROP_SIZE / 2
+            reference_region_top = center_y - AUTO_CROP_SIZE / 2
+            reference_region_right = center_x + AUTO_CROP_SIZE / 2
+            reference_region_bottom = center_y + AUTO_CROP_SIZE / 2
+            should_use_reference_region = True
+            sendWarning(
+                f"Image is large ({tileInfo.get('sizeX', 0)}x{tileInfo.get('sizeY', 0)}). "
+                f"Using center {AUTO_CROP_SIZE}x{AUTO_CROP_SIZE} crop for registration computation. "
+                f"To use a different region, specify a Reference region tag.",
+                "Auto-crop applied"
+            )
 
     should_use_control_points = (workerInterface['Control point tag'] is not None and
                                  workerInterface['Control point tag'])
@@ -414,15 +445,17 @@ def compute(datasetId, apiUrl, token, params):
                 # First check if frame even has a "IndexXY" key
                 if 'IndexXY' in frame:
                     if frame['IndexXY'] in apply_XY:
-                        transformed_image = sr.transform(
+                        transformed_image = apply_transform(
                             image, tmat=registration_matrices[(frame['IndexXY'], frame['IndexT'])])
                         image = safe_astype(transformed_image, image.dtype)
                 else:
-                    transformed_image = sr.transform(
+                    transformed_image = apply_transform(
                         image, tmat=registration_matrices[(0, frame['IndexT'])])
                     image = safe_astype(transformed_image, image.dtype)
 
             sink.addTile(image, 0, 0, **large_image_params)
+            del image
+            gc_module.collect()
 
             sendProgress(i / len(tileClient.tiles['frames']), 'Registration',
                          f"Processing frame {i+1}/{len(tileClient.tiles['frames'])}")
