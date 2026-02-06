@@ -72,6 +72,53 @@ def compute(datasetId, apiUrl, token, params):
 
 Interface types: `number`, `text`, `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`, `notes`
 
+### Interface Parameter Data Types (What `params['workerInterface']` Returns)
+
+Each interface type returns a specific data type in `params['workerInterface']['FieldName']`:
+
+| Interface Type | Returns | Example Value |
+|----------------|---------|---------------|
+| `number` | `int` or `float` | `32`, `0.5` |
+| `text` | `str` | `"1-3, 5-8"`, `""` |
+| `select` | `str` | `"sam2.1_hiera_small.pt"` |
+| `checkbox` | `bool` | `True`, `False` |
+| `channel` | `int` | `0` |
+| `channelCheckboxes` | `dict` of `str` → `bool` | `{"0": True, "1": False, "2": True}` |
+| `tags` | **`list` of `str`** | `["DAPI blob"]`, `["cell", "nucleus"]` |
+| `layer` | `str` | `"layer_id"` |
+
+**Common pitfall with `tags`**: The `tags` type returns a **plain list of strings**, NOT a dict. Do not call `.get('tags')` on the result.
+
+```python
+# CORRECT - tags returns a list directly:
+training_tags = params['workerInterface'].get('Training Tag', [])
+# training_tags = ["DAPI blob"]
+
+# WRONG - will crash with AttributeError: 'list' object has no attribute 'get':
+training_tags = params['workerInterface'].get('Training Tag', {}).get('tags', [])
+```
+
+**Note**: `params['tags']` (the top-level output tags for the worker, NOT a workerInterface field) is also a plain list of strings (e.g., `["DAPI blob"]`). Meanwhile, `params['tags']` used in property workers via `workerClient.get_annotation_list_by_shape()` uses `{'tags': [...], 'exclusive': bool}` — these are two different things.
+
+**Validating tags** (recommended pattern from cellpose_train, piscis):
+```python
+tags = workerInterface.get('My Tag Field', [])
+if not tags or len(tags) == 0:
+    sendError("No tag selected", "Please select at least one tag.")
+    return
+```
+
+**Using tags to filter annotations**:
+```python
+# Pass the list directly to annotation_tools
+filtered = annotation_tools.get_annotations_with_tags(
+    annotation_list, tags, exclusive=False)
+
+# Or with Girder API (must JSON-serialize)
+annotations = annotationClient.getAnnotationsByDatasetId(
+    datasetId, shape='polygon', tags=json.dumps(tags))
+```
+
 ### Key APIs
 
 **annotation_client** (installed from NimbusImage repo):
