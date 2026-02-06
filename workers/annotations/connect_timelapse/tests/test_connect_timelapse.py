@@ -167,14 +167,55 @@ def test_basic_compute(mock_get_annotations, mock_send_progress, mock_annotation
     assert all('tags' in conn for conn in connections)
 
 
-def test_compute_no_object_tag(mock_annotation_client, sample_params):
-    """Test error handling when no object tag is specified"""
-    # Remove object tag from params
+@patch('entrypoint.sendError')
+def test_compute_no_object_tag_empty_list(mock_send_error, mock_annotation_client, sample_params):
+    """Test error handling when object tag is an empty list"""
+    # Set object tag to empty list
     sample_params['workerInterface']['Object to connect tag'] = []
 
-    # Should raise ValueError
-    with pytest.raises(ValueError, match="No object tag specified"):
-        compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+    # Should call sendError and return gracefully
+    compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+    mock_send_error.assert_called_once_with(
+        "No object tag specified",
+        info="Please specify an 'Object to connect tag' in the worker interface"
+    )
+    # Should not proceed to fetch annotations
+    mock_annotation_client.getAnnotationsByDatasetId.assert_not_called()
+
+
+@patch('entrypoint.sendError')
+def test_compute_no_object_tag_none(mock_send_error, mock_annotation_client, sample_params):
+    """Test error handling when object tag is None"""
+    # Set object tag to None
+    sample_params['workerInterface']['Object to connect tag'] = None
+
+    # Should call sendError and return gracefully
+    compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+    mock_send_error.assert_called_once_with(
+        "No object tag specified",
+        info="Please specify an 'Object to connect tag' in the worker interface"
+    )
+    # Should not proceed to fetch annotations
+    mock_annotation_client.getAnnotationsByDatasetId.assert_not_called()
+
+
+@patch('entrypoint.sendError')
+def test_compute_no_object_tag_missing_key(mock_send_error, mock_annotation_client, sample_params):
+    """Test error handling when Object to connect tag key is missing from workerInterface"""
+    # Remove the key entirely
+    del sample_params['workerInterface']['Object to connect tag']
+
+    # Should call sendError and return gracefully
+    compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+    mock_send_error.assert_called_once_with(
+        "No object tag specified",
+        info="Please specify an 'Object to connect tag' in the worker interface"
+    )
+    # Should not proceed to fetch annotations
+    mock_annotation_client.getAnnotationsByDatasetId.assert_not_called()
 
 
 @patch('annotation_client.utils.sendProgress')
