@@ -22,7 +22,7 @@ from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendError
 
 
 def interface(image, apiUrl, token):
@@ -280,10 +280,12 @@ def compute(datasetId, apiUrl, token, params):
     if batch_time is None:
         batch_time = [tile['Time']]
 
-    # Parse training tag
-    training_tag_config = params['workerInterface'].get('Training Tag', {})
-    training_tags = training_tag_config.get('tags', [])
-    training_exclusive = training_tag_config.get('exclusive', False)
+    # Parse training tag - 'type': 'tags' returns a list of strings directly
+    training_tags = params['workerInterface'].get('Training Tag', [])
+    if not training_tags or len(training_tags) == 0:
+        sendError("No training tag selected",
+                  "Please select a tag that identifies your training annotations.")
+        return
 
     # ── SAM2 model setup ──
     sendProgress(0.0, "Loading model", "Initializing SAM2...")
@@ -309,11 +311,10 @@ def compute(datasetId, apiUrl, token, params):
     # Fetch all polygon annotations from the dataset
     all_annotations = annotationClient.getAnnotationsByDatasetId(datasetId, shape='polygon')
     training_annotations = annotation_tools.get_annotations_with_tags(
-        all_annotations, training_tags, training_exclusive
+        all_annotations, training_tags, exclusive=False
     )
 
     if len(training_annotations) == 0:
-        from annotation_client.utils import sendError
         sendError("No training annotations found", f"No polygon annotations found with tags: {training_tags}")
         return
 
@@ -356,7 +357,6 @@ def compute(datasetId, apiUrl, token, params):
                      f"Processed {idx + 1}/{len(training_annotations)} training examples")
 
     if len(feature_vectors) == 0:
-        from annotation_client.utils import sendError
         sendError("No valid training features", "All training annotations produced empty masks")
         return
 
