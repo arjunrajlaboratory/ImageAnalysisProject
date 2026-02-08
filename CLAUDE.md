@@ -35,6 +35,12 @@ This repository contains Docker-based workers for NimbusImage, a cloud platform 
 
 # Mac development mode (forces CPU-only Dockerfile_M1 for workers with GPU defaults)
 MAC_DEVELOPMENT_MODE=true ./build_workers.sh deconwolf
+
+# Build test workers (random_squares, sample_interface)
+./build_test_workers.sh
+
+# Build and run test worker tests
+./build_test_workers.sh --build-and-run-tests
 ```
 
 ## Architecture
@@ -279,11 +285,30 @@ pixelSize = params['scales']['pixelSize']  # {'unit': 'mm', 'value': 0.000219}
 
 - Base images defined in `workers/base_docker_images/`
 - Workers inherit from `nimbusimage/worker-base:latest` or `nimbusimage/image-processing-base:latest`
+- Test workers (random_squares, sample_interface) use `nimbusimage/test-worker-base:latest`, a micromamba-based image using only conda-forge (avoids Anaconda ToS issues)
 - Docker labels identify worker type: `isPropertyWorker`, `isAnnotationWorker`, `annotationShape`, `interfaceName`, `interfaceCategory`
 - Architecture-aware builds: `Dockerfile` (x86_64/production) and `Dockerfile_M1` (arm64/Mac development)
 - GPU workers (deconwolf, condensatenet, etc.) use NVIDIA CUDA base images by default
   - Set `MAC_DEVELOPMENT_MODE=true` to build CPU-only versions on Mac
   - GPU workers have automatic CPU fallback at runtime if OpenCL/CUDA unavailable
+
+#### Base Image Types
+
+**`nimbusimage/worker-base`** and **`nimbusimage/image-processing-base`** (conda-based):
+- Built from `ubuntu:jammy` with Miniforge (amd64) or Miniconda (arm64)
+- Uses `conda env create -n worker` with `environment.core.yml` or `environment.image_processing.yml`
+- `ENV CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes` auto-accepts Anaconda channel ToS for CI/Docker builds
+- Workers use `SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]` for build-time commands
+- Entrypoint: `["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]`
+
+**`nimbusimage/test-worker-base`** (micromamba-based):
+- Built from `mambaorg/micromamba:latest` (multi-arch natively, no conda installer logic)
+- Uses only `conda-forge` channel (no `defaults` channel, no Anaconda ToS)
+- Includes `worker_client` pre-installed (since it's test-worker-specific)
+- Workers use `ARG MAMBA_DOCKERFILE_ACTIVATE=1` for build-time env activation
+- Entrypoint: `["/usr/local/bin/_entrypoint.sh", "python", "/entrypoint.py"]` (micromamba's built-in activation)
+- Runs as non-root `$MAMBA_USER`; use `USER root` / `USER $MAMBA_USER` for privileged operations (e.g., `mkdir` in `/`)
+- Files must be copied with `COPY --chown=$MAMBA_USER:$MAMBA_USER` to be writable
 
 ### Testing
 
@@ -298,6 +323,31 @@ workers/properties/blobs/blob_intensity_worker/
     └── Dockerfile_Test
 ```
 
+### Test Workers
+
+Test/sample workers live in `workers/annotations/` and are built with the `testworker` profile:
+
+- **`random_squares`**: Generates random square polygon annotations. Uses `WorkerClient` for batch mode across XY/Z/Time. Useful for quickly testing annotation pipelines.
+- **`sample_interface`**: Demonstrates every available interface type (`notes`, `number`, `text`, `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`), all messaging functions (`sendProgress`, `sendWarning`, `sendError`), and batch mode via `WorkerClient`.
+
+Build test workers:
+```bash
+# Build all test workers
+./build_test_workers.sh
+
+# Build and run their tests
+./build_test_workers.sh --build-and-run-tests
+
+# Build a specific test worker
+./build_test_workers.sh random_squares
+
+# Build and test a specific test worker
+./build_test_workers.sh --build-and-run-tests sample_interface
+
+# Or via the main build script
+./build_workers.sh --build-test-workers
+```
+
 ## Example Workers to Reference
 
 When creating new workers, use these as templates:
@@ -307,4 +357,5 @@ When creating new workers, use these as templates:
 - **Annotation worker (ML)**: `workers/annotations/cellposesam/entrypoint.py`
 - **Image processing worker**: `workers/annotations/histogram_matching/entrypoint.py`
 - **Image processing worker (GPU)**: `workers/annotations/deconwolf/entrypoint.py` - GPU-accelerated with CPU fallback
-- **Sample/test interface**: `workers/properties/blobs/sample_interface_worker/entrypoint.py`
+- **Annotation worker (test)**: `workers/annotations/random_squares/entrypoint.py` - generates random squares with batch mode
+- **Sample interface (all types)**: `workers/annotations/sample_interface/entrypoint.py` - demonstrates all interface types, messaging, and batch mode

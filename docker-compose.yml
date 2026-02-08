@@ -5,6 +5,12 @@ services:
       context: .
       dockerfile: workers/base_docker_images/Dockerfile.worker_base
 
+  test-worker-base:
+    image: nimbusimage/test-worker-base:latest
+    build:
+      context: .
+      dockerfile: workers/base_docker_images/Dockerfile.test_worker_base
+
   image-processing-base:
     image: nimbusimage/image-processing-base:latest
     build:
@@ -226,13 +232,24 @@ services:
     image: annotations/ai_analysis:latest
     profiles: ["worker", "ai"]
 
-  # Sample workers
+  # Test/sample workers
+  random_squares:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/random_squares/Dockerfile
+    image: annotations/random_squares:latest
+    depends_on:
+      - test-worker-base
+    profiles: ["testworker"]
+
   sample_interface:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/sample_interface_worker/${DOCKERFILE:-Dockerfile}
-    image: properties/sample_interface:latest
-    profiles: ["sample"]
+      dockerfile: ./workers/annotations/sample_interface/Dockerfile
+    image: annotations/sample_interface:latest
+    depends_on:
+      - test-worker-base
+    profiles: ["testworker"]
 
   # Test services
   blob_metrics_test:
@@ -366,12 +383,23 @@ services:
       - parent_child
     profiles: ["test"]
 
+  random_squares_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/random_squares/tests/Dockerfile_Test
+    image: annotations/random_squares:test
+    depends_on:
+      - random_squares
+    profiles: ["testworkertest"]
+
   sample_interface_test:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/sample_interface_worker/tests/Dockerfile_Test
-    image: properties/sample_interface:test
-    profiles: ["sampletest"]
+      dockerfile: ./workers/annotations/sample_interface/tests/Dockerfile_Test
+    image: annotations/sample_interface:test
+    depends_on:
+      - sample_interface
+    profiles: ["testworkertest"]
 
   # Testing image processing workers
   h_and_e_deconvolution_test:

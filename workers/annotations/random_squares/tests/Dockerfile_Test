@@ -1,0 +1,13 @@
+FROM annotations/random_squares:latest AS test
+
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+RUN pip install pytest pytest-mock
+
+USER root
+RUN mkdir -p /tests && chown $MAMBA_USER:$MAMBA_USER /tests
+USER $MAMBA_USER
+
+COPY ./workers/annotations/random_squares/tests/*.py /tests
+WORKDIR /tests
+
+ENTRYPOINT ["/usr/local/bin/_entrypoint.sh", "python3", "-m", "pytest", "-v"]
