@@ -1,5 +1,3 @@
-docker build ./workers/annotations/random_square/ -t annotations/random_square:latest --build-arg BASE_IMAGE=ghcr.io/arjunrajlaboratory/base_m1_image:latest
-
 docker build ./workers/annotations/random_point/ -t annotations/random_point:latest --build-arg BASE_IMAGE=ghcr.io/arjunrajlaboratory/base_m1_image:latest
 
 docker build ./workers/annotations/connect_to_nearest/ -t annotations/connect_to_nearest:latest --build-arg BASE_IMAGE=ghcr.io/arjunrajlaboratory/base_m1_image:latest

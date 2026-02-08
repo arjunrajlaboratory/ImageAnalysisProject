@@ -1,0 +1,10 @@
+FROM annotations/sample_interface:latest AS test
+
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+RUN pip install pytest pytest-mock
+
+RUN mkdir -p /tests
+COPY ./workers/annotations/sample_interface/tests/*.py /tests
+WORKDIR /tests
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"]

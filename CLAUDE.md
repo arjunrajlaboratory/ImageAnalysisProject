@@ -35,6 +35,12 @@ This repository contains Docker-based workers for NimbusImage, a cloud platform 
 
 # Mac development mode (forces CPU-only Dockerfile_M1 for workers with GPU defaults)
 MAC_DEVELOPMENT_MODE=true ./build_workers.sh deconwolf
+
+# Build test workers (random_squares, sample_interface)
+./build_test_workers.sh
+
+# Build and run test worker tests
+./build_test_workers.sh --build-and-run-tests
 ```
 
 ## Architecture
@@ -298,6 +304,31 @@ workers/properties/blobs/blob_intensity_worker/
     └── Dockerfile_Test
 ```
 
+### Test Workers
+
+Test/sample workers live in `workers/annotations/` and are built with the `testworker` profile:
+
+- **`random_squares`**: Generates random square polygon annotations. Uses `WorkerClient` for batch mode across XY/Z/Time. Useful for quickly testing annotation pipelines.
+- **`sample_interface`**: Demonstrates every available interface type (`notes`, `number`, `text`, `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`), all messaging functions (`sendProgress`, `sendWarning`, `sendError`), and batch mode via `WorkerClient`.
+
+Build test workers:
+```bash
+# Build all test workers
+./build_test_workers.sh
+
+# Build and run their tests
+./build_test_workers.sh --build-and-run-tests
+
+# Build a specific test worker
+./build_test_workers.sh random_squares
+
+# Build and test a specific test worker
+./build_test_workers.sh --build-and-run-tests sample_interface
+
+# Or via the main build script
+./build_workers.sh --build-test-workers
+```
+
 ## Example Workers to Reference
 
 When creating new workers, use these as templates:
@@ -307,4 +338,5 @@ When creating new workers, use these as templates:
 - **Annotation worker (ML)**: `workers/annotations/cellposesam/entrypoint.py`
 - **Image processing worker**: `workers/annotations/histogram_matching/entrypoint.py`
 - **Image processing worker (GPU)**: `workers/annotations/deconwolf/entrypoint.py` - GPU-accelerated with CPU fallback
-- **Sample/test interface**: `workers/properties/blobs/sample_interface_worker/entrypoint.py`
+- **Annotation worker (test)**: `workers/annotations/random_squares/entrypoint.py` - generates random squares with batch mode
+- **Sample interface (all types)**: `workers/annotations/sample_interface/entrypoint.py` - demonstrates all interface types, messaging, and batch mode
