@@ -5,6 +5,12 @@ services:
       context: .
       dockerfile: workers/base_docker_images/Dockerfile.worker_base
 
+  test-worker-base:
+    image: nimbusimage/test-worker-base:latest
+    build:
+      context: .
+      dockerfile: workers/base_docker_images/Dockerfile.test_worker_base
+
   image-processing-base:
     image: nimbusimage/image-processing-base:latest
     build:
@@ -233,7 +239,7 @@ services:
       dockerfile: ./workers/annotations/random_squares/Dockerfile
     image: annotations/random_squares:latest
     depends_on:
-      - worker-base
+      - test-worker-base
     profiles: ["testworker"]
 
   sample_interface:
@@ -242,7 +248,7 @@ services:
       dockerfile: ./workers/annotations/sample_interface/Dockerfile
     image: annotations/sample_interface:latest
     depends_on:
-      - worker-base
+      - test-worker-base
     profiles: ["testworker"]
 
   # Test services

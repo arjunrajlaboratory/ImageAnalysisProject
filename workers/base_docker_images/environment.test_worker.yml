@@ -1,0 +1,17 @@
+# base_docker_images/environment.test_worker.yml
+# Micromamba environment for test workers (conda-forge only, no Anaconda ToS)
+name: base
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - pandas
+  - geopandas
+  - shapely
+  - scikit-image
+  - scipy
+  - rtree
+  - numba
+  - matplotlib

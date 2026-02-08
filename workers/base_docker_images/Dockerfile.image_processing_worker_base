@@ -54,6 +54,9 @@ FROM base AS build
 # For multi-arch support, add both possible conda paths to environment
 ENV PATH="/root/miniforge3/bin:/root/miniconda3/bin:$PATH"
 
+# Accept Anaconda Terms of Service for defaults channel
+ENV CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes
+
 # Copy environment file (worker-specific files will override this)
 COPY ./workers/base_docker_images/environment.image_processing.yml /tmp/
 RUN conda env create -n worker --file /tmp/environment.image_processing.yml

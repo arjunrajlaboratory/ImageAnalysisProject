@@ -1,0 +1,38 @@
+# base_docker_images/Dockerfile.test_worker_base
+# Micromamba-based base image for test workers.
+# Uses conda-forge only (no Anaconda defaults channel) to avoid ToS issues.
+FROM mambaorg/micromamba:latest
+
+LABEL isUPennContrastWorkerBase=True
+LABEL isUPennContrastWorker=True
+
+# Install system dependencies as root
+USER root
+RUN apt-get update && apt-get install -qy \
+  git \
+  build-essential && \
+  apt-get clean && rm -rf /var/lib/apt/lists/*
+USER $MAMBA_USER
+
+# Copy and install conda environment
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./workers/base_docker_images/environment.test_worker.yml /tmp/environment.test_worker.yml
+RUN micromamba install -y -n base -f /tmp/environment.test_worker.yml && \
+    micromamba clean --all --yes
+
+# Enable environment activation for subsequent RUN commands
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+
+# Install annotation utilities
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./annotation_utilities /tmp/annotation_utilities
+RUN pip install /tmp/annotation_utilities
+
+# Install UPennContrast annotation_client
+RUN git clone https://github.com/arjunrajlaboratory/NimbusImage /tmp/NimbusImage && \
+    pip install -r /tmp/NimbusImage/devops/girder/annotation_client/requirements.txt && \
+    pip install -e /tmp/NimbusImage/devops/girder/annotation_client/
+
+# Install worker_client
+COPY --chown=$MAMBA_USER:$MAMBA_USER ./worker_client /tmp/worker_client
+RUN pip install /tmp/worker_client
+
+WORKDIR /

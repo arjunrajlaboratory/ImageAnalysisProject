@@ -2,9 +2,12 @@ from itertools import chain
 
 def process_range_list(rl, convert_one_to_zero_index=False, convert_zero_to_one_index=False):
 
+    if rl is None or rl == '':
+        return None
+
     if convert_one_to_zero_index and convert_zero_to_one_index:
         raise ValueError("Both 'convert_one_to_zero_index' and 'convert_zero_to_one_index' cannot be set to True at the same time.")
-    
+
     g = parse_range_list(rl)
     first, g = peek_generator(g)
 

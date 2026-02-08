@@ -285,11 +285,30 @@ pixelSize = params['scales']['pixelSize']  # {'unit': 'mm', 'value': 0.000219}
 
 - Base images defined in `workers/base_docker_images/`
 - Workers inherit from `nimbusimage/worker-base:latest` or `nimbusimage/image-processing-base:latest`
+- Test workers (random_squares, sample_interface) use `nimbusimage/test-worker-base:latest`, a micromamba-based image using only conda-forge (avoids Anaconda ToS issues)
 - Docker labels identify worker type: `isPropertyWorker`, `isAnnotationWorker`, `annotationShape`, `interfaceName`, `interfaceCategory`
 - Architecture-aware builds: `Dockerfile` (x86_64/production) and `Dockerfile_M1` (arm64/Mac development)
 - GPU workers (deconwolf, condensatenet, etc.) use NVIDIA CUDA base images by default
   - Set `MAC_DEVELOPMENT_MODE=true` to build CPU-only versions on Mac
   - GPU workers have automatic CPU fallback at runtime if OpenCL/CUDA unavailable
+
+#### Base Image Types
+
+**`nimbusimage/worker-base`** and **`nimbusimage/image-processing-base`** (conda-based):
+- Built from `ubuntu:jammy` with Miniforge (amd64) or Miniconda (arm64)
+- Uses `conda env create -n worker` with `environment.core.yml` or `environment.image_processing.yml`
+- `ENV CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes` auto-accepts Anaconda channel ToS for CI/Docker builds
+- Workers use `SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]` for build-time commands
+- Entrypoint: `["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]`
+
+**`nimbusimage/test-worker-base`** (micromamba-based):
+- Built from `mambaorg/micromamba:latest` (multi-arch natively, no conda installer logic)
+- Uses only `conda-forge` channel (no `defaults` channel, no Anaconda ToS)
+- Includes `worker_client` pre-installed (since it's test-worker-specific)
+- Workers use `ARG MAMBA_DOCKERFILE_ACTIVATE=1` for build-time env activation
+- Entrypoint: `["/usr/local/bin/_entrypoint.sh", "python", "/entrypoint.py"]` (micromamba's built-in activation)
+- Runs as non-root `$MAMBA_USER`; use `USER root` / `USER $MAMBA_USER` for privileged operations (e.g., `mkdir` in `/`)
+- Files must be copied with `COPY --chown=$MAMBA_USER:$MAMBA_USER` to be writable
 
 ### Testing
 
