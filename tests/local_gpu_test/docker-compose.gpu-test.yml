@@ -1,0 +1,71 @@
+# Docker Compose for local GPU worker testing.
+#
+# This sets up a mock Girder server and runs a worker container against it.
+# The mock server serves test images from tests/fixtures/images/ and captures
+# all annotations/property values the worker produces.
+#
+# Usage:
+#   # Start just the mock server (to run workers manually)
+#   docker compose -f tests/local_gpu_test/docker-compose.gpu-test.yml up mock-girder
+#
+#   # Run random_squares against mock server
+#   docker compose -f tests/local_gpu_test/docker-compose.gpu-test.yml run random-squares-test
+#
+#   # Run cellposesam with GPU against mock server
+#   docker compose -f tests/local_gpu_test/docker-compose.gpu-test.yml run cellposesam-test
+
+services:
+  mock-girder:
+    build:
+      context: ../mock_girder_server
+      dockerfile: Dockerfile
+    ports:
+      - "5555:5555"
+    volumes:
+      - ../fixtures/images:/images:ro
+      - ../fixtures/output:/output
+    command: >
+      python server.py
+      --images-dir /images
+      --port 5555
+      --output-dir /output
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/api/v1/_test/status"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # Example: test random_squares (no GPU)
+  random-squares-test:
+    image: annotations/random_squares:latest
+    network_mode: "service:mock-girder"
+    depends_on:
+      mock-girder:
+        condition: service_healthy
+    command: >
+      --apiUrl http://localhost:5555/api/v1
+      --token fake_test_token
+      --request compute
+      --parameters '{"datasetId":"test_dataset","type":"segmentation","id":"test-id","name":"Test","image":"annotations/random_squares:latest","channel":0,"assignment":{"XY":0,"Z":0,"Time":0},"tags":["test"],"tile":{"XY":0,"Z":0,"Time":0},"connectTo":{"layer":null,"tags":[],"channel":null},"workerInterface":{"Batch Time":"","Batch XY":"","Batch Z":"","Number of squares":20,"Random Squares":"","Square size":15},"scales":{"pixelSize":{"unit":"mm","value":0.000325},"tStep":{"unit":"s","value":1},"zStep":{"unit":"m","value":1}}}'
+      --datasetId test_dataset
+
+  # Example: test cellposesam (GPU)
+  cellposesam-test:
+    image: annotations/cellposesam:latest
+    network_mode: "service:mock-girder"
+    depends_on:
+      mock-girder:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      --apiUrl http://localhost:5555/api/v1
+      --token fake_test_token
+      --request compute
+      --parameters '{"datasetId":"test_dataset","type":"segmentation","id":"test-id","name":"Test Cellpose-SAM","image":"annotations/cellposesam:latest","channel":0,"assignment":{"XY":0,"Z":0,"Time":0},"tags":["cell"],"tile":{"XY":0,"Z":0,"Time":0},"connectTo":{"layer":null,"tags":[],"channel":null},"workerInterface":{"Batch Time":"","Batch XY":"","Batch Z":"","Model":"cellpose-sam","Channel for Slot 1":{"0":true},"Channel for Slot 2":{},"Channel for Slot 3":{},"Diameter":30,"Smoothing":0.7,"Padding":0,"Tile Size":512,"Tile Overlap":0.1},"scales":{"pixelSize":{"unit":"mm","value":0.000325},"tStep":{"unit":"s","value":1},"zStep":{"unit":"m","value":1}}}'
+      --datasetId test_dataset

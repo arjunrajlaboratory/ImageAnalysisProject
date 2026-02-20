@@ -1,0 +1,6 @@
+# Generated test images (keep the generation script, not the outputs)
+fixtures/images/*.tiff
+fixtures/images/*.tif
+
+# Test output from mock Girder server
+fixtures/output/*.json
