@@ -407,7 +407,7 @@ def compute(datasetId, apiUrl, token, params):
         merged_image_rgb = ensure_rgb(merged_image)
 
         # Generate candidate masks with SAM2
-        candidate_masks = mask_generator.generate(merged_image_rgb.astype(np.float32))
+        candidate_masks = mask_generator.generate(merged_image_rgb)
         print(f"Frame {i + 1}: generated {len(candidate_masks)} candidate masks")
 
         # Filter candidates by similarity to training prototype
