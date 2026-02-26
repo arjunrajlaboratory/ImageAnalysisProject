@@ -38,11 +38,11 @@ For each image frame in the batch:
 | Batch XY | text | current | XY positions to process (e.g., "1-3, 5-8") |
 | Batch Z | text | current | Z slices to process |
 | Batch Time | text | current | Time points to process |
-| Model | select | sam2.1_hiera_small.pt | SAM2 checkpoint to use |
+| Model | select | sam2.1_hiera_base_plus.pt | SAM2 checkpoint to use |
 | Similarity Threshold | number | 0.5 | Minimum cosine similarity to keep a mask (0.0-1.0) |
 | Target Occupancy | number | 0.20 | Fraction of crop area the object should occupy (0.05-0.80) |
-| Points per side | number | 32 | Grid density for SAM2 mask generation (16-128) |
-| Min Mask Area | number | 100 | Minimum mask area in pixels to consider |
+| Points per side | number | 128 | Grid density for SAM2 mask generation (16-256) |
+| Min Mask Area | number | 30 | Minimum mask area in pixels to consider |
 | Max Mask Area | number | 0 | Maximum mask area in pixels (0 = no limit) |
 | Smoothing | number | 0.3 | Polygon simplification tolerance |
 
@@ -91,9 +91,9 @@ The `image_embed` from `predictor._features["image_embed"]` gives a `(1, 256, 64
 
 ### Points per side
 
-- **More masks needed (small objects)**: Increase to 48-64
-- **Faster processing**: Decrease to 16-24
-- **Default 32** balances coverage and speed
+- **More masks needed (small objects)**: Increase to 192-256
+- **Faster processing**: Decrease to 32-64
+- **Default 128** provides good coverage for most microscopy images
 
 ### Min/Max Mask Area
 
@@ -106,7 +106,7 @@ The `image_embed` from `predictor._features["image_embed"]` gives a `(1, 256, 64
 
 - **GPU required**: SAM2 encoder needs CUDA
 - **Memory**: ~4GB VRAM for SAM2 small model
-- **Speed**: Most time is spent encoding candidate masks individually (one forward pass per candidate). With 32 points per side, expect ~50-200 candidate masks per image.
+- **Speed**: Most time is spent encoding candidate masks individually (one forward pass per candidate). With 128 points per side, expect ~200-800 candidate masks per image.
 - **Data efficiency**: Works with 5-20 training examples
 
 ## Possible Future Improvements

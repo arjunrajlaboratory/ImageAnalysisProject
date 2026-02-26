@@ -18,18 +18,39 @@ from skimage.measure import find_contours
 
 import torch
 import torch.nn.functional as F
-from sam2.build_sam import build_sam2
-from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-from sam2.sam2_image_predictor import SAM2ImagePredictor
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 from annotation_client.utils import sendProgress, sendError
+
+
+# ---------------------------------------------------------------------------
+# Monkey-patch torchvision NMS to fix device mismatch bug
+# (SAM1 + high points_per_side triggers a JIT-traced NMS path that has a
+# CPU/GPU device mismatch; force the coordinate trick path which avoids it)
+# ---------------------------------------------------------------------------
+def _patch_torchvision_nms():
+    try:
+        import torchvision.ops.boxes as box_ops
+        _coord_trick = box_ops._batched_nms_coordinate_trick
+
+        def _safe_batched_nms(boxes, scores, idxs, iou_threshold):
+            return _coord_trick(boxes, scores, idxs, iou_threshold)
+
+        # Patch both the module-level function and SAM1's imported reference
+        box_ops.batched_nms = _safe_batched_nms
+        import segment_anything.automatic_mask_generator as sam_amg
+        if hasattr(sam_amg, 'batched_nms'):
+            sam_amg.batched_nms = _safe_batched_nms
+    except Exception:
+        pass
+
+_patch_torchvision_nms()
 
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
-    models = [f for f in os.listdir('/code/sam2/checkpoints') if f.endswith('.pt')]
-    default_model = 'sam2.1_hiera_base_plus.pt' if 'sam2.1_hiera_base_plus.pt' in models else models[0] if models else None
+    models = ['sam_vit_h_4b8939']
 
     interface = {
         'Training Tag': {
@@ -51,7 +72,7 @@ def interface(image, apiUrl, token):
         'Model': {
             'type': 'select',
             'items': models,
-            'default': default_model,
+            'default': 'sam_vit_h_4b8939',
             'displayOrder': 4,
         },
         'Similarity Threshold': {
@@ -71,7 +92,7 @@ def interface(image, apiUrl, token):
         'Points per side': {
             'type': 'number',
             'min': 16,
-            'max': 256,
+            'max': 128,
             'default': 128,
             'displayOrder': 7,
         },
@@ -156,23 +177,21 @@ def extract_crop_with_context(image, mask, target_occupancy=0.20):
     return crop_image, crop_mask
 
 
-def encode_image_with_sam2(predictor, image_np):
-    """Encode an image crop using SAM2's image encoder via SAM2ImagePredictor.
+def encode_image_with_sam1(predictor, image_np):
+    """Encode an image crop using SAM1's image encoder via SamPredictor.
 
     Uses set_image() which handles transforms, backbone encoding, and
-    no_mem_embed addition consistently with SAM2's internal pipeline.
+    produces features consistent with SAM1's internal pipeline.
 
     Args:
-        predictor: SAM2ImagePredictor instance
+        predictor: SamPredictor instance
         image_np: numpy array (H, W, 3) uint8
 
     Returns:
-        features: tensor of shape [1, 256, 64, 64] (image_embed)
+        features: tensor of shape [1, 256, 64, 64] (for ViT-H)
     """
     predictor.set_image(image_np)
-    # image_embed is the lowest-resolution, highest-semantic feature map
-    # Shape: (1, 256, 64, 64) for 1024x1024 input
-    return predictor._features["image_embed"]
+    return predictor.features
 
 
 def pool_features_with_mask(features, mask_np, feat_h, feat_w):
@@ -287,23 +306,20 @@ def compute(datasetId, apiUrl, token, params):
                   "Please select a tag that identifies your training annotations.")
         return
 
-    # ── SAM2 model setup ──
-    sendProgress(0.0, "Loading model", "Initializing SAM2...")
-    torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
-    if torch.cuda.get_device_properties(0).major >= 8:
+    # ── SAM1 model setup ──
+    sendProgress(0.0, "Loading model", "Initializing SAM1 ViT-H...")
+
+    # No bfloat16 autocast for SAM1 — its mask generator calls .numpy() on
+    # intermediate tensors which is incompatible with bfloat16
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if device == 'cuda' and torch.cuda.get_device_properties(0).major >= 8:
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    checkpoint_path = f"/code/sam2/checkpoints/{model_name}"
-    model_to_cfg = {
-        'sam2.1_hiera_base_plus.pt': 'sam2.1_hiera_b+.yaml',
-        'sam2.1_hiera_large.pt': 'sam2.1_hiera_l.yaml',
-        'sam2.1_hiera_small.pt': 'sam2.1_hiera_s.yaml',
-        'sam2.1_hiera_tiny.pt': 'sam2.1_hiera_t.yaml',
-    }
-    model_cfg = f"configs/sam2.1/{model_to_cfg[model_name]}"
-    sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)
-    predictor = SAM2ImagePredictor(sam2_model)
+    checkpoint_path = f"/{model_name}.pth"
+    sam_model = sam_model_registry["vit_h"](checkpoint=checkpoint_path)
+    sam_model.to(device)
+    predictor = SamPredictor(sam_model)
 
     # ── Phase 1: Extract training prototype ──
     sendProgress(0.05, "Extracting training features", "Fetching training annotations...")
@@ -344,8 +360,8 @@ def compute(datasetId, apiUrl, token, params):
         crop_image, crop_mask = extract_crop_with_context(merged_image, mask, target_occupancy)
         crop_image = ensure_rgb(crop_image)
 
-        # Encode with SAM2
-        features = encode_image_with_sam2(predictor, crop_image)
+        # Encode with SAM1
+        features = encode_image_with_sam1(predictor, crop_image)
         feat_h, feat_w = features.shape[2], features.shape[3]
 
         # Pool features with mask
@@ -381,8 +397,8 @@ def compute(datasetId, apiUrl, token, params):
     print(f"Training area stats: mean={mean_area}, std={std_area}")
 
     # ── Phase 2: Inference ──
-    mask_generator = SAM2AutomaticMaskGenerator(
-        sam2_model,
+    mask_generator = SamAutomaticMaskGenerator(
+        sam_model,
         points_per_side=points_per_side,
         pred_iou_thresh=0.88,
         stability_score_thresh=0.95,
@@ -406,7 +422,7 @@ def compute(datasetId, apiUrl, token, params):
         merged_image = annotation_tools.process_and_merge_channels(images, layers)
         merged_image_rgb = ensure_rgb(merged_image)
 
-        # Generate candidate masks with SAM2
+        # Generate candidate masks with SAM1
         candidate_masks = mask_generator.generate(merged_image_rgb)
         print(f"Frame {i + 1}: generated {len(candidate_masks)} candidate masks")
 
@@ -431,7 +447,7 @@ def compute(datasetId, apiUrl, token, params):
             if crop_mask.sum() == 0:
                 continue
 
-            features = encode_image_with_sam2(predictor, crop_image)
+            features = encode_image_with_sam1(predictor, crop_image)
             feat_h, feat_w = features.shape[2], features.shape[3]
             feature_vec = pool_features_with_mask(features, crop_mask, feat_h, feat_w)
 
@@ -465,7 +481,7 @@ def compute(datasetId, apiUrl, token, params):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='SAM2 Few-Shot Segmentation')
+        description='SAM Few-Shot Segmentation')
 
     parser.add_argument('--datasetId', type=str, required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')

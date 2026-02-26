@@ -236,9 +236,7 @@ class TestInterface:
     def test_interface_sets_all_fields(self, mock_client_class):
         mock_client = mock_client_class.return_value
 
-        # Mock the checkpoint directory
-        with patch('os.listdir', return_value=['sam2.1_hiera_small.pt', 'sam2.1_hiera_base_plus.pt', 'sam2.1_hiera_large.pt']):
-            interface('test_image', 'http://test-api', 'test-token')
+        interface('test_image', 'http://test-api', 'test-token')
 
         mock_client.setWorkerImageInterface.assert_called_once()
         interface_data = mock_client.setWorkerImageInterface.call_args[0][1]
@@ -260,19 +258,11 @@ class TestInterface:
         assert interface_data['Points per side']['type'] == 'number'
         assert interface_data['Smoothing']['type'] == 'number'
 
-        # Verify defaults
+        # Verify SAM1-specific defaults
         assert interface_data['Similarity Threshold']['default'] == 0.5
         assert interface_data['Target Occupancy']['default'] == 0.20
         assert interface_data['Points per side']['default'] == 128
-        assert interface_data['Model']['default'] == 'sam2.1_hiera_base_plus.pt'
-
-    @patch('annotation_client.workers.UPennContrastWorkerPreviewClient')
-    def test_interface_with_no_models(self, mock_client_class):
-        mock_client = mock_client_class.return_value
-
-        with patch('os.listdir', return_value=[]):
-            interface('test_image', 'http://test-api', 'test-token')
-
-        interface_data = mock_client.setWorkerImageInterface.call_args[0][1]
-        assert interface_data['Model']['default'] is None
-        assert interface_data['Model']['items'] == []
+        assert interface_data['Points per side']['max'] == 128
+        assert interface_data['Min Mask Area']['default'] == 30
+        assert interface_data['Model']['default'] == 'sam_vit_h_4b8939'
+        assert interface_data['Model']['items'] == ['sam_vit_h_4b8939']
