@@ -1,0 +1,19 @@
+name: worker
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - imageio
+  - rasterio
+  - shapely
+  - pillow
+  - opencv
+  - matplotlib
+  - scikit-image
+  - pip:
+    - segment-anything
+    - pycocotools
+    - onnxruntime
+    - onnx
