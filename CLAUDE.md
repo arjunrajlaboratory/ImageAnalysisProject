@@ -406,3 +406,37 @@ When creating new workers, use these as templates:
 - **Image processing worker (GPU)**: `workers/annotations/deconwolf/entrypoint.py` - GPU-accelerated with CPU fallback
 - **Annotation worker (test)**: `workers/annotations/random_squares/entrypoint.py` - generates random squares with batch mode
 - **Sample interface (all types)**: `workers/annotations/sample_interface/entrypoint.py` - demonstrates all interface types, messaging, and batch mode
+
+## Worker Documentation
+
+### Documentation Structure
+
+Every worker has a `WORKERNAME.md` file in its directory (uppercase, e.g., `BLOB_INTENSITY.md`, `CELLPOSE.md`, `DECONWOLF.md`). This replaces the old boilerplate `README.md` files.
+
+### REGISTRY.md
+
+The root-level [`REGISTRY.md`](REGISTRY.md) is the master index of all workers, organized by category. It contains a table for each worker group with the worker name, path, one-line description, and link to detailed docs. This is the starting point for understanding what workers exist.
+
+**REGISTRY.md must be updated whenever workers are added, removed, or renamed.**
+
+### Documentation Template
+
+Worker documentation should cover:
+
+1. **Title and description** — what the worker does in 1-2 sentences
+2. **How It Works** — brief algorithm/pipeline description
+3. **Interface Parameters** — table of all user-facing parameters with types, defaults, and descriptions
+4. **Computed Properties** (property workers only) — table of property names and what they measure
+5. **Implementation Details** — notable algorithms, edge cases, coordinate handling
+6. **Notes** — GPU requirements, limitations, related workers
+
+Use existing docs as reference:
+- **Comprehensive template**: `workers/annotations/deconwolf/DECONWOLF.md`
+- **Concise template**: `workers/annotations/condensatenet/CONDENSATENET.md`
+
+### Pre-PR Validation Hook
+
+A Claude Code hook (`.claude/hooks/validate-worker-docs.sh`) runs before `gh pr create` and checks:
+- Every modified annotation worker has a `WORKERNAME.md` doc file
+- Every modified property worker has a `WORKERNAME.md` doc file (not just a boilerplate README.md)
+- `REGISTRY.md` was updated if any worker files changed
