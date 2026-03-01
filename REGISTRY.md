@@ -117,3 +117,13 @@
 | Worker | Path | Description |
 |--------|------|-------------|
 | test_worker | `workers/test_worker/` | Internal test worker for CI infrastructure |
+
+---
+
+## Shared Base Images (ML Workers)
+
+| Image | Dockerfile | CUDA | Used by |
+|-------|-----------|------|---------|
+| `nimbusimage/sam2-worker-base` | `workers/base_docker_images/Dockerfile.sam2_worker_base` | 12.1 | All 5 SAM2 workers |
+| `nimbusimage/sam2-worker-base-m1` | `workers/base_docker_images/Dockerfile.sam2_worker_base_M1` | 11.8 | All 5 SAM2 workers (M1) |
+| `nimbusimage/cuda-ml-worker-base` | `workers/base_docker_images/Dockerfile.cuda_ml_worker_base` | 11.8 | cellpose, cellpose_train, cellposesam, stardist, SAM1 workers |

@@ -13,6 +13,4 @@ dependencies:
   - matplotlib
   - scikit-image
   - pip:
-    - pycocotools
-    - onnxruntime
-    - onnx
+    - rtree
