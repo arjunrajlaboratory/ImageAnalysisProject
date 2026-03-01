@@ -1,13 +1,8 @@
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 as base
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS base
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
-
-LABEL isUPennContrastWorker=True
-LABEL isAnnotationWorker=True
-LABEL interfaceName="Piscis (Predict)"
-LABEL interfaceCategory="Piscis"
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy software-properties-common python3-software-properties && \
@@ -20,33 +15,28 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libssl-dev \
   libjpeg-dev \
   zlib1g-dev \
-  r-base \
   git \
   libpython3-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/root/miniconda3/bin:$PATH"
-ARG PATH="/root/miniconda3/bin:$PATH"
+ENV PATH="/root/miniforge3/bin:$PATH"
+ARG PATH="/root/miniforge3/bin:$PATH"
 
 RUN wget \
-    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
     && mkdir /root/.conda \
-    && bash Miniconda3-latest-Linux-x86_64.sh -b \
-    && rm -f Miniconda3-latest-Linux-x86_64.sh
+    && bash Miniforge3-Linux-x86_64.sh -b \
+    && rm -f Miniforge3-Linux-x86_64.sh
 
-FROM base as build
-
-RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+FROM base AS build
 
 COPY ./environment.yml /
-RUN conda env create --file /environment.yml
+RUN mamba env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/Kitware/UPennContrast/
-
-RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
-RUN pip install -e /UPennContrast/devops/girder/annotation_client/
+RUN git clone https://github.com/arjunrajlaboratory/NimbusImage/
+RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 
 RUN pip install piscis==1.0.0
 RUN pip install flax

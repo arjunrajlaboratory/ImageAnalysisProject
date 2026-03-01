@@ -1,6 +1,9 @@
+# base_docker_images/Dockerfile.sam2_worker_base_M1
+# Shared base image for all SAM2 workers (M1 Mac development, runs via x86_64 emulation)
+# Provides: CUDA 11.8 + Miniconda3 + SAM2 env + NimbusImage client +
+#           annotation_utilities + SAM2 model + checkpoints
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 AS base
-LABEL isUPennContrastWorker=True
-LABEL com.nvidia.volumes.needed="nvidia_driver"
+LABEL isUPennContrastWorkerBase=True
 
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
@@ -30,34 +33,32 @@ RUN wget \
     && bash Miniconda3-latest-Linux-aarch64.sh -b \
     && rm -f Miniconda3-latest-Linux-aarch64.sh
 
-# Install mamba for faster solves
+# Install mamba into the base environment for faster solves
 RUN conda install -n base -c conda-forge mamba -y
 
 FROM base AS build
 
-COPY ./workers/annotations/sam_automatic_mask_generator/environment.yml /
-RUN mamba env create --file /environment.yml
+# Create conda environment using mamba for faster solves
+COPY ./workers/base_docker_images/environment.sam2.yml /
+RUN mamba env create --file /environment.sam2.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN pip install rtree shapely
 
+# Install NimbusImage annotation client
 RUN git clone https://github.com/arjunrajlaboratory/NimbusImage/
 RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 
-RUN wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
-
-COPY ./workers/annotations/sam_automatic_mask_generator/utils.py /
-COPY ./workers/annotations/sam_automatic_mask_generator/entrypoint.py /
-
+# Install annotation_utilities
 COPY ./annotation_utilities /annotation_utilities
 RUN pip install /annotation_utilities
 
-LABEL isUPennContrastWorker="" \
-      isAnnotationWorker="" \
-      interfaceName="SAM automatic mask generator" \
-      interfaceCategory="SAM" \
-      description="Uses SAM to find all masks in the image" \
-      annotationShape="polygon"
+# Clone and install SAM2 + download checkpoints
+RUN mkdir -p /code
+RUN git clone https://github.com/facebookresearch/sam2.git /code/sam2
+RUN pip install -e /code/sam2
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
+WORKDIR /code/sam2/checkpoints
+RUN ./download_ckpts.sh
+WORKDIR /

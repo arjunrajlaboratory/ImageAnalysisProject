@@ -55,7 +55,7 @@ FROM base AS build
 
 # Copy and create conda environment
 COPY ./workers/annotations/deconwolf/environment.yml /
-RUN conda env create --file /environment.yml
+RUN mamba env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 # Install NimbusImage annotation client
