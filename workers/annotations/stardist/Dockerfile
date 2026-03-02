@@ -1,5 +1,8 @@
 FROM nimbusimage/cuda-ml-worker-base:latest
 
+# Reset shell to default before removing the inherited worker environment
+SHELL ["/bin/bash", "-c"]
+
 # Stardist requires specific pinned package versions, so recreate the environment
 COPY ./workers/annotations/stardist/environment.yml /
 RUN mamba env remove -n worker -y && mamba env create --file /environment.yml
