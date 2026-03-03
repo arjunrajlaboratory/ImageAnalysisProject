@@ -12,5 +12,6 @@ dependencies:
   - opencv
   - matplotlib
   - scikit-image
+  - libstdcxx-ng
   - pip:
     - rtree

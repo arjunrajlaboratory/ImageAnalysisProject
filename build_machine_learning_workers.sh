@@ -50,18 +50,18 @@ echo "Building Piscis worker"
 docker compose -f ./workers/annotations/piscis/docker-compose.yaml build $NO_CACHE
 
 # ============================================================
-# CUDA 11.8 workers using cuda-ml-worker-base (x86_64 only)
+# Cellpose workers (standalone, own conda env for GPU compatibility)
 # ============================================================
 
 if [ "$ARCH" != "arm64" ]; then
     echo "Building Cellpose worker"
-    docker build . -f ./workers/annotations/cellpose/Dockerfile -t annotations/cellpose_worker:latest $NO_CACHE
+    docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest $NO_CACHE
 
     echo "Building Cellpose train worker"
-    docker build . -f ./workers/annotations/cellpose_train/Dockerfile -t annotations/cellpose_train_worker:latest $NO_CACHE
+    docker build ./workers/annotations/cellpose_train/ -t annotations/cellpose_train_worker:latest $NO_CACHE
 
     echo "Building Cellpose-SAM worker"
-    docker build . -f ./workers/annotations/cellposesam/Dockerfile -t annotations/cellposesam_worker:latest $NO_CACHE
+    docker build ./workers/annotations/cellposesam/ -t annotations/cellposesam_worker:latest $NO_CACHE
 
     echo "Building Stardist worker"
     docker build . -f ./workers/annotations/stardist/Dockerfile -t annotations/stardist_worker:latest $NO_CACHE

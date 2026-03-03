@@ -39,6 +39,9 @@ COPY ./workers/base_docker_images/environment.cuda_ml.yml /
 RUN mamba env create --file /environment.cuda_ml.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
+# Ensure conda env libraries (e.g. libstdc++) are found before system libraries
+ENV LD_LIBRARY_PATH="/root/miniforge3/envs/worker/lib:${LD_LIBRARY_PATH}"
+
 # Install NimbusImage annotation client
 RUN git clone https://github.com/arjunrajlaboratory/NimbusImage/
 RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
