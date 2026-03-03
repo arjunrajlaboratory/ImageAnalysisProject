@@ -34,9 +34,9 @@ RUN wget \
 
 FROM base AS build
 
-# Create conda environment using mamba for faster solves
+# Create conda environment (using conda, not mamba, to preserve CUDA compatibility)
 COPY ./workers/base_docker_images/environment.sam2.yml /
-RUN mamba env create --file /environment.sam2.yml
+RUN conda env create --file /environment.sam2.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 RUN pip install rtree shapely
@@ -49,6 +49,9 @@ RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 # Install annotation_utilities
 COPY ./annotation_utilities /annotation_utilities
 RUN pip install /annotation_utilities
+
+# Install PyTorch with CUDA 12.1 support (must precede SAM2 to avoid pulling default cu128)
+RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 # Clone and install SAM2 + download checkpoints
 RUN mkdir -p /code

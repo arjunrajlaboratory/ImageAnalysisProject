@@ -75,23 +75,23 @@ echo "Building SAM automatic mask generator worker"
 docker build . -f ./workers/annotations/sam_automatic_mask_generator/$DOCKERFILE -t annotations/sam_automatic_mask_generator:latest $NO_CACHE
 
 # ============================================================
-# SAM2 workers (use sam2-worker-base)
+# SAM2 workers (standalone, own conda env for GPU compatibility)
 # ============================================================
 
 echo "Building SAM2 automatic mask generator worker"
-docker build . -f ./workers/annotations/sam2_automatic_mask_generator/$DOCKERFILE -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
+docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
 
 echo "Building SAM2 few-shot segmentation worker"
-docker build . -f ./workers/annotations/sam2_fewshot_segmentation/$DOCKERFILE -t annotations/sam2_fewshot_segmentation:latest $NO_CACHE
+docker build . -f ./workers/annotations/sam2_fewshot_segmentation/Dockerfile -t annotations/sam2_fewshot_segmentation:latest $NO_CACHE
 
 echo "Building SAM2 propagate worker"
-docker build . -f ./workers/annotations/sam2_propagate/$DOCKERFILE -t annotations/sam2_propagate_worker:latest $NO_CACHE
+docker build . -f ./workers/annotations/sam2_propagate/Dockerfile -t annotations/sam2_propagate_worker:latest $NO_CACHE
 
 echo "Building SAM2 refine worker"
-docker build . -f ./workers/annotations/sam2_refine/$DOCKERFILE -t annotations/sam2_refine_worker:latest $NO_CACHE
+docker build . -f ./workers/annotations/sam2_refine/Dockerfile -t annotations/sam2_refine_worker:latest $NO_CACHE
 
 echo "Building SAM2 video worker"
-docker build . -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sam2_video_worker:latest $NO_CACHE
+docker build . -f ./workers/annotations/sam2_video/Dockerfile -t annotations/sam2_video_worker:latest $NO_CACHE
 
 # ============================================================
 # Standalone workers (CUDA 12.1, unique dependencies)
