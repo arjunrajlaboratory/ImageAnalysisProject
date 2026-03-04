@@ -1,6 +1,9 @@
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04 AS base
-LABEL isUPennContrastWorker=True
-LABEL com.nvidia.volumes.needed="nvidia_driver"
+# base_docker_images/Dockerfile.cuda_ml_worker_base
+# Shared base image for CUDA 11.8 ML workers (cellpose, stardist, SAM1, etc.)
+# Provides: CUDA 11.8 + Miniforge3 (mamba) + common Python env + NimbusImage client +
+#           annotation_utilities + worker_client
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 AS base
+LABEL isUPennContrastWorkerBase=True
 
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
@@ -16,7 +19,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libssl-dev \
   libjpeg-dev \
   zlib1g-dev \
-  r-base \
   git \
   libpython3-dev && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -32,38 +34,23 @@ RUN wget \
 
 FROM base AS build
 
-COPY ./workers/annotations/sam2_video/environment.yml /
-RUN conda env create --file /environment.yml
+# Create conda environment using mamba for faster solves
+COPY ./workers/base_docker_images/environment.cuda_ml.yml /
+RUN mamba env create --file /environment.cuda_ml.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN pip install rtree shapely
+# Ensure conda env libraries (e.g. libstdc++) are found before system libraries
+ENV LD_LIBRARY_PATH="/root/miniforge3/envs/worker/lib:${LD_LIBRARY_PATH}"
 
+# Install NimbusImage annotation client
 RUN git clone https://github.com/arjunrajlaboratory/NimbusImage/
-
 RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 
-# Install the nimbus video predictor fork of SAM2 (not the standard SAM2)
-RUN mkdir -p /code
-RUN git clone -b nimbus-video-predictor https://github.com/arjunrajlaboratory/segment-anything-2-nimbus.git /code/segment-anything-2-nimbus
-RUN pip install -e /code/segment-anything-2-nimbus
-
-WORKDIR /code/segment-anything-2-nimbus/checkpoints
-RUN ./download_ckpts.sh
-WORKDIR /
-
-COPY ./workers/annotations/sam2_video/utils.py /
-COPY ./workers/annotations/sam2_video/entrypoint.py /
-
+# Install annotation_utilities
 COPY ./annotation_utilities /annotation_utilities
 RUN pip install /annotation_utilities
 
-LABEL isUPennContrastWorker="" \
-      isAnnotationWorker="" \
-      interfaceName="SAM2 video" \
-      interfaceCategory="SAM2" \
-      description="Uses SAM2 to track video through time or Z" \
-      annotationShape="polygon" \
-      defaultToolName="SAM2 video"
-
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
+# Install worker_client
+COPY ./worker_client /worker_client
+RUN pip install /worker_client

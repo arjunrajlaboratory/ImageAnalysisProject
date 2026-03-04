@@ -12,7 +12,6 @@ dependencies:
   - opencv
   - matplotlib
   - scikit-image
+  - libstdcxx-ng
   - pip:
-    - pycocotools
-    - onnxruntime
-    - onnx
+    - rtree

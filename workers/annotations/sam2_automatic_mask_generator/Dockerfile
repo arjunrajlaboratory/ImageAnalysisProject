@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04 as base
+FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04 AS base
 LABEL isUPennContrastWorker=True
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 
@@ -30,7 +30,7 @@ RUN wget \
     && bash Miniforge3-Linux-x86_64.sh -b \
     && rm -f Miniforge3-Linux-x86_64.sh
 
-FROM base as build
+FROM base AS build
 
 COPY ./workers/annotations/sam2_automatic_mask_generator/environment.yml /
 RUN conda env create --file /environment.yml
@@ -47,11 +47,8 @@ RUN mkdir -p /code
 RUN git clone https://github.com/facebookresearch/sam2.git /code/sam2
 RUN pip install -e /code/sam2
 
-# Change directory to sam2/checkpoints
 WORKDIR /code/sam2/checkpoints
-# Download the checkpoints into the checkpoints directory
 RUN ./download_ckpts.sh
-# Change back to the root directory
 WORKDIR /
 
 COPY ./workers/annotations/sam2_automatic_mask_generator/utils.py /
