@@ -440,3 +440,10 @@ A Claude Code hook (`.claude/hooks/validate-worker-docs.sh`) runs before `gh pr 
 - Every modified annotation worker has a `WORKERNAME.md` doc file
 - Every modified property worker has a `WORKERNAME.md` doc file (not just a boilerplate README.md)
 - `REGISTRY.md` was updated if any worker files changed
+
+## Development TODOs
+
+Deferred work, technical debt, and future improvement plans are tracked in the `todo/` directory. The master index is [`todo/TODO_REGISTRY.md`](todo/TODO_REGISTRY.md).
+
+- When completing work that addresses a TODO item, update its status in `TODO_REGISTRY.md` and add a resolution note to the detailed TODO file.
+- When discovering new technical debt or deferred work, create a new TODO file in `todo/` and register it in `TODO_REGISTRY.md`.
