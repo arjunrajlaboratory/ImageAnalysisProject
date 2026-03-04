@@ -38,8 +38,10 @@ This tool uses the SAM2 model to take an existing annotation and propagate it th
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh sam2_propagate
+./build_machine_learning_workers.sh
 ```
 
 ---

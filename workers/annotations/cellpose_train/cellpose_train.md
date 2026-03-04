@@ -36,8 +36,10 @@ This tool trains a Cellpose model using user-corrected annotations. Learn more
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh cellpose_train
+./build_machine_learning_workers.sh
 ```
 
 ---

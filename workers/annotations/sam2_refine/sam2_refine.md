@@ -35,8 +35,10 @@ This tool uses the SAM2 model to refine existing annotations. It takes existing 
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh sam2_refine
+./build_machine_learning_workers.sh
 ```
 
 ---

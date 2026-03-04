@@ -37,8 +37,10 @@ Uses SAM2 to track video through time or Z
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh sam2_video
+./build_machine_learning_workers.sh
 ```
 
 ---

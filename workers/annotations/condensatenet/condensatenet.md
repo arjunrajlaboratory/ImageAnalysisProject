@@ -34,8 +34,10 @@ Segments biomolecular condensates using CondensateNet deep learning model
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh condensatenet
+./build_machine_learning_workers.sh
 ```
 
 ---

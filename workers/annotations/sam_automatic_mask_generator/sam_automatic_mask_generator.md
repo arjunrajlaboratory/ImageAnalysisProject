@@ -29,8 +29,10 @@ Uses SAM to find all masks in the image
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh sam_automatic_mask_generator
+./build_machine_learning_workers.sh
 ```
 
 ---

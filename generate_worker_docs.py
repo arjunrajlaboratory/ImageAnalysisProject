@@ -44,6 +44,24 @@ TEST_WORKER_NAMES = {
     "annulus_generator_M1",
 }
 
+# Workers built by build_machine_learning_workers.sh (not in docker-compose.yml)
+ML_WORKER_NAMES = {
+    "cellpose",
+    "cellpose_train",
+    "cellposesam",
+    "condensatenet",
+    "deepcell",
+    "piscis",
+    "sam2_automatic_mask_generator",
+    "sam2_fewshot_segmentation",
+    "sam2_propagate",
+    "sam2_refine",
+    "sam2_video",
+    "sam_automatic_mask_generator",
+    "sam_fewshot_segmentation",
+    "stardist",
+}
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -82,6 +100,7 @@ class WorkerInfo:
     is_test_worker: bool = False
     has_dynamic_params: bool = False   # True when >=1 param couldn't be statically parsed
     compose_service: Optional[str] = None  # Docker Compose service name (may differ from dir name)
+    is_ml_worker: bool = False  # Built by build_machine_learning_workers.sh
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +329,7 @@ def discover_workers() -> list:
                 is_test_worker=worker_dir.name in TEST_WORKER_NAMES,
                 has_dynamic_params=has_dynamic,
                 compose_service=svc_map.get(worker_dir.name),
+                is_ml_worker=worker_dir.name in ML_WORKER_NAMES,
             ))
 
     # --- Property workers ---
@@ -462,19 +482,42 @@ def generate_worker_doc(info: WorkerInfo) -> str:
     lines += file_rows + [""]
 
     # --- Building ---
-    # Use the Docker Compose service name when it differs from the directory name.
-    build_id = info.compose_service or info.name
-    build_script = "./build_test_workers.sh" if info.is_test_worker else "./build_workers.sh"
-    lines += ["## Building", ""]
-    lines += [
-        "```bash",
-        f"{build_script} {build_id}",
-        "```",
-        "",
-    ]
+    # Use the Docker Compose service name when available.  ML workers are built
+    # by build_machine_learning_workers.sh (no per-worker argument).  Workers
+    # without any known build path omit the section entirely.
+    if info.is_ml_worker:
+        lines += ["## Building", ""]
+        lines += [
+            "This worker is built by the ML workers script (builds all ML workers together):",
+            "",
+            "```bash",
+            "./build_machine_learning_workers.sh",
+            "```",
+            "",
+        ]
+    elif info.is_test_worker and info.compose_service:
+        build_id = info.compose_service
+        lines += ["## Building", ""]
+        lines += [
+            "```bash",
+            f"./build_test_workers.sh {build_id}",
+            "```",
+            "",
+        ]
+    elif info.compose_service:
+        build_id = info.compose_service
+        lines += ["## Building", ""]
+        lines += [
+            "```bash",
+            f"./build_workers.sh {build_id}",
+            "```",
+            "",
+        ]
+    # else: no known build command — omit the section
 
     # --- Testing ---
-    if info.has_tests:
+    if info.has_tests and info.compose_service:
+        build_id = info.compose_service
         lines += [
             "## Testing",
             "",

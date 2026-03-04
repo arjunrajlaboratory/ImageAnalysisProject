@@ -39,14 +39,10 @@ Uses SAM1 ViT-H features for few-shot segmentation based on training annotations
 
 ## Building
 
-```bash
-./build_workers.sh sam_fewshot_segmentation
-```
-
-## Testing
+This worker is built by the ML workers script (builds all ML workers together):
 
 ```bash
-./build_workers.sh --build-and-run-tests sam_fewshot_segmentation
+./build_machine_learning_workers.sh
 ```
 
 ---

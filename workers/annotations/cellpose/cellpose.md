@@ -37,8 +37,10 @@ This tool runs the Cellpose model to segment the image into cells. Learn more
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh cellpose
+./build_machine_learning_workers.sh
 ```
 
 ---

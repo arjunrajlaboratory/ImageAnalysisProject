@@ -38,8 +38,10 @@ This tool runs the Cellpose-SAM model to segment the image into cells. Learn mor
 
 ## Building
 
+This worker is built by the ML workers script (builds all ML workers together):
+
 ```bash
-./build_workers.sh cellposesam
+./build_machine_learning_workers.sh
 ```
 
 ---
