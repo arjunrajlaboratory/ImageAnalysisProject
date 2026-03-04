@@ -6,6 +6,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository contains Docker-based workers for NimbusImage, a cloud platform for image analysis. Workers interface with a Girder/large_image backend to pull images and annotations, then return annotations or computed property values to the server.
 
+## Worker Documentation
+
+Every worker has a `{worker_name}.md` file in its directory documenting its type, interface parameters, outputs, and build/test commands. A top-level `registry.md` indexes all workers in one place.
+
+### Generating / Updating Documentation
+
+```bash
+# Regenerate docs for all workers + registry
+python generate_worker_docs.py
+
+# Regenerate docs for specific workers only (registry always regenerated)
+python generate_worker_docs.py --workers cellposesam blob_intensity_worker
+
+# Regenerate registry only
+python generate_worker_docs.py --registry-only
+```
+
+The script reads each `entrypoint.py` via AST parsing to extract the interface definition and Docker labels, then writes the markdown files. Workers with dynamically-computed interface values (e.g. model lists fetched from Girder) are handled gracefully — static fields are extracted and dynamic ones are flagged.
+
+### Automatic Documentation via Claude Code Hook
+
+A `PostToolUse` Claude Code hook (`.claude/hooks/update-worker-docs.sh`) fires automatically after any `gh pr create` or `gh pr edit` Bash command. It:
+1. Runs `generate_worker_docs.py` to regenerate all worker docs and `registry.md`
+2. Commits any changes
+3. Pushes the commit to the current branch so the PR always contains up-to-date docs
+
+The hook is registered in `.claude/settings.json`.
+
+### Documentation Conventions
+
+- Each worker's doc file is named `{worker_name}.md` and lives in the worker's directory.
+- Do **not** edit these files manually — they are auto-generated. Edit `entrypoint.py` instead.
+- The `interfaceName`, `interfaceCategory`, `annotationShape`, and `description` Docker labels are reflected in the docs; keep these labels accurate in the Dockerfile.
+
 ## Build Commands
 
 ```bash
