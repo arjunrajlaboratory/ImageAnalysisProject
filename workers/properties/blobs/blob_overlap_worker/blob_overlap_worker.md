@@ -28,13 +28,13 @@ This tool computes the overlaps between two sets of annotations. The overlap is 
 ## Building
 
 ```bash
-./build_workers.sh blob_overlap_worker
+./build_workers.sh blob_overlap
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests blob_overlap_worker
+./build_workers.sh --build-and-run-tests blob_overlap
 ```
 
 ---

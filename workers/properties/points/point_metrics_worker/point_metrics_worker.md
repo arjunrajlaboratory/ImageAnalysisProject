@@ -25,13 +25,13 @@ _No configurable parameters._
 ## Building
 
 ```bash
-./build_workers.sh point_metrics_worker
+./build_workers.sh point_metrics
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests point_metrics_worker
+./build_workers.sh --build-and-run-tests point_metrics
 ```
 
 ---

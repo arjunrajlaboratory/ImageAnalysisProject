@@ -24,6 +24,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+try:
+    import yaml
+    _YAML_AVAILABLE = True
+except ImportError:
+    _YAML_AVAILABLE = False
+
 REPO_ROOT = Path(__file__).parent
 WORKERS_ROOT = REPO_ROOT / "workers"
 
@@ -75,6 +81,7 @@ class WorkerInfo:
     has_tests: bool = False
     is_test_worker: bool = False
     has_dynamic_params: bool = False   # True when >=1 param couldn't be statically parsed
+    compose_service: Optional[str] = None  # Docker Compose service name (may differ from dir name)
 
 
 # ---------------------------------------------------------------------------
@@ -227,12 +234,51 @@ def extract_interface_info(entrypoint_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# Docker Compose service name lookup
+# ---------------------------------------------------------------------------
+
+def _load_compose_service_map() -> dict:
+    """
+    Return a mapping of {worker_dir_name: compose_service_name} by parsing
+    docker-compose.yml.  Falls back to an empty dict if yaml is unavailable
+    or the file doesn't exist.
+    """
+    compose_path = REPO_ROOT / "docker-compose.yml"
+    if not compose_path.exists() or not _YAML_AVAILABLE:
+        return {}
+
+    try:
+        data = yaml.safe_load(compose_path.read_text())
+    except Exception:
+        return {}
+
+    mapping: dict = {}
+    for svc_name, cfg in (data.get("services") or {}).items():
+        build = cfg.get("build", {})
+        if not isinstance(build, dict):
+            continue
+        dockerfile = build.get("dockerfile", "")
+        # Dockerfile path is like ./workers/annotations/cellposesam/Dockerfile
+        # The parent directory is the worker directory.
+        parts = Path(dockerfile).parts
+        if len(parts) < 2:
+            continue
+        worker_dir = parts[-2]
+        if worker_dir not in ("base_docker_images", "tests"):
+            # Only record the first match (there shouldn't be duplicates).
+            mapping.setdefault(worker_dir, svc_name)
+
+    return mapping
+
+
+# ---------------------------------------------------------------------------
 # Worker discovery
 # ---------------------------------------------------------------------------
 
 def discover_workers() -> list:
     """Walk the workers/ tree and return a list of WorkerInfo objects."""
     infos: list = []
+    svc_map = _load_compose_service_map()
 
     # --- Annotation workers ---
     ann_dir = WORKERS_ROOT / "annotations"
@@ -263,6 +309,7 @@ def discover_workers() -> list:
                 has_tests=(worker_dir / "tests").exists(),
                 is_test_worker=worker_dir.name in TEST_WORKER_NAMES,
                 has_dynamic_params=has_dynamic,
+                compose_service=svc_map.get(worker_dir.name),
             ))
 
     # --- Property workers ---
@@ -297,6 +344,7 @@ def discover_workers() -> list:
                     has_tests=(worker_dir / "tests").exists(),
                     is_test_worker=False,
                     has_dynamic_params=has_dynamic,
+                    compose_service=svc_map.get(worker_dir.name),
                 ))
 
     return infos
@@ -414,11 +462,13 @@ def generate_worker_doc(info: WorkerInfo) -> str:
     lines += file_rows + [""]
 
     # --- Building ---
-    lines += ["## Building", ""]
+    # Use the Docker Compose service name when it differs from the directory name.
+    build_id = info.compose_service or info.name
     build_script = "./build_test_workers.sh" if info.is_test_worker else "./build_workers.sh"
+    lines += ["## Building", ""]
     lines += [
         "```bash",
-        f"{build_script} {info.name}",
+        f"{build_script} {build_id}",
         "```",
         "",
     ]
@@ -429,7 +479,7 @@ def generate_worker_doc(info: WorkerInfo) -> str:
             "## Testing",
             "",
             "```bash",
-            f"./build_workers.sh --build-and-run-tests {info.name}",
+            f"./build_workers.sh --build-and-run-tests {build_id}",
             "```",
             "",
         ]

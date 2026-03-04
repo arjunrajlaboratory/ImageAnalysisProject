@@ -30,13 +30,13 @@ This tool computes the pixel intensity in an annulus around the objects in the s
 ## Building
 
 ```bash
-./build_workers.sh blob_annulus_intensity_worker
+./build_workers.sh blob_annulus_intensity
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests blob_annulus_intensity_worker
+./build_workers.sh --build-and-run-tests blob_annulus_intensity
 ```
 
 ---

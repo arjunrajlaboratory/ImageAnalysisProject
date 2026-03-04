@@ -51,10 +51,15 @@ if git diff --quiet && git diff --cached --quiet; then
 fi
 
 echo "[update-worker-docs] Documentation changed — committing..."
+# Stage only the files the generator writes: registry.md and per-worker .md
+# files. Using targeted patterns avoids accidentally staging unrelated changes
+# (e.g. in-progress Python or Dockerfile edits) that happen to be uncommitted
+# when the PR command runs.
 git add registry.md
-git add 'workers/**/*.md'
-# Stage any newly created .md files too
-git add --all -- '*.md' 'workers' 2>/dev/null || true
+# Stage modified tracked .md files inside workers/
+git diff --name-only -- 'workers/**/*.md' 'workers/*.md' | xargs -r git add
+# Stage newly created (untracked) .md files inside workers/
+git ls-files --others --exclude-standard -- 'workers/**/*.md' 'workers/*.md' | xargs -r git add
 
 git commit -m "docs: auto-update worker docs and registry.md
 

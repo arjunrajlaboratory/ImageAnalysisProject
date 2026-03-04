@@ -28,13 +28,13 @@ This tool computes a variety of metrics for the objects in the specified channel
 ## Building
 
 ```bash
-./build_workers.sh blob_metrics_worker
+./build_workers.sh blob_metrics
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests blob_metrics_worker
+./build_workers.sh --build-and-run-tests blob_metrics
 ```
 
 ---

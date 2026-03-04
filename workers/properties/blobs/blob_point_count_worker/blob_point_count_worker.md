@@ -29,13 +29,13 @@ This tool counts the number of points within polygon annotations. The points wil
 ## Building
 
 ```bash
-./build_workers.sh blob_point_count_worker
+./build_workers.sh blob_point_count
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests blob_point_count_worker
+./build_workers.sh --build-and-run-tests blob_point_count
 ```
 
 ---

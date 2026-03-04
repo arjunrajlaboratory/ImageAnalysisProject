@@ -29,13 +29,13 @@ This tool computes the pixel intensity of objects in the specified channel. It w
 ## Building
 
 ```bash
-./build_workers.sh blob_intensity_worker
+./build_workers.sh blob_intensity
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests blob_intensity_worker
+./build_workers.sh --build-and-run-tests blob_intensity
 ```
 
 ---

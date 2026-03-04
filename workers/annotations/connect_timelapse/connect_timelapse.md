@@ -27,13 +27,13 @@ This tool connects objects across time slices. It allows you to connect objects 
 ## Building
 
 ```bash
-./build_workers.sh connect_timelapse
+./build_workers.sh connect_time_lapse
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests connect_timelapse
+./build_workers.sh --build-and-run-tests connect_time_lapse
 ```
 
 ---

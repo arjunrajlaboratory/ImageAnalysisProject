@@ -29,7 +29,7 @@ Compute intensity across two channels for blobs; useful for colony intensity mea
 ## Building
 
 ```bash
-./build_workers.sh blob_colony_two_color_intensity_worker
+./build_workers.sh blob_colony_two_color_intensity
 ```
 
 ---

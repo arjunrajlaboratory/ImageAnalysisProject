@@ -29,13 +29,13 @@ This tool adds a property to the objects to document the connections between the
 ## Building
 
 ```bash
-./build_workers.sh parent_child_worker
+./build_workers.sh parent_child
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests parent_child_worker
+./build_workers.sh --build-and-run-tests parent_child
 ```
 
 ---

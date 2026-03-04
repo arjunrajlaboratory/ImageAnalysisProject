@@ -28,13 +28,13 @@ This tool counts the number of children objects that are connected to a parent p
 ## Building
 
 ```bash
-./build_workers.sh children_count_worker
+./build_workers.sh children_count
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests children_count_worker
+./build_workers.sh --build-and-run-tests children_count
 ```
 
 ---

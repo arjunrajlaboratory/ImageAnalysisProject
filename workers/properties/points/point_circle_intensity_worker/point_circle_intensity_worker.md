@@ -28,13 +28,13 @@ This tool computes the average, maximum, minimum, median, total, 25th percentile
 ## Building
 
 ```bash
-./build_workers.sh point_circle_intensity_worker
+./build_workers.sh point_intensity
 ```
 
 ## Testing
 
 ```bash
-./build_workers.sh --build-and-run-tests point_circle_intensity_worker
+./build_workers.sh --build-and-run-tests point_intensity
 ```
 
 ---
