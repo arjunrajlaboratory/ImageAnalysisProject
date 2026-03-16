@@ -539,6 +539,35 @@ def generate_worker_doc(info: WorkerInfo) -> str:
     return "\n".join(lines)
 
 
+def _doc_filename(worker_name: str) -> str:
+    """Return the UPPERCASE documentation filename for a worker (e.g. 'deconwolf' -> 'DECONWOLF.md')."""
+    return f"{worker_name.upper()}.md"
+
+
+def _existing_doc_path(worker_dir: Path, worker_name: str) -> Optional[Path]:
+    """Find the existing doc file for a worker.
+
+    Checks for any .md file in the worker directory that looks like documentation
+    (excluding README.md and EXPERIMENT_RESULTS.md). This handles cases where the
+    doc filename doesn't exactly match the directory name (e.g. BLOB_INTENSITY.md
+    in blob_intensity_worker/).
+
+    Returns the Path if found, None otherwise.
+    """
+    # First check the exact expected name
+    upper_path = worker_dir / _doc_filename(worker_name)
+    if upper_path.exists():
+        return upper_path
+
+    # Check for any doc-like .md file in the directory
+    skip_names = {"README.md", "EXPERIMENT_RESULTS.md"}
+    for md_file in worker_dir.glob("*.md"):
+        if md_file.name not in skip_names:
+            return md_file
+
+    return None
+
+
 def generate_registry(workers: list) -> str:
     """Produce the full Markdown content for registry.md."""
     ann = [w for w in workers if w.worker_type == "annotation" and not w.is_test_worker]
@@ -578,7 +607,7 @@ def generate_registry(workers: list) -> str:
         gpu = "Yes" if w.has_gpu else ""
         tests = "Yes" if w.has_tests else ""
         rel = w.dir_path.relative_to(REPO_ROOT)
-        link = f"[docs]({rel}/{w.name}.md)"
+        link = f"[docs]({rel}/{_doc_filename(w.name)})"
         return f"| {display} | {desc} | {gpu} | {tests} | {link} |"
 
     def _row_prop(w: WorkerInfo) -> str:
@@ -588,7 +617,7 @@ def generate_registry(workers: list) -> str:
             desc = desc[:87] + "..."
         tests = "Yes" if w.has_tests else ""
         rel = w.dir_path.relative_to(REPO_ROOT)
-        link = f"[docs]({rel}/{w.name}.md)"
+        link = f"[docs]({rel}/{_doc_filename(w.name)})"
         return f"| {display} | {desc} | {tests} | {link} |"
 
     def _ann_section(title: str, intro: str, worker_list: list) -> list:
@@ -667,6 +696,10 @@ def main():
         "--registry-only", action="store_true",
         help="Only regenerate registry.md, skip per-worker docs",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite existing documentation files (by default, only creates stubs for workers without docs)",
+    )
     args = parser.parse_args()
 
     print("Discovering workers...")
@@ -682,15 +715,29 @@ def main():
         else:
             target = all_workers
 
+        created = 0
+        skipped = 0
         for info in target:
+            doc_path = info.dir_path / _doc_filename(info.name)
+            existing = _existing_doc_path(info.dir_path, info.name)
+
+            if existing and not args.force:
+                skipped += 1
+                continue
+
             content = generate_worker_doc(info)
-            doc_path = info.dir_path / f"{info.name}.md"
             doc_path.write_text(content)
             print(f"  Wrote {doc_path.relative_to(REPO_ROOT)}")
+            created += 1
+
+        if skipped:
+            print(f"  Skipped {skipped} workers with existing docs (use --force to overwrite)")
+        if created:
+            print(f"  Created {created} new doc stubs")
 
     print("Generating registry.md...")
-    (REPO_ROOT / "registry.md").write_text(generate_registry(all_workers))
-    print("  Wrote registry.md")
+    (REPO_ROOT / "REGISTRY.md").write_text(generate_registry(all_workers))
+    print("  Wrote REGISTRY.md")
     print("Done.")
 
 
