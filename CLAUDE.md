@@ -13,8 +13,11 @@ Every worker has a `{worker_name}.md` file in its directory documenting its type
 ### Generating / Updating Documentation
 
 ```bash
-# Regenerate docs for all workers + registry
+# Create stubs for workers missing docs + regenerate registry
 python generate_worker_docs.py
+
+# Force-overwrite all worker docs (WARNING: replaces hand-written docs with auto-generated stubs)
+python generate_worker_docs.py --force
 
 # Regenerate docs for specific workers only (registry always regenerated)
 python generate_worker_docs.py --workers cellposesam blob_intensity_worker
@@ -23,7 +26,7 @@ python generate_worker_docs.py --workers cellposesam blob_intensity_worker
 python generate_worker_docs.py --registry-only
 ```
 
-The script reads each `entrypoint.py` via AST parsing to extract the interface definition and Docker labels, then writes the markdown files. Workers with dynamically-computed interface values (e.g. model lists fetched from Girder) are handled gracefully — static fields are extracted and dynamic ones are flagged.
+The script reads each `entrypoint.py` via AST parsing to extract the interface definition and Docker labels, then writes the markdown files. **By default, it only creates stubs for workers that don't already have a doc file** — existing hand-written documentation is preserved. Use `--force` to overwrite. Workers with dynamically-computed interface values (e.g. model lists fetched from Girder) are handled gracefully — static fields are extracted and dynamic ones are flagged.
 
 ### Automatic Documentation via Claude Code Hook
 

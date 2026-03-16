@@ -49,7 +49,7 @@ fi
 # files. Using targeted patterns avoids accidentally staging unrelated changes
 # (e.g. in-progress Python or Dockerfile edits) that happen to be uncommitted
 # when the PR command runs.
-git add registry.md
+git add REGISTRY.md
 # Stage modified tracked .md files inside workers/
 git diff --name-only -- 'workers/**/*.md' 'workers/*.md' | xargs -r git add
 # Stage newly created (untracked) .md files inside workers/
