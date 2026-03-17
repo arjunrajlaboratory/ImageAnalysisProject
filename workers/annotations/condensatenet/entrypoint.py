@@ -26,6 +26,13 @@ def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
     interface = {
+        'Model Version': {
+            'type': 'select',
+            'items': ['condensatenet-v1', 'condensatenet (original)'],
+            'default': 'condensatenet-v1',
+            'tooltip': 'Select the CondensateNet model version to use',
+            'displayOrder': 0,
+        },
         'Batch XY': {
             'type': 'text',
             'vueAttrs': {
@@ -34,7 +41,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 0
+            'displayOrder': 1
         },
         'Batch Z': {
             'type': 'text',
@@ -44,7 +51,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 1
+            'displayOrder': 2
         },
         'Batch Time': {
             'type': 'text',
@@ -54,7 +61,7 @@ def interface(image, apiUrl, token):
                 'persistentPlaceholder': True,
                 'filled': True,
             },
-            'displayOrder': 2
+            'displayOrder': 3
         },
         'Probability Threshold': {
             'type': 'number',
@@ -62,7 +69,7 @@ def interface(image, apiUrl, token):
             'max': 1.0,
             'default': 0.15,
             'tooltip': 'Minimum confidence for detection (0-1)',
-            'displayOrder': 3,
+            'displayOrder': 4,
         },
         'Min Size': {
             'type': 'number',
@@ -71,7 +78,7 @@ def interface(image, apiUrl, token):
             'default': 15,
             'unit': 'pixels',
             'tooltip': 'Minimum condensate size in pixels',
-            'displayOrder': 4,
+            'displayOrder': 5,
         },
         'Max Size': {
             'type': 'number',
@@ -80,7 +87,7 @@ def interface(image, apiUrl, token):
             'default': 600,
             'unit': 'pixels',
             'tooltip': 'Maximum condensate size in pixels',
-            'displayOrder': 5,
+            'displayOrder': 6,
         },
         'Smoothing': {
             'type': 'number',
@@ -88,7 +95,7 @@ def interface(image, apiUrl, token):
             'max': 3,
             'default': 0.3,
             'tooltip': 'Polygon simplification tolerance',
-            'displayOrder': 6,
+            'displayOrder': 7,
         },
         'Padding': {
             'type': 'number',
@@ -97,7 +104,7 @@ def interface(image, apiUrl, token):
             'default': 0,
             'unit': 'pixels',
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
-            'displayOrder': 7,
+            'displayOrder': 8,
         },
         'Tile Size': {
             'type': 'number',
@@ -106,7 +113,7 @@ def interface(image, apiUrl, token):
             'default': 1024,
             'unit': 'pixels',
             'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the model may run out of memory.',
-            'displayOrder': 8,
+            'displayOrder': 9,
         },
         'Tile Overlap': {
             'type': 'number',
@@ -116,13 +123,19 @@ def interface(image, apiUrl, token):
             'unit': 'Fraction',
             'tooltip': 'The amount of overlap between tiles. A value of 0.1 means tiles overlap by 10%. '
                        'Make sure your objects are smaller than the overlap region.',
-            'displayOrder': 9,
+            'displayOrder': 10,
         },
     }
     client.setWorkerImageInterface(image, interface)
 
 
-def condensatenet_segmentation(prob_threshold, min_size, max_size):
+MODEL_PATHS = {
+    'condensatenet-v1': '/models/condensatenet-v1',
+    'condensatenet (original)': '/models/condensatenet',
+}
+
+
+def condensatenet_segmentation(prob_threshold, min_size, max_size, model_path):
     """Generate lifted function for CondensateNet segmentation.
 
     Parameters
@@ -133,6 +146,8 @@ def condensatenet_segmentation(prob_threshold, min_size, max_size):
         Minimum condensate size in pixels.
     max_size : int
         Maximum condensate size in pixels.
+    model_path : str
+        Path to the local model directory.
 
     Returns
     -------
@@ -141,9 +156,9 @@ def condensatenet_segmentation(prob_threshold, min_size, max_size):
     """
 
     # Load CondensateNet model once
-    sendProgress(0, "Loading model", "Initializing CondensateNet...")
+    sendProgress(0, "Loading model", f"Initializing CondensateNet from {model_path}...")
     pipeline = CondensateNetPipeline.from_local(
-        "/models/condensatenet",
+        model_path,
         prob_threshold=prob_threshold,
         min_size=min_size,
         max_size=max_size
@@ -260,6 +275,8 @@ def compute(datasetId, apiUrl, token, params):
     worker = WorkerClient(datasetId, apiUrl, token, params)
 
     # Get parameters from interface
+    model_version = worker.workerInterface.get('Model Version', 'condensatenet-v1')
+    model_path = MODEL_PATHS.get(model_version, MODEL_PATHS['condensatenet-v1'])
     prob_threshold = float(worker.workerInterface['Probability Threshold'])
     min_size = int(worker.workerInterface['Min Size'])
     max_size = int(worker.workerInterface['Max Size'])
@@ -271,7 +288,7 @@ def compute(datasetId, apiUrl, token, params):
     channel = worker.channel
 
     # Create the lifted segmentation function (loads model once)
-    condensatenet = condensatenet_segmentation(prob_threshold, min_size, max_size)
+    condensatenet = condensatenet_segmentation(prob_threshold, min_size, max_size, model_path)
 
     # Create the processing function with all parameters bound
     f_process = partial(

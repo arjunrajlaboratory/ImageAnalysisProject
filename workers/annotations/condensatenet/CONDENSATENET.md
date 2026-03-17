@@ -14,6 +14,7 @@ CondensateNet uses a Feature Pyramid Network (FPN) architecture with an Efficien
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| **Model Version** | Select the CondensateNet model version | condensatenet-v1 |
 | **Batch XY/Z/Time** | Ranges for batch processing (e.g., "1-3, 5-8") | Current tile |
 | **Probability Threshold** | Minimum confidence for detection (0-1) | 0.15 |
 | **Min Size** | Minimum condensate size in pixels | 15 |
@@ -59,6 +60,11 @@ After segmentation, polygons are processed in the following order:
 
 The worker creates polygon annotations for each detected condensate, tagged with the user-specified tags.
 
-## Model Location
+## Model Versions
 
-The CondensateNet model weights are baked into the Docker image at `/models/condensatenet` for faster startup (no download required at runtime).
+Two model versions are available, both baked into the Docker image for faster startup:
+
+| Version | HuggingFace Repo | Docker Path | Notes |
+|---------|-----------------|-------------|-------|
+| **condensatenet-v1** (default) | `rajlab/condensatenet-v1` | `/models/condensatenet-v1` | Newer model with updated training |
+| **condensatenet (original)** | `rajlab/condensatenet` | `/models/condensatenet` | Original model |
