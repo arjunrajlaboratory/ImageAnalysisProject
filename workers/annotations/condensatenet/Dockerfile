@@ -55,8 +55,9 @@ RUN pip install /worker_client
 # Install CondensateNet package
 RUN pip install git+https://github.com/arjunrajlaboratory/condensatenet.git
 
-# Download CondensateNet model (bake into image for faster startup)
+# Download CondensateNet models (bake into image for faster startup)
 RUN python -m condensatenet download --output /models/condensatenet
+RUN python -m condensatenet download --repo-id rajlab/condensatenet-v1 --output /models/condensatenet-v1
 
 # Copy entrypoint
 COPY ./workers/annotations/condensatenet/entrypoint.py /
