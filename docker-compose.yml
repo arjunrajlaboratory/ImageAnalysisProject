@@ -251,6 +251,15 @@ services:
       - test-worker-base
     profiles: ["testworker"]
 
+  error_generator:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/error_generator/Dockerfile
+    image: annotations/error_generator:latest
+    depends_on:
+      - test-worker-base
+    profiles: ["testworker"]
+
   # Test services
   blob_metrics_test:
     build:
