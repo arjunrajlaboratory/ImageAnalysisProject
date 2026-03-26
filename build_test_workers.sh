@@ -4,7 +4,7 @@
 # Test Worker Build & Test Script
 # =============================================================================
 #
-# Builds and tests the test/sample workers (random_squares, sample_interface).
+# Builds and tests the test/sample workers (random_squares, sample_interface, error_generator).
 # These are workers used for testing and development, not production.
 #
 # Usage:

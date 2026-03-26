@@ -413,6 +413,7 @@ Test/sample workers live in `workers/annotations/` and are built with the `testw
 
 - **`random_squares`**: Generates random square polygon annotations. Uses `WorkerClient` for batch mode across XY/Z/Time. Useful for quickly testing annotation pipelines.
 - **`sample_interface`**: Demonstrates every available interface type (`notes`, `number`, `text`, `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`), all messaging functions (`sendProgress`, `sendWarning`, `sendError`), and batch mode via `WorkerClient`.
+- **`error_generator`**: Generates various error conditions (warnings, errors, HTTP 500/503/504, OOM, crashes) via checkboxes for testing frontend error reporting.
 
 Build test workers:
 ```bash
