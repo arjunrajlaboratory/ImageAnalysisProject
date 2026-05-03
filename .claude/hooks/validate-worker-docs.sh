@@ -63,14 +63,52 @@ while IFS= read -r file; do
     fi
 done <<< "$CHANGED_FILES"
 
-# Check if any worker files changed but REGISTRY.md was not updated
-HAS_WORKER_CHANGES=false
+# Check if any registry-affecting changes were made without updating REGISTRY.md.
+# REGISTRY.md is generated from: entrypoint.py (interface + description) and
+# Dockerfile LABEL lines (interfaceName, interfaceCategory, description,
+# annotationShape). Pure Dockerfile changes that don't touch those labels —
+# e.g. ENV/RUN edits, base image bumps — don't change the registry, so we
+# shouldn't require the user to "update" it.
+
+# Compute the diff base once and reuse for line-level inspection.
+DIFF_BASE=$(git merge-base origin/master HEAD 2>/dev/null || git merge-base master HEAD 2>/dev/null || echo "")
+
+HAS_REGISTRY_RELEVANT_CHANGES=false
+
+# Any added/deleted worker directory (detected via added/deleted entrypoint.py)
+# affects the registry. `--diff-filter=AD` gives us add/delete-only changes.
+ADDED_DELETED=$(git diff --name-only --diff-filter=AD ${DIFF_BASE:+"$DIFF_BASE"...HEAD} 2>/dev/null || echo "")
 while IFS= read -r file; do
-    if [[ "$file" =~ ^workers/ ]]; then
-        HAS_WORKER_CHANGES=true
+    [ -z "$file" ] && continue
+    if [[ "$file" =~ ^workers/(annotations|properties/[^/]+)/[^/]+/entrypoint\.py$ ]]; then
+        HAS_REGISTRY_RELEVANT_CHANGES=true
         break
     fi
-done <<< "$CHANGED_FILES"
+done <<< "$ADDED_DELETED"
+
+# Inspect each modified worker file. entrypoint.py edits always count.
+# Dockerfile* edits only count if they touch a registry-relevant LABEL.
+if [ "$HAS_REGISTRY_RELEVANT_CHANGES" = false ]; then
+    while IFS= read -r file; do
+        [ -z "$file" ] && continue
+        if [[ "$file" =~ ^workers/.+/entrypoint\.py$ ]]; then
+            HAS_REGISTRY_RELEVANT_CHANGES=true
+            break
+        fi
+        if [[ "$file" =~ ^workers/.+/Dockerfile([^/]*)?$ ]] && [ -n "$DIFF_BASE" ]; then
+            # Match registry-relevant LABEL keys anywhere on an added/removed
+            # diff line so we catch both multi-line `LABEL k1=v \` blocks
+            # and single-line `LABEL interfaceName="..."` forms. The leading
+            # `[+-]` excludes diff metadata lines (`+++`, `---`, `@@`) since
+            # those won't have `=` after a registry key.
+            if git diff "$DIFF_BASE...HEAD" -- "$file" 2>/dev/null \
+                 | grep -qE '^[+-].*(interfaceName|interfaceCategory|annotationShape|description)[[:space:]]*='; then
+                HAS_REGISTRY_RELEVANT_CHANGES=true
+                break
+            fi
+        fi
+    done <<< "$CHANGED_FILES"
+fi
 
 HAS_REGISTRY_UPDATE=false
 while IFS= read -r file; do
@@ -80,8 +118,8 @@ while IFS= read -r file; do
     fi
 done <<< "$CHANGED_FILES"
 
-if [ "$HAS_WORKER_CHANGES" = true ] && [ "$HAS_REGISTRY_UPDATE" = false ]; then
-    ERRORS="$ERRORS\n  - REGISTRY.md was not updated but worker files were modified. Please update REGISTRY.md to reflect changes."
+if [ "$HAS_REGISTRY_RELEVANT_CHANGES" = true ] && [ "$HAS_REGISTRY_UPDATE" = false ]; then
+    ERRORS="$ERRORS\n  - REGISTRY.md was not updated but worker files affecting the registry (entrypoint.py or Dockerfile LABELs) were modified. Run \`python3 generate_worker_docs.py --registry-only\` and commit the result."
 fi
 
 if [ -n "$ERRORS" ]; then
