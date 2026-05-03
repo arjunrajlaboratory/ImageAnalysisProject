@@ -96,8 +96,13 @@ if [ "$HAS_REGISTRY_RELEVANT_CHANGES" = false ]; then
             break
         fi
         if [[ "$file" =~ ^workers/.+/Dockerfile([^/]*)?$ ]] && [ -n "$DIFF_BASE" ]; then
+            # Match registry-relevant LABEL keys anywhere on an added/removed
+            # diff line so we catch both multi-line `LABEL k1=v \` blocks
+            # and single-line `LABEL interfaceName="..."` forms. The leading
+            # `[+-]` excludes diff metadata lines (`+++`, `---`, `@@`) since
+            # those won't have `=` after a registry key.
             if git diff "$DIFF_BASE...HEAD" -- "$file" 2>/dev/null \
-                 | grep -qE '^[+-][[:space:]]*(LABEL|interfaceName|interfaceCategory|annotationShape|description)[[:space:]]*='; then
+                 | grep -qE '^[+-].*(interfaceName|interfaceCategory|annotationShape|description)[[:space:]]*='; then
                 HAS_REGISTRY_RELEVANT_CHANGES=true
                 break
             fi
