@@ -105,17 +105,30 @@ for arg in "$@"; do
     fi
 done
 
+# Build base images first. BuildKit/bake builds services in parallel and does
+# not respect `depends_on` for build ordering, so workers that FROM these
+# images will try to pull them from Docker Hub (and fail) unless we build
+# them up-front.
+build_base_images() {
+    local bases=("$@")
+    echo "Building base images first: ${bases[*]}"
+    docker compose build $NO_CACHE "${bases[@]}"
+}
+
 if [ -z "$SERVICE" ]; then
     if [ "$BUILD_WORKERS" = true ]; then
+        build_base_images worker-base image-processing-base
         echo "Building all workers..."
         docker compose --profile worker build $NO_CACHE
     fi
 
     if [ "$BUILD_TEST_WORKERS" = true ]; then
+        build_base_images test-worker-base
         docker compose --profile testworker build $NO_CACHE
     fi
 
     if [ "$BUILD_TESTS" = true ]; then
+        build_base_images worker-base image-processing-base
         docker compose --profile worker --profile test build $NO_CACHE
     fi
 
@@ -128,6 +141,7 @@ if [ -z "$SERVICE" ]; then
     fi
 
     if [ "$BUILD_TEST_WORKERS_TESTS" = true ]; then
+        build_base_images test-worker-base
         docker compose --profile testworker --profile testworkertest build $NO_CACHE
     fi
 
@@ -140,7 +154,19 @@ if [ -z "$SERVICE" ]; then
     fi
 else
     echo "Building worker: $SERVICE"
-    
+
+    # Determine which base image this worker needs by inspecting its Dockerfile.
+    # Search both Dockerfile and Dockerfile_M1 (per-arch worker dirs).
+    worker_dockerfile=$(find workers -type d -name "$SERVICE" -print -quit 2>/dev/null)
+    if [ -n "$worker_dockerfile" ]; then
+        from_image=$(grep -h -m1 -i '^FROM ' "$worker_dockerfile"/${DOCKERFILE} "$worker_dockerfile"/Dockerfile 2>/dev/null | head -1 | awk '{print $2}')
+        case "$from_image" in
+            nimbusimage/worker-base:*)            build_base_images worker-base ;;
+            nimbusimage/image-processing-base:*)  build_base_images image-processing-base ;;
+            nimbusimage/test-worker-base:*)       build_base_images test-worker-base ;;
+        esac
+    fi
+
     # Build the main service with its profile
     docker compose --profile "*" build $NO_CACHE $SERVICE
 
