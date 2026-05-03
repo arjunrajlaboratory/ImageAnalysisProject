@@ -155,17 +155,13 @@ if [ -z "$SERVICE" ]; then
 else
     echo "Building worker: $SERVICE"
 
-    # Determine which base image this worker needs by inspecting its Dockerfile.
-    # Search both Dockerfile and Dockerfile_M1 (per-arch worker dirs).
-    worker_dockerfile=$(find workers -type d -name "$SERVICE" -print -quit 2>/dev/null)
-    if [ -n "$worker_dockerfile" ]; then
-        from_image=$(grep -h -m1 -i '^FROM ' "$worker_dockerfile"/${DOCKERFILE} "$worker_dockerfile"/Dockerfile 2>/dev/null | head -1 | awk '{print $2}')
-        case "$from_image" in
-            nimbusimage/worker-base:*)            build_base_images worker-base ;;
-            nimbusimage/image-processing-base:*)  build_base_images image-processing-base ;;
-            nimbusimage/test-worker-base:*)       build_base_images test-worker-base ;;
-        esac
-    fi
+    # Build all base images first. Compose service names don't reliably match
+    # worker directory names (e.g. service `connect_time_lapse` lives in
+    # `workers/annotations/connect_timelapse`, service `blob_metrics` in
+    # `workers/properties/blobs/blob_metrics_worker`), so we can't cheaply
+    # determine which base a service needs. Docker's layer cache makes
+    # rebuilding unchanged bases nearly free.
+    build_base_images worker-base image-processing-base test-worker-base
 
     # Build the main service with its profile
     docker compose --profile "*" build $NO_CACHE $SERVICE
