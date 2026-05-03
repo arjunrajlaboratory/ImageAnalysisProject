@@ -28,6 +28,9 @@ RUN wget \
 
 FROM base as build
 
+# Accept Anaconda Terms of Service for defaults channel
+ENV CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes
+
 COPY ./workers/annotations/laplacian_of_gaussian/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
