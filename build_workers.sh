@@ -105,17 +105,30 @@ for arg in "$@"; do
     fi
 done
 
+# Build base images first. BuildKit/bake builds services in parallel and does
+# not respect `depends_on` for build ordering, so workers that FROM these
+# images will try to pull them from Docker Hub (and fail) unless we build
+# them up-front.
+build_base_images() {
+    local bases=("$@")
+    echo "Building base images first: ${bases[*]}"
+    docker compose build $NO_CACHE "${bases[@]}"
+}
+
 if [ -z "$SERVICE" ]; then
     if [ "$BUILD_WORKERS" = true ]; then
+        build_base_images worker-base image-processing-base
         echo "Building all workers..."
         docker compose --profile worker build $NO_CACHE
     fi
 
     if [ "$BUILD_TEST_WORKERS" = true ]; then
+        build_base_images test-worker-base
         docker compose --profile testworker build $NO_CACHE
     fi
 
     if [ "$BUILD_TESTS" = true ]; then
+        build_base_images worker-base image-processing-base
         docker compose --profile worker --profile test build $NO_CACHE
     fi
 
@@ -128,6 +141,7 @@ if [ -z "$SERVICE" ]; then
     fi
 
     if [ "$BUILD_TEST_WORKERS_TESTS" = true ]; then
+        build_base_images test-worker-base
         docker compose --profile testworker --profile testworkertest build $NO_CACHE
     fi
 
@@ -140,7 +154,15 @@ if [ -z "$SERVICE" ]; then
     fi
 else
     echo "Building worker: $SERVICE"
-    
+
+    # Build all base images first. Compose service names don't reliably match
+    # worker directory names (e.g. service `connect_time_lapse` lives in
+    # `workers/annotations/connect_timelapse`, service `blob_metrics` in
+    # `workers/properties/blobs/blob_metrics_worker`), so we can't cheaply
+    # determine which base a service needs. Docker's layer cache makes
+    # rebuilding unchanged bases nearly free.
+    build_base_images worker-base image-processing-base test-worker-base
+
     # Build the main service with its profile
     docker compose --profile "*" build $NO_CACHE $SERVICE
 
