@@ -24,3 +24,31 @@ jobs:
       # - name: Test specific worker
       #   run: |
       #     ./build_workers.sh --test blob_metrics
+
+  # Native (non-Docker) unit tests for the shared Python packages. These are
+  # installed into worker images rather than built as workers, so they have no
+  # docker-compose *_test service; run them directly with pytest instead.
+  package-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install packages and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock
+          pip install -e ./annotation_utilities
+          pip install -e ./worker_client
+
+      - name: Test annotation_utilities
+        working-directory: annotation_utilities
+        run: pytest tests -v
+
+      - name: Test worker_client
+        working-directory: worker_client
+        run: pytest tests -v
