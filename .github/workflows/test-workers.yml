@@ -2,9 +2,9 @@ name: Test Workers
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   test:
@@ -18,12 +18,12 @@ jobs:
       - name: Build and test workers
         run: |
           chmod +x ./build_workers.sh
-          ./build_workers.sh --test
+          ./build_workers.sh --build-and-run-tests
       
       # Optional: If you want to test specific workers
       # - name: Test specific worker
       #   run: |
-      #     ./build_workers.sh --test blob_metrics
+      #     ./build_workers.sh --build-and-run-tests blob_metrics
 
   # Native (non-Docker) unit tests for the shared Python packages. These are
   # installed into worker images rather than built as workers, so they have no
