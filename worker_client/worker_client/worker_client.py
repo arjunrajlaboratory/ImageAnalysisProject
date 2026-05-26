@@ -90,9 +90,10 @@ class WorkerClient:
 
         xy, z, time, channel = location
 
+        index_range = self.datasetClient.tiles.get('IndexRange', {})
+
         if stack_xys == 'all':
-            xys = range(
-                self.datasetClient.tiles['IndexRange'].get('IndexXY', 0))
+            xys = range(index_range.get('IndexXY', 1))
         elif isinstance(stack_xys, Sequence) and len(stack_xys):
             xys = stack_xys
         else:
@@ -102,7 +103,7 @@ class WorkerClient:
                 xys = [xy]
 
         if stack_zs == 'all':
-            zs = range(self.datasetClient.tiles['IndexRange'].get('IndexZ', 0))
+            zs = range(index_range.get('IndexZ', 1))
         elif isinstance(stack_zs, Sequence) and len(stack_zs):
             zs = stack_zs
         else:
@@ -112,8 +113,7 @@ class WorkerClient:
                 zs = [z]
 
         if stack_times == 'all':
-            times = range(
-                self.datasetClient.tiles['IndexRange'].get('IndexT', 0))
+            times = range(index_range.get('IndexT', 1))
         elif isinstance(stack_times, Sequence) and len(stack_times):
             times = stack_times
         else:
@@ -123,8 +123,7 @@ class WorkerClient:
                 times = [time]
 
         if stack_channels == 'all':
-            channels = range(
-                self.datasetClient.tiles['IndexRange'].get('IndexC', 0))
+            channels = range(index_range.get('IndexC', 1))
         elif isinstance(stack_channels, Sequence) and len(stack_channels):
             channels = stack_channels
         else:

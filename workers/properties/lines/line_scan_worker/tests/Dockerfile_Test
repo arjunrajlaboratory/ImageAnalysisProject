@@ -1,0 +1,11 @@
+# Use the line_scan_worker image as the base.
+FROM properties/line_scan_worker:latest as test
+
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+RUN pip install pytest pytest-mock
+
+RUN mkdir -p /tests
+COPY ./workers/properties/lines/line_scan_worker/tests/*.py /tests
+WORKDIR /tests
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"]
