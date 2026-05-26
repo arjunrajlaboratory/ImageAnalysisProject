@@ -407,6 +407,25 @@ workers/properties/blobs/blob_intensity_worker/
     └── Dockerfile_Test
 ```
 
+#### CI (`.github/workflows/test-workers.yml`)
+
+The heavy `test` job — which builds **and** tests every Docker worker on a
+single runner via `./build_workers.sh --build-and-run-tests` — is **commented
+out** because it is too expensive to run on every push/PR. It is preserved
+in-file so it can be re-enabled by uncommenting. **Run the full Docker worker
+tests locally instead** (optionally scoped to one worker):
+
+```bash
+./build_workers.sh --build-and-run-tests            # all workers
+./build_workers.sh --build-and-run-tests blob_metrics  # one worker
+```
+
+The lightweight `package-tests` job still runs in CI: it installs and runs
+`pytest` for the shared Python packages (`annotation_utilities`,
+`worker_client`) natively. These are packages installed *into* worker images
+rather than workers with their own image, so they have no docker-compose
+`*_test` service and are tested directly with pytest.
+
 ### Test Workers
 
 Test/sample workers live in `workers/annotations/` and are built with the `testworker` profile:
