@@ -80,6 +80,50 @@ MAC_DEVELOPMENT_MODE=true ./build_workers.sh deconwolf
 ./build_test_workers.sh --build-and-run-tests
 ```
 
+### Pushing Worker Images to AWS ECR
+
+`scripts/push_workers_to_ecr.sh` builds one or more worker images and pushes
+them to AWS ECR. It's a local-only workflow; run it from your laptop after
+sourcing production AWS credentials. It always uses the production
+`Dockerfile` (never `Dockerfile_M1`) and builds for `linux/amd64`.
+
+```bash
+# 1. Source AWS credentials (account + region + creds)
+source aws_credentials_prod
+
+# 2. See available worker names (discovered from workers/)
+./scripts/push_workers_to_ecr.sh --list
+
+# 3. Build & push one or more workers
+./scripts/push_workers_to_ecr.sh blob_metrics_worker connect_timelapse
+
+# Or push every discovered worker (asks first)
+./scripts/push_workers_to_ecr.sh --all
+
+# Print actions without running them
+./scripts/push_workers_to_ecr.sh --dry-run blob_metrics_worker
+```
+
+Each push tags two images per worker:
+
+```
+<acct>.dkr.ecr.<region>.amazonaws.com/nimbus/<category>/<worker>:<short-git-sha>
+<acct>.dkr.ecr.<region>.amazonaws.com/nimbus/<category>/<worker>:latest
+```
+
+`<category>` is `annotations` or `properties`. The account ID comes from
+`aws sts get-caller-identity` and the region from `$AWS_REGION` (default
+`us-east-1`, overridable with `--region`). The ECR repo prefix defaults to
+`nimbus` and is overridable with `--prefix`. ECR repos are created on
+first push (with a confirmation prompt; use `-y` to skip prompts).
+
+The script keeps a per-worker buildx cache under `.cache/buildx/<worker>/`
+so reruns are fast; `--no-cache` disables it for one run. Requires bash 4+
+(install via `brew install bash` on macOS).
+
+Piscis (which has a non-standard `predict/` + `train/` subdirectory layout)
+is not handled by this script; build it via `build_machine_learning_workers.sh`.
+
 ## Architecture
 
 ### Worker Types

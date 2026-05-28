@@ -1,0 +1,5 @@
+# Local buildx cache populated by scripts/push_workers_to_ecr.sh
+.cache/
+
+# Build logs
+build.log
