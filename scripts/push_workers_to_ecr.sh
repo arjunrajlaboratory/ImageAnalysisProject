@@ -273,13 +273,17 @@ ensure_repo() {
         err "Skipping '$repo' (no repo)."
         return 1
     fi
-    aws ecr create-repository \
+    if aws ecr create-repository \
         --region "$REGION" \
         --repository-name "$repo" \
         --image-tag-mutability MUTABLE \
         --image-scanning-configuration scanOnPush=true \
-        >/dev/null
-    log "Created repo '$repo'."
+        >/dev/null 2>&1; then
+        log "Created repo '$repo'."
+    else
+        err "Failed to create ECR repo '$repo' (check name constraints / permissions)."
+        return 1
+    fi
 }
 
 # Determine the build context a Dockerfile expects by checking where its
@@ -409,7 +413,9 @@ build_and_push_worker() {
     local name="$1"
     local cat="${CATEGORY_OF[$name]}"
     local dfile="${DOCKERFILE_OF[$name]}"
-    local repo="${PREFIX}/${cat}/${name}"
+    # ECR repo names and Docker image tags must be lowercase; some worker
+    # directory names are not (e.g. blob_point_count_3D_..., the *_M1 variants).
+    local repo="${PREFIX}/${cat}/${name,,}"
     local img_sha="${REGISTRY}/${repo}:${SHA}"
     local img_latest="${REGISTRY}/${repo}:latest"
     local worker_cache_dir="${CACHE_DIR}/${name}"
