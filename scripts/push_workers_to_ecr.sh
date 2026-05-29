@@ -45,6 +45,16 @@ declare -A BASE_DOCKERFILE=(
 )
 declare -A BUILT_BASES=()   # base name -> pushed image ref (built once per run)
 
+# Workers that --all skips: dev/test/sample artifacts that aren't deployed to
+# ECR. They still build fine on amd64, so they remain pushable by explicit name
+# if ever needed. (`*_M1` variants are excluded earlier, in discover_workers.)
+declare -a NON_DEPLOY_WORKERS=(
+    random_squares
+    sample_interface
+    test_multiple_annotation
+    test_file_creation_worker
+)
+
 REGION=""
 PREFIX=""
 PLATFORM=""
@@ -115,14 +125,20 @@ USAGE
 # Non-standard layouts (currently only piscis, which has predict/ and train/
 # subdirs and its own docker-compose.yaml) are skipped; build those with
 # build_machine_learning_workers.sh.
+#
+# `*_M1` worker directories are also skipped: those Dockerfiles hardcode the
+# aarch64 Miniconda installer for Apple Silicon development and cannot build
+# for linux/amd64 (the production target), so they are never pushed to ECR.
 discover_workers() {
     local f name
     while IFS= read -r f; do
         name="$(basename "$(dirname "$f")")"
+        case "$name" in *_M1) continue ;; esac   # arm64-only dev variant
         printf '%s\tannotations\t%s\n' "$name" "$f"
     done < <(find workers/annotations -mindepth 2 -maxdepth 2 -name Dockerfile -type f 2>/dev/null | sort)
     while IFS= read -r f; do
         name="$(basename "$(dirname "$f")")"
+        case "$name" in *_M1) continue ;; esac   # arm64-only dev variant
         printf '%s\tproperties\t%s\n' "$name" "$f"
     done < <(find workers/properties -mindepth 3 -maxdepth 3 -name Dockerfile -type f 2>/dev/null | sort)
 }
@@ -186,8 +202,22 @@ if [ "$ALL" = "1" ]; then
         err "--all is incompatible with positional worker names."
         exit 2
     fi
-    TARGETS=("${ALL_NAMES[@]}")
-    log "About to build and push ${#TARGETS[@]} workers (every discovered worker)."
+    declare -a _skipped=()
+    for n in "${ALL_NAMES[@]}"; do
+        _is_excluded=0
+        for d in "${NON_DEPLOY_WORKERS[@]}"; do
+            [ "$n" = "$d" ] && { _is_excluded=1; break; }
+        done
+        if [ "$_is_excluded" = "1" ]; then
+            _skipped+=("$n")
+        else
+            TARGETS+=("$n")
+        fi
+    done
+    if [ "${#_skipped[@]}" -gt 0 ]; then
+        log "Skipping ${#_skipped[@]} non-deployed worker(s) (push by name if needed): ${_skipped[*]}"
+    fi
+    log "About to build and push ${#TARGETS[@]} workers."
     if ! confirm "Proceed?"; then
         log "Aborted."
         exit 1
@@ -230,9 +260,13 @@ if ! SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null)"; then
     err "Not a git repository or no commits yet."
     exit 1
 fi
-if ! git -C "$REPO_ROOT" diff --quiet 2>/dev/null || \
-   ! git -C "$REPO_ROOT" diff --staged --quiet 2>/dev/null; then
-    warn "Working tree is dirty. Tagging SHA images as '${SHA}-dirty'."
+# `git status --porcelain` reports tracked modifications, staged changes, AND
+# untracked (non-.gitignored) files. Untracked files matter here because the
+# build context is usually the repo root, so a stray file can be COPYed into
+# an image while the tag still claims to match HEAD — breaking the `-dirty`
+# provenance guarantee. (.gitignored build artifacts like .cache/ are excluded.)
+if [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]; then
+    warn "Working tree is dirty (tracked changes and/or untracked files). Tagging SHA images as '${SHA}-dirty'."
     SHA="${SHA}-dirty"
 fi
 log "Git SHA tag: $SHA"

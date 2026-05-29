@@ -145,10 +145,15 @@ from the repo root and worker-dir Dockerfiles failed.)
 
 ### What we deliberately do **not** push
 
+- **`_M1` variants** — `*_M1` Dockerfiles hardcode the **aarch64** Miniconda
+  installer (Apple-Silicon dev only) and cannot build for `linux/amd64`. They
+  are **excluded from discovery entirely** (not in `--list`, `--all`, or
+  by-name), so an amd64 `--all` run can complete.
 - **Test / sample workers** — `random_squares`, `sample_interface`,
-  `test_*`. These are dev/testing artifacts, not deployed.
-- **`_M1` variants** — `*_M1` Dockerfiles are CPU/Mac-development variants;
-  the production `Dockerfile` is what gets deployed.
+  `test_multiple_annotation`, `test_file_creation_worker`. These are
+  dev/testing artifacts; `--all` **skips them** (they're listed in the run
+  output). They still build on amd64, so you can push one **by explicit name**
+  if you ever need to.
 
 ## Gotchas & specifics
 
