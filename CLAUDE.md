@@ -87,6 +87,9 @@ them to AWS ECR. It's a local-only workflow; run it from your laptop after
 sourcing production AWS credentials. It always uses the production
 `Dockerfile` (never `Dockerfile_M1`) and builds for `linux/amd64`.
 
+**Full reference (auth, options, base-image handling, gotchas, GPU/ML notes):
+[`scripts/PUSH_WORKERS_TO_ECR.md`](scripts/PUSH_WORKERS_TO_ECR.md).**
+
 On macOS the script needs bash 4+ (system bash is 3.2); install with
 `brew install bash` and invoke it explicitly (`/opt/homebrew/bin/bash`).
 
