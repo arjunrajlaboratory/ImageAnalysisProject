@@ -216,8 +216,8 @@ def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):
     Returns a list of images, one for each channel
     """
     images = []
-    # Get the number of channels, defaulting to 1 if 'IndexC' doesn't exist
-    num_channels = tileClient.tiles['IndexRange'].get('IndexC', 1)
+    # Single-frame datasets can omit IndexRange entirely.
+    num_channels = tileClient.tiles.get('IndexRange', {}).get('IndexC', 1)
     for channel in range(num_channels):
         frame = tileClient.coordinatesToFrameIndex(XY, Z, Time, channel)
         image = tileClient.getRegion(datasetId, frame=frame)

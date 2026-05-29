@@ -77,7 +77,9 @@ def compute(datasetId, apiUrl, token, params):
             images.clear()  # Clear the previous images
 
         if all_channels:
-            channels = range(datasetClient.tiles['IndexRange']['IndexC'])
+            # Single-frame datasets (one channel/Z/time/XY) omit IndexRange entirely.
+            num_channels = datasetClient.tiles.get('IndexRange', {}).get('IndexC', 1)
+            channels = range(num_channels)
         else:
             channels = [selected_channel]
 

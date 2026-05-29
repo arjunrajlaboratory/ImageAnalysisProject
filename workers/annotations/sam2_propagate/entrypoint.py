@@ -365,10 +365,6 @@ def compute(datasetId, apiUrl, token, params):
     sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)
 
-    rangeXY = tileClient.tiles['IndexRange'].get('IndexXY', 1)
-    rangeZ = tileClient.tiles['IndexRange'].get('IndexZ', 1)
-    rangeTime = tileClient.tiles['IndexRange'].get('IndexT', 1)
-
     new_annotations = []
 
     for batch in batches:

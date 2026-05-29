@@ -252,6 +252,15 @@ services:
     profiles: ["testworker"]
 
   # Test services
+  line_scan_worker_test:
+    build:
+      context: .
+      dockerfile: ./workers/properties/lines/line_scan_worker/tests/Dockerfile_Test
+    image: properties/line_scan_worker:test
+    depends_on:
+      - line_scan_worker
+    profiles: ["test"]
+
   blob_metrics_test:
     build:
       context: .
