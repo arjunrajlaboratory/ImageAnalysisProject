@@ -87,22 +87,29 @@ them to AWS ECR. It's a local-only workflow; run it from your laptop after
 sourcing production AWS credentials. It always uses the production
 `Dockerfile` (never `Dockerfile_M1`) and builds for `linux/amd64`.
 
+On macOS the script needs bash 4+ (system bash is 3.2); install with
+`brew install bash` and invoke it explicitly (`/opt/homebrew/bin/bash`).
+
 ```bash
-# 1. Source AWS credentials (account + region + creds)
-source aws_credentials_prod
+# 1. Source AWS credentials (sets keys + session token; region defaults to us-east-1)
+source ../AWSDeploy/aws_credentials_prod.sh
 
 # 2. See available worker names (discovered from workers/)
-./scripts/push_workers_to_ecr.sh --list
+/opt/homebrew/bin/bash scripts/push_workers_to_ecr.sh --list
 
 # 3. Build & push one or more workers
-./scripts/push_workers_to_ecr.sh blob_metrics_worker connect_timelapse
+/opt/homebrew/bin/bash scripts/push_workers_to_ecr.sh blob_metrics_worker connect_timelapse
 
 # Or push every discovered worker (asks first)
-./scripts/push_workers_to_ecr.sh --all
+/opt/homebrew/bin/bash scripts/push_workers_to_ecr.sh --all
 
 # Print actions without running them
-./scripts/push_workers_to_ecr.sh --dry-run blob_metrics_worker
+/opt/homebrew/bin/bash scripts/push_workers_to_ecr.sh --dry-run blob_metrics_worker
 ```
+
+> **Worker names are directory names, not compose service names.** Use
+> `--list` to get the exact names (e.g. `blob_metrics_worker`, not the
+> `blob_metrics` compose service).
 
 Each push tags two images per worker:
 
@@ -115,14 +122,35 @@ Each push tags two images per worker:
 `aws sts get-caller-identity` and the region from `$AWS_REGION` (default
 `us-east-1`, overridable with `--region`). The ECR repo prefix defaults to
 `nimbus` and is overridable with `--prefix`. ECR repos are created on
-first push (with a confirmation prompt; use `-y` to skip prompts).
+first push (with a confirmation prompt; use `-y` to skip prompts). The SHA
+tag gets a `-dirty` suffix if the working tree has uncommitted changes.
+
+**Base images.** Workers build `FROM nimbusimage/<base>:latest`, which is
+not on any public registry and is normally built locally for the host's
+architecture (so it can't be used for an amd64 cross-build). The script
+therefore builds each needed base (`worker-base`, `image-processing-base`,
+`test-worker-base`) for `linux/amd64`, pushes it to `nimbus/base/<base>`,
+and redirects the worker's `FROM` to that ECR copy via
+`docker buildx --build-context` — no worker Dockerfile edits required. The
+base build runs a full conda env-create under QEMU emulation on macOS, so
+it is slow (~10-15 min) the first time; pass `--skip-base` on later runs to
+reuse a base already pushed to ECR.
+
+**Build context.** Worker Dockerfiles are inconsistent: most COPY
+repo-root-relative paths (e.g. `./workers/<cat>/<name>/entrypoint.py`) and
+build from the repo root, while a few (cellpose, stardist, random_point, …)
+COPY worker-dir-relative paths (e.g. `./environment.yml`). The script
+auto-detects the correct context per worker by checking where each
+`COPY`/`ADD` source resolves, so both layouts build correctly under `--all`.
 
 The script keeps a per-worker buildx cache under `.cache/buildx/<worker>/`
-so reruns are fast; `--no-cache` disables it for one run. Requires bash 4+
-(install via `brew install bash` on macOS).
+(and per-base under `.cache/buildx/base-<base>/`) so reruns are fast;
+`--no-cache` disables it for one run.
 
 Piscis (which has a non-standard `predict/` + `train/` subdirectory layout)
 is not handled by this script; build it via `build_machine_learning_workers.sh`.
+GPU/ML workers (cellpose family, stardist, condensatenet) have their
+contexts detected correctly but are best built via the ML build script.
 
 ## Architecture
 

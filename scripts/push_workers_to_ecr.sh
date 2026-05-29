@@ -4,7 +4,7 @@
 #
 # Build worker Docker images and push them to AWS ECR, one or more workers
 # at a time. Designed to be run from a developer laptop after sourcing AWS
-# credentials (e.g. `source aws_credentials_prod`).
+# credentials (e.g. `source ../AWSDeploy/aws_credentials_prod.sh`).
 #
 # Each push produces two tags per worker:
 #   <acct>.dkr.ecr.<region>.amazonaws.com/<prefix>/<category>/<worker>:<short-sha>
@@ -30,6 +30,21 @@ DEFAULT_PLATFORM="linux/amd64"
 BUILDER_NAME="nimbus-ecr-builder"
 CACHE_DIR="${REPO_ROOT}/.cache/buildx"
 
+# Worker images build `FROM nimbusimage/<base>:latest`. Those base images are
+# not on any public registry and are normally built locally for the host's
+# architecture, so they can't be used for an amd64 cross-build. We build the
+# needed base image(s) for the target platform, push them to ECR under
+# <prefix>/base/<base>, and redirect each worker's `FROM` to the ECR copy with
+# `docker buildx --build-context` (no worker Dockerfile edits required).
+#
+# Map: base image name (as it appears after `nimbusimage/` in FROM) -> Dockerfile.
+declare -A BASE_DOCKERFILE=(
+    [worker-base]="workers/base_docker_images/Dockerfile.worker_base"
+    [image-processing-base]="workers/base_docker_images/Dockerfile.image_processing_worker_base"
+    [test-worker-base]="workers/base_docker_images/Dockerfile.test_worker_base"
+)
+declare -A BUILT_BASES=()   # base name -> pushed image ref (built once per run)
+
 REGION=""
 PREFIX=""
 PLATFORM=""
@@ -38,6 +53,7 @@ DRY_RUN=0
 ALL=0
 LIST_ONLY=0
 ASSUME_YES=0
+SKIP_BASE=0
 declare -a REQUESTED=()
 
 log()  { printf '[push-ecr] %s\n' "$*"; }
@@ -71,14 +87,17 @@ Options:
   --prefix PREFIX    ECR repo prefix (default: nimbus)
   --platform PLAT    Build platform (default: linux/amd64)
   --no-cache         Disable the local buildx cache for this run
+  --skip-base        Don't (re)build base images; assume they're already in ECR
   --dry-run          Print actions but run nothing
   -y, --yes          Skip confirmation prompts (creating ECR repos, --all)
   -h, --help         Show this help
 
 Typical workflow:
-  source aws_credentials_prod
+  source ../AWSDeploy/aws_credentials_prod.sh
   ./scripts/push_workers_to_ecr.sh --list
   ./scripts/push_workers_to_ecr.sh blob_metrics_worker connect_timelapse
+
+Worker names are directory names (see --list), e.g. blob_metrics_worker.
 
 The script reads the AWS account ID from `aws sts get-caller-identity` and
 fails fast with a clear message if credentials aren't loaded. It only uses
@@ -119,6 +138,7 @@ while [ $# -gt 0 ]; do
         --platform)    PLATFORM="$2"; shift 2 ;;
         --platform=*)  PLATFORM="${1#*=}"; shift ;;
         --no-cache)    NO_CACHE="--no-cache"; shift ;;
+        --skip-base)   SKIP_BASE=1; shift ;;
         --dry-run)     DRY_RUN=1; shift ;;
         -y|--yes)      ASSUME_YES=1; shift ;;
         -h|--help)     print_usage; exit 0 ;;
@@ -262,6 +282,129 @@ ensure_repo() {
     log "Created repo '$repo'."
 }
 
+# Determine the build context a Dockerfile expects by checking where its
+# COPY/ADD sources actually resolve. Worker Dockerfiles in this repo are
+# inconsistent: most compose-built workers COPY repo-root-relative paths
+# (e.g. `./workers/<cat>/<name>/entrypoint.py`) and need the repo root as
+# context, while a few (cellpose, stardist, random_point, ...) COPY
+# worker-dir-relative paths (e.g. `./environment.yml`) and need the worker
+# directory as context. We pick the context under which every source exists.
+detect_context() {
+    local dfile="$1"
+    local wd; wd="$(dirname "$dfile")"
+    local -a srcs=()
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            [Cc][Oo][Pp][Yy][[:space:]]*|[Aa][Dd][Dd][[:space:]]*) : ;;
+            *) continue ;;
+        esac
+        case "$line" in *--from=*) continue ;; esac   # multi-stage, not from context
+        local -a toks=() args=()
+        read -r -a toks <<<"$line"
+        local i
+        for ((i = 1; i < ${#toks[@]}; i++)); do
+            case "${toks[$i]}" in
+                --*) continue ;;       # drop flags like --chown=/--chmod=
+                *)   args+=("${toks[$i]}") ;;
+            esac
+        done
+        local n=${#args[@]}
+        [ "$n" -lt 2 ] && continue     # need at least one source + dest
+        local j
+        for ((j = 0; j < n - 1; j++)); do
+            srcs+=("${args[$j]}")
+        done
+    done < "$dfile"
+
+    if [ "${#srcs[@]}" -eq 0 ]; then
+        printf '%s\n' "$REPO_ROOT"
+        return 0
+    fi
+
+    local all_root=1 all_wd=1 s p
+    for s in "${srcs[@]}"; do
+        p="${s#./}"
+        case "$p" in *[\*\?\[]*) p="$(dirname "$p")" ;; esac  # test dir for globs
+        [ -e "${REPO_ROOT}/${p}" ] || all_root=0
+        [ -e "${wd}/${p}" ]        || all_wd=0
+    done
+
+    if [ "$all_root" = "1" ]; then
+        printf '%s\n' "$REPO_ROOT"
+    elif [ "$all_wd" = "1" ]; then
+        printf '%s\n' "$REPO_ROOT/$wd"
+    else
+        warn "Ambiguous build context for ${dfile}; defaulting to repo root."
+        printf '%s\n' "$REPO_ROOT"
+    fi
+}
+
+# Echo the full `nimbusimage/<base>:<tag>` reference a worker builds FROM, or
+# nothing if the worker doesn't build from a known nimbusimage base.
+base_ref_for_worker() {
+    local dfile="$1"
+    grep -iE '^[[:space:]]*FROM[[:space:]]+nimbusimage/' "$dfile" \
+        | head -1 | awk '{print $2}'
+}
+
+# Build the given base image (by name, e.g. "worker-base") for the target
+# platform and push it to ECR. Cached per run via BUILT_BASES.
+ensure_base_image() {
+    local base="$1"
+    [ -n "${BUILT_BASES[$base]:-}" ] && return 0
+    local dfile="${BASE_DOCKERFILE[$base]:-}"
+    if [ -z "$dfile" ]; then
+        err "No Dockerfile known for base image 'nimbusimage/${base}'. Cannot redirect FROM."
+        return 1
+    fi
+    local repo="${PREFIX}/base/${base}"
+    local img="${REGISTRY}/${repo}:latest"
+
+    if [ "$SKIP_BASE" = "1" ]; then
+        log "Base image: assuming ${img} already exists (--skip-base)."
+        BUILT_BASES["$base"]="$img"
+        return 0
+    fi
+
+    log "Ensuring amd64 base image '${base}' -> ${img}"
+    ensure_repo "$repo" || return 1
+
+    local base_cache_dir="${CACHE_DIR}/base-${base}"
+    local -a cache_args=()
+    if [ -z "$NO_CACHE" ]; then
+        mkdir -p "$base_cache_dir"
+        cache_args+=(--cache-from "type=local,src=${base_cache_dir}")
+        cache_args+=(--cache-to   "type=local,dest=${base_cache_dir},mode=max")
+    fi
+    local -a no_cache_arg=()
+    [ -n "$NO_CACHE" ] && no_cache_arg=("$NO_CACHE")
+
+    if [ "$DRY_RUN" = "1" ]; then
+        printf '+ docker buildx build --builder %s --platform %s %s %s -f %s -t %s --push %s\n' \
+            "$BUILDER_NAME" "$PLATFORM" "${no_cache_arg[*]-}" "${cache_args[*]-}" \
+            "$dfile" "$img" "$REPO_ROOT"
+        BUILT_BASES["$base"]="$img"
+        return 0
+    fi
+
+    if docker buildx build \
+        --builder "$BUILDER_NAME" \
+        --platform "$PLATFORM" \
+        "${no_cache_arg[@]}" \
+        "${cache_args[@]}" \
+        -f "$dfile" \
+        -t "$img" \
+        --push \
+        "$REPO_ROOT"; then
+        BUILT_BASES["$base"]="$img"
+        log "Base image '${base}' pushed: ${img}"
+        return 0
+    fi
+    err "Failed to build/push base image '${base}'."
+    return 1
+}
+
 build_and_push_worker() {
     local name="$1"
     local cat="${CATEGORY_OF[$name]}"
@@ -271,10 +414,28 @@ build_and_push_worker() {
     local img_latest="${REGISTRY}/${repo}:latest"
     local worker_cache_dir="${CACHE_DIR}/${name}"
 
+    # Build context this worker's Dockerfile actually expects.
+    local ctx; ctx="$(detect_context "$dfile")"
+
+    # If the worker builds FROM a nimbusimage base, build+push that base for
+    # the target platform and redirect FROM to the ECR copy.
+    local from_ref base_name
+    from_ref="$(base_ref_for_worker "$dfile")"
+    local -a base_ctx_args=()
+    if [ -n "$from_ref" ]; then
+        base_name="${from_ref#nimbusimage/}"; base_name="${base_name%%:*}"
+        if [ -n "${BASE_DOCKERFILE[$base_name]:-}" ]; then
+            ensure_base_image "$base_name" || return 1
+            base_ctx_args+=(--build-context "${from_ref}=docker-image://${BUILT_BASES[$base_name]}")
+        fi
+    fi
+
     log "------------------------------------------------------------------"
     log "Worker:     ${name}"
     log "  Category: ${cat}"
     log "  Source:   ${dfile}"
+    log "  Context:  ${ctx}"
+    [ -n "$from_ref" ] && log "  Base:     ${from_ref} -> ${BUILT_BASES[$base_name]:-<unredirected>}"
     log "  Tags:     ${img_sha}"
     log "            ${img_latest}"
     log "------------------------------------------------------------------"
@@ -295,23 +456,25 @@ build_and_push_worker() {
     local attempt rc stderr_file
     for attempt in 1 2; do
         if [ "$DRY_RUN" = "1" ]; then
-            printf '+ docker buildx build --builder %s --platform %s %s %s -f %s -t %s -t %s --push .\n' \
+            printf '+ docker buildx build --builder %s --platform %s %s %s %s -f %s -t %s -t %s --push %s\n' \
                 "$BUILDER_NAME" "$PLATFORM" \
+                "${base_ctx_args[*]-}" \
                 "${no_cache_arg[*]-}" "${cache_args[*]-}" \
-                "$dfile" "$img_sha" "$img_latest"
+                "$dfile" "$img_sha" "$img_latest" "$ctx"
             return 0
         fi
         stderr_file="$(mktemp)"
         docker buildx build \
             --builder "$BUILDER_NAME" \
             --platform "$PLATFORM" \
+            "${base_ctx_args[@]}" \
             "${no_cache_arg[@]}" \
             "${cache_args[@]}" \
             -f "$dfile" \
             -t "$img_sha" \
             -t "$img_latest" \
             --push \
-            . 2> >(tee "$stderr_file" >&2)
+            "$ctx" 2> >(tee "$stderr_file" >&2)
         rc=$?
         if [ "$rc" -eq 0 ]; then
             rm -f "$stderr_file"
