@@ -169,6 +169,95 @@ from the repo root and worker-dir Dockerfiles failed.)
 - **Per-worker buildx cache** lives under `.cache/buildx/<worker>/` (and
   `.cache/buildx/base-<base>/`) so reruns are fast; `--no-cache` disables it.
 
+## Building on a native amd64 machine (recommended for bulk / ML)
+
+Cross-building on a Mac works but runs under QEMU emulation, which is slow and
+not worth it for the GPU/ML workers. If you build on a **native `linux/amd64`
+machine**, there's no emulation: builds are fast, reliable, and GPU/ML workers
+build normally. The same `scripts/push_workers_to_ecr.sh` is used — `buildx`
+just builds natively because the host is already amd64.
+
+### A. On an existing amd64 Linux box
+
+If you already have an amd64 Linux machine with Docker:
+
+```bash
+# Prereqs (most distros already have bash 5, git; install the rest):
+#   - Docker with buildx (Docker Engine 23+ bundles buildx)
+#   - AWS CLI v2
+#   - git
+# bash 4+ is standard on Linux, so just run the script directly.
+
+git clone <this-repo> && cd ImageAnalysisProject
+
+# Auth: either source the same creds script...
+source ../AWSDeploy/aws_credentials_prod.sh
+# ...or, if the box already has AWS creds configured (aws configure / env), skip that.
+
+# CPU / standard workers — native, fast:
+./scripts/push_workers_to_ecr.sh --all          # or name specific workers
+
+# GPU / ML workers — build + push via the ML build script on this amd64 box,
+# then tag/push to ECR (these are not handled by push_workers_to_ecr.sh):
+./build_machine_learning_workers.sh
+```
+
+> Because the host is amd64, the base-image builds are native too — still
+> pushed to `nimbus/base/<base>` and redirected via `--build-context` exactly
+> as on the Mac, just much faster. `--skip-base` still works once a base is in
+> ECR.
+
+### B. Spin up an ephemeral EC2 instance
+
+When you don't want to tie up a local machine — or want a GPU host for the ML
+workers — launch a throwaway amd64 EC2 instance, build everything, push, and
+terminate it. This is the cleanest path for a full `--all` + GPU run.
+
+1. **Launch an amd64 instance.**
+   - CPU-only workers: a compute/general instance, e.g. `c7i.4xlarge` /
+     `m7i.4xlarge` (more vCPUs = more parallel build throughput).
+   - GPU/ML workers: a GPU instance, e.g. `g5.2xlarge` or `g4dn.2xlarge`, with
+     a deep-learning AMI (or install the NVIDIA container toolkit). A GPU host
+     lets you also smoke-test the CUDA workers, not just build them.
+   - AMI: Amazon Linux 2023 or Ubuntu 22.04+. Give it ample EBS (ML images are
+     large — 100+ GB recommended).
+
+2. **Attach an IAM instance profile with ECR push permissions** (e.g.
+   `ecr:GetAuthorizationToken`, `ecr:CreateRepository`,
+   `ecr:DescribeRepositories`, `ecr:InitiateLayerUpload`,
+   `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:PutImage`,
+   `ecr:BatchCheckLayerAvailability`). With an instance role you **don't need
+   `aws_credentials_prod.sh`** — `aws ecr get-login-password` uses the role
+   automatically.
+
+3. **Install tooling and build:**
+
+   ```bash
+   # Amazon Linux 2023 example
+   sudo dnf install -y docker git
+   sudo systemctl enable --now docker
+   sudo usermod -aG docker "$USER" && newgrp docker
+   # buildx ships with current Docker; AWS CLI v2 is preinstalled on AL2023.
+
+   git clone <this-repo> && cd ImageAnalysisProject
+   ./scripts/push_workers_to_ecr.sh --all          # standard workers
+   ./build_machine_learning_workers.sh             # GPU/ML workers (GPU host)
+   # then tag + push the ML images to nimbus/annotations/<worker> in ECR
+   ```
+
+4. **Terminate the instance** when done. Use a **spot instance** to keep the
+   one-off cost low.
+
+> The Terraform in `../AWSDeploy/` is a natural place to template this build
+> instance (instance type, IAM ECR role, user-data that clones the repo and
+> runs the build) so "spin up → build all → tear down" becomes one command.
+
+> **Note:** `push_workers_to_ecr.sh` currently covers the standard
+> (non-`nvidia/cuda`) workers. The GPU/ML workers are built by
+> `build_machine_learning_workers.sh`; pushing those to ECR is a manual
+> tag-and-push today (a future improvement is to teach one script to do both
+> on an amd64/GPU host).
+
 ## Verifying in the AWS console
 
 ECR → **Private registry → Repositories** (region `us-east-1`, account
