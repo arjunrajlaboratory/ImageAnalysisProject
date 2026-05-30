@@ -73,16 +73,26 @@ def find_out_of_range(index_range, xys=None, zs=None, times=None):
     Dimensions passed as None are skipped."""
 
 def format_out_of_range_message(invalid):
-    """Build a single (message, info) pair for sendError. XY/Z/Time values are
-    reported 1-INDEXED to match what the user typed in the 'Batch XY/Z/Time' UI
-    fields (the batch parser converts 1->0 on input). Contiguous runs collapse
-    to 'a-b'; otherwise a comma-separated list."""
+    """Build a single (message, info) pair for sendError. Kept short because the
+    error display is compact. XY/Z/Time values are reported 1-INDEXED to match
+    what the user typed in the 'Batch XY/Z/Time' UI fields (the batch parser
+    converts 1->0 on input). Contiguous runs collapse to 'a-b'; otherwise a
+    comma-separated list.
+
+    Single offending dimension:
+      message = "Batch <label> out of range"
+      info    = "Position(s) <ranges> do not exist"
+    Multiple offending dimensions:
+      message = "Batch coordinates out of range"
+      info    = "Batch XY: positions <ranges> do not exist; Batch Z: ..."
+    Singular vs. plural ("Position 5 does not exist" vs. "Positions 81-91 do
+    not exist") is handled for a clean read."""
 ```
 
 Example output for the reported bug:
 
-> **message:** `"Batch XY is out of range"`
-> **info:** `"You requested XY position(s) 81-91, but this dataset has only 1 XY position (valid: 1). Please adjust the 'Batch XY' field."`
+> **message:** `"Batch XY out of range"`
+> **info:** `"Positions 81-91 do not exist"`
 
 `dim` → UI label mapping for messages: `XY` → "Batch XY", `Z` → "Batch Z",
 `Time` → "Batch Time".
