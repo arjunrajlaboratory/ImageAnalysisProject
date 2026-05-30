@@ -8,6 +8,8 @@ from itertools import product
 import annotation_client.workers as workers
 from annotation_client.utils import sendError, sendWarning, sendProgress
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np  # library for array manipulation
 import deeptile
 from deeptile.extensions.segmentation import cellpose_segmentation
@@ -201,35 +203,48 @@ def compute(datasetId, apiUrl, token, params):
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
 
-    # Process new channel selections
-    slot1_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 1', {}).items() if v]
-    slot2_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 2', {}).items() if v]
-    slot3_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 3', {}).items() if v]
+    # Process channel selections. Each slot is a channelCheckboxes field, which
+    # should arrive as a dict ({"0": True}). get_selected_channels rejects any
+    # other shape (e.g. a list [0]) with a ValueError so we report a clear error
+    # to the user instead of crashing with an opaque AttributeError on .items().
+    try:
+        slot1_channels = annotation_tools.get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 1'), 'Channel for Slot 1')
+        slot2_channels = annotation_tools.get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 2'), 'Channel for Slot 2')
+        slot3_channels = annotation_tools.get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 3'), 'Channel for Slot 3')
+    except ValueError as e:
+        sendError(
+            "Could not read the channel selections. This usually means the tool "
+            "interface is out of date or misconfigured. Please re-open the tool, "
+            "re-select the channels for each slot, and run it again.",
+            info=str(e))
+        raise
 
     stack_channels = []
 
-    if not slot1_channel_str_keys:
-        sendError("No channel selected for Slot 1. This is a required field.")
+    if not slot1_channels:
+        sendError(
+            "No channel selected for Slot 1. This is a required field. "
+            "Please select at least one channel for Slot 1 and run the tool again.")
         raise ValueError("No channel selected for Slot 1.")
-    if len(slot1_channel_str_keys) > 1:
+    if len(slot1_channels) > 1:
         sendWarning(
-            f"Multiple channels selected for Slot 1 ({slot1_channel_str_keys}). Using the first: {slot1_channel_str_keys[0]}.")
-    stack_channels.append(int(slot1_channel_str_keys[0]))
+            f"Multiple channels selected for Slot 1 ({slot1_channels}). Using the first: {slot1_channels[0]}.")
+    stack_channels.append(slot1_channels[0])
 
-    if slot2_channel_str_keys:
-        if len(slot2_channel_str_keys) > 1:
+    if slot2_channels:
+        if len(slot2_channels) > 1:
             sendWarning(
-                f"Multiple channels selected for Slot 2 ({slot2_channel_str_keys}). Using the first: {slot2_channel_str_keys[0]}.")
-        stack_channels.append(int(slot2_channel_str_keys[0]))
+                f"Multiple channels selected for Slot 2 ({slot2_channels}). Using the first: {slot2_channels[0]}.")
+        stack_channels.append(slot2_channels[0])
 
-    if slot3_channel_str_keys:
-        if len(slot3_channel_str_keys) > 1:
+    if slot3_channels:
+        if len(slot3_channels) > 1:
             sendWarning(
-                f"Multiple channels selected for Slot 3 ({slot3_channel_str_keys}). Using the first: {slot3_channel_str_keys[0]}.")
-        stack_channels.append(int(slot3_channel_str_keys[0]))
+                f"Multiple channels selected for Slot 3 ({slot3_channels}). Using the first: {slot3_channels[0]}.")
+        stack_channels.append(slot3_channels[0])
 
     if not stack_channels:  # Should technically be caught by slot 1 check, but as a safeguard.
         sendError("No channels were selected for processing.")

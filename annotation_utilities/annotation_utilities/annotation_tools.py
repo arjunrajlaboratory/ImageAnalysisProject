@@ -70,6 +70,35 @@ def get_annotations_with_tag(elements, tag, exclusive=False):
     return result
 
 
+def get_selected_channels(value, field_name='channel selection'):
+    """Parse a ``channelCheckboxes`` interface value into a sorted list of
+    selected channel indices (ints).
+
+    The expected (documented) shape is a dict mapping channel-index strings to
+    booleans, e.g. ``{"0": True, "1": False}`` -> ``[0]``. A missing value
+    (``None``) means nothing was selected and returns ``[]`` so callers can
+    apply their own required-field logic.
+
+    Any other shape -- notably a list such as ``[0]``, which has been observed
+    arriving from some clients -- is treated as a misconfiguration rather than
+    silently recovered: guessing a channel from an unexpected payload could run
+    a tool on data the user never intended to select. Such values raise
+    ``ValueError`` so the caller can surface a clear error to the user.
+
+    NOTE: the list form is undocumented; the front-end (NimbusImage repo) is the
+    source of truth for what ``channelCheckboxes`` actually serializes and
+    should be checked to fix the root cause.
+    """
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        return sorted(int(k) for k, v in value.items() if v)
+    raise ValueError(
+        f"'{field_name}' has an unexpected format "
+        f"({type(value).__name__}: {value!r}); expected channel checkboxes "
+        f"(a mapping of channel index to on/off).")
+
+
 def find_matching_annotations_by_location(source, target_list, Time=True, XY=True, Z=True):
     """
     This function filters the target_list based on the 'location' of the source point.

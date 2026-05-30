@@ -32,7 +32,7 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/annotations/cellposesam/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -45,16 +45,21 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
-COPY ./download_models.py /
+COPY ./workers/annotations/cellposesam/download_models.py /
 RUN python /download_models.py
 
-COPY ./utils.py /
-COPY ./girder_utils.py /
-COPY ./entrypoint.py /
+COPY ./workers/annotations/cellposesam/utils.py /
+COPY ./workers/annotations/cellposesam/girder_utils.py /
+COPY ./workers/annotations/cellposesam/entrypoint.py /
 
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-RUN pip install /ImageAnalysisProject/annotation_utilities
-RUN pip install /ImageAnalysisProject/worker_client
+# Install annotation_utilities and worker_client from the local build context
+# (not a fresh clone of the default branch) so the entrypoint and these shared
+# packages always come from the same checkout. Cloning master here would ship a
+# stale package on branch/PR builds and break helpers added in the same change.
+COPY ./annotation_utilities /annotation_utilities
+RUN pip install /annotation_utilities
+COPY ./worker_client /worker_client
+RUN pip install /worker_client
 
 LABEL isUPennContrastWorker=True \
       isAnnotationWorker=True \

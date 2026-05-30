@@ -10,6 +10,8 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress, sendWarning, sendError
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np
 import tifffile
 import large_image as li
@@ -354,8 +356,16 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
 
     # Parse channel selection
-    allChannels = workerInterface.get('Channels to deconvolve', {})
-    channels = [int(k) for k, v in allChannels.items() if v]
+    try:
+        channels = annotation_tools.get_selected_channels(
+            workerInterface.get('Channels to deconvolve'), 'Channels to deconvolve')
+    except ValueError as e:
+        sendError(
+            "Could not read the 'Channels to deconvolve' selection. This usually "
+            "means the tool interface is out of date or misconfigured. Please "
+            "re-open the tool, re-select the channels, and run it again.",
+            info=str(e))
+        return
     print(f"Selected channels to deconvolve: {channels}")
 
     if len(channels) == 0:
