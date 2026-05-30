@@ -23,6 +23,26 @@ from worker_client import WorkerClient
 BASE_MODELS = ['cellpose-sam']
 
 
+def get_selected_channels(value):
+    """Normalize a ``channelCheckboxes`` interface value into a sorted list of
+    selected channel indices (ints).
+
+    Depending on the client, this value may arrive either as a dict mapping
+    channel-index strings to booleans (e.g. ``{"0": True, "1": False}``) or as
+    a plain list of selected channel indices (e.g. ``[0]``). It may also be
+    empty or missing when the user did not select anything. This helper accepts
+    all of those shapes and always returns a list of ints (possibly empty).
+    """
+    if not value:
+        return []
+    if isinstance(value, dict):
+        return sorted(int(k) for k, v in value.items() if v)
+    if isinstance(value, (list, tuple)):
+        return sorted(int(c) for c in value)
+    raise TypeError(
+        f"Unexpected channelCheckboxes value of type {type(value).__name__}: {value!r}")
+
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(
         apiUrl=apiUrl, token=token)
@@ -201,35 +221,46 @@ def compute(datasetId, apiUrl, token, params):
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
 
-    # Process new channel selections
-    slot1_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 1', {}).items() if v]
-    slot2_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 2', {}).items() if v]
-    slot3_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 3', {}).items() if v]
+    # Process channel selections. Each slot is a channelCheckboxes field, which
+    # may arrive as a dict ({"0": True}) or a list ([0]); get_selected_channels
+    # normalizes both (and the empty/unset case) so we never crash on the raw
+    # value and can report a clear error to the user instead.
+    try:
+        slot1_channels = get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 1'))
+        slot2_channels = get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 2'))
+        slot3_channels = get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 3'))
+    except (TypeError, ValueError) as e:
+        sendError(
+            "Could not read the channel selections. Please re-select the channels for each slot and try again.",
+            info=str(e))
+        raise
 
     stack_channels = []
 
-    if not slot1_channel_str_keys:
-        sendError("No channel selected for Slot 1. This is a required field.")
+    if not slot1_channels:
+        sendError(
+            "No channel selected for Slot 1. This is a required field. "
+            "Please select at least one channel for Slot 1 and run the tool again.")
         raise ValueError("No channel selected for Slot 1.")
-    if len(slot1_channel_str_keys) > 1:
+    if len(slot1_channels) > 1:
         sendWarning(
-            f"Multiple channels selected for Slot 1 ({slot1_channel_str_keys}). Using the first: {slot1_channel_str_keys[0]}.")
-    stack_channels.append(int(slot1_channel_str_keys[0]))
+            f"Multiple channels selected for Slot 1 ({slot1_channels}). Using the first: {slot1_channels[0]}.")
+    stack_channels.append(slot1_channels[0])
 
-    if slot2_channel_str_keys:
-        if len(slot2_channel_str_keys) > 1:
+    if slot2_channels:
+        if len(slot2_channels) > 1:
             sendWarning(
-                f"Multiple channels selected for Slot 2 ({slot2_channel_str_keys}). Using the first: {slot2_channel_str_keys[0]}.")
-        stack_channels.append(int(slot2_channel_str_keys[0]))
+                f"Multiple channels selected for Slot 2 ({slot2_channels}). Using the first: {slot2_channels[0]}.")
+        stack_channels.append(slot2_channels[0])
 
-    if slot3_channel_str_keys:
-        if len(slot3_channel_str_keys) > 1:
+    if slot3_channels:
+        if len(slot3_channels) > 1:
             sendWarning(
-                f"Multiple channels selected for Slot 3 ({slot3_channel_str_keys}). Using the first: {slot3_channel_str_keys[0]}.")
-        stack_channels.append(int(slot3_channel_str_keys[0]))
+                f"Multiple channels selected for Slot 3 ({slot3_channels}). Using the first: {slot3_channels[0]}.")
+        stack_channels.append(slot3_channels[0])
 
     if not stack_channels:  # Should technically be caught by slot 1 check, but as a safeguard.
         sendError("No channels were selected for processing.")
