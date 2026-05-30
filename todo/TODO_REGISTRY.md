@@ -13,6 +13,7 @@ Master index of deferred work, technical debt, and future improvements for the I
 | ID | Title | Status | Priority | File | Related PR |
 |----|-------|--------|----------|------|------------|
 | TODO-001 | ML worker build optimization (mamba + shared base images) | Deferred | Medium | [ml-worker-build-optimization.md](ml-worker-build-optimization.md) | [#132](https://github.com/arjunrajlaboratory/ImageAnalysisProject/pull/132) |
+| TODO-002 | Roll out out-of-range coordinate validation to remaining workers | Deferred | Medium | [out-of-range-coordinate-validation-rollout.md](out-of-range-coordinate-validation-rollout.md) | `fix-batch-coordinate-out-of-range` |
 
 ## Completed TODOs
 
