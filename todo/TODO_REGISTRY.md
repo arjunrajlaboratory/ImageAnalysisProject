@@ -13,6 +13,7 @@ Master index of deferred work, technical debt, and future improvements for the I
 | ID | Title | Status | Priority | File | Related PR |
 |----|-------|--------|----------|------|------------|
 | TODO-001 | ML worker build optimization (mamba + shared base images) | Deferred | Medium | [ml-worker-build-optimization.md](ml-worker-build-optimization.md) | [#132](https://github.com/arjunrajlaboratory/ImageAnalysisProject/pull/132) |
+| TODO-002 | Verify `channelCheckboxes` serialization against the front-end | Open | Medium | [channelcheckboxes-serialization.md](channelcheckboxes-serialization.md) | _(this branch)_ |
 
 ## Completed TODOs
 

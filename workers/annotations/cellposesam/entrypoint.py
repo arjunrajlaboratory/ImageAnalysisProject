@@ -8,6 +8,8 @@ from itertools import product
 import annotation_client.workers as workers
 from annotation_client.utils import sendError, sendWarning, sendProgress
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np  # library for array manipulation
 import deeptile
 from deeptile.extensions.segmentation import cellpose_segmentation
@@ -21,26 +23,6 @@ from shapely.geometry import Polygon
 from worker_client import WorkerClient
 
 BASE_MODELS = ['cellpose-sam']
-
-
-def get_selected_channels(value):
-    """Normalize a ``channelCheckboxes`` interface value into a sorted list of
-    selected channel indices (ints).
-
-    Depending on the client, this value may arrive either as a dict mapping
-    channel-index strings to booleans (e.g. ``{"0": True, "1": False}``) or as
-    a plain list of selected channel indices (e.g. ``[0]``). It may also be
-    empty or missing when the user did not select anything. This helper accepts
-    all of those shapes and always returns a list of ints (possibly empty).
-    """
-    if not value:
-        return []
-    if isinstance(value, dict):
-        return sorted(int(k) for k, v in value.items() if v)
-    if isinstance(value, (list, tuple)):
-        return sorted(int(c) for c in value)
-    raise TypeError(
-        f"Unexpected channelCheckboxes value of type {type(value).__name__}: {value!r}")
 
 
 def interface(image, apiUrl, token):
@@ -222,19 +204,21 @@ def compute(datasetId, apiUrl, token, params):
     smoothing = float(worker.workerInterface['Smoothing'])
 
     # Process channel selections. Each slot is a channelCheckboxes field, which
-    # may arrive as a dict ({"0": True}) or a list ([0]); get_selected_channels
-    # normalizes both (and the empty/unset case) so we never crash on the raw
-    # value and can report a clear error to the user instead.
+    # should arrive as a dict ({"0": True}). get_selected_channels rejects any
+    # other shape (e.g. a list [0]) with a ValueError so we report a clear error
+    # to the user instead of crashing with an opaque AttributeError on .items().
     try:
-        slot1_channels = get_selected_channels(
-            worker.workerInterface.get('Channel for Slot 1'))
-        slot2_channels = get_selected_channels(
-            worker.workerInterface.get('Channel for Slot 2'))
-        slot3_channels = get_selected_channels(
-            worker.workerInterface.get('Channel for Slot 3'))
-    except (TypeError, ValueError) as e:
+        slot1_channels = annotation_tools.get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 1'), 'Channel for Slot 1')
+        slot2_channels = annotation_tools.get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 2'), 'Channel for Slot 2')
+        slot3_channels = annotation_tools.get_selected_channels(
+            worker.workerInterface.get('Channel for Slot 3'), 'Channel for Slot 3')
+    except ValueError as e:
         sendError(
-            "Could not read the channel selections. Please re-select the channels for each slot and try again.",
+            "Could not read the channel selections. This usually means the tool "
+            "interface is out of date or misconfigured. Please re-open the tool, "
+            "re-select the channels for each slot, and run it again.",
             info=str(e))
         raise
 

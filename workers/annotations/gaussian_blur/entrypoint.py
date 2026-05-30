@@ -11,6 +11,8 @@ import annotation_client.workers as workers
 
 from annotation_client.utils import sendProgress, sendError
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import imageio
 import numpy as np
 
@@ -118,12 +120,16 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
     sigma = float(workerInterface['Sigma'])
     channel = int(workerInterface['Channel'])
-    allChannels = workerInterface['All channels']
-
-    print("allChannels", allChannels)
-    # Output is allChannels {'1': True, '2': True}
-    # This means that channels 1 and 2 are being blurred
-    channels = [int(k) for k, v in allChannels.items() if v]
+    try:
+        channels = annotation_tools.get_selected_channels(
+            workerInterface.get('All channels'), 'All channels')
+    except ValueError as e:
+        sendError(
+            "Could not read the 'All channels' selection. This usually means the "
+            "tool interface is out of date or misconfigured. Please re-open the "
+            "tool, re-select the channels, and run it again.",
+            info=str(e))
+        return
     print("channels", channels)
 
     tile = params['tile']
