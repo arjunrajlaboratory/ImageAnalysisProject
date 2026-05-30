@@ -158,6 +158,44 @@ def test_process_errors_when_index_range_missing_and_coord_nonzero(monkeypatch):
     assert dataset_client.frame_requests == []
 
 
+def test_process_raises_and_sends_error_on_out_of_range_z(monkeypatch):
+    # Exercise a non-XY dimension through process() to lock in per-dimension
+    # wiring (Batch XY is left in range / unspecified).
+    dataset_client = DummyDatasetClient(tiles={"IndexRange": {"IndexZ": 1}})
+    send_error_calls = []
+    WorkerClient = _load_worker_client(monkeypatch, dataset_client, send_error_calls)
+    worker = WorkerClient("dataset", "http://api", "token",
+                          _batch_params(**{"Batch Z": "3-4"}))
+
+    with pytest.raises(ValueError):
+        worker.process(lambda image: [], lambda location, output: None)
+
+    assert len(send_error_calls) == 1
+    assert send_error_calls[0][0][0] == "Batch Z out of range"
+    assert send_error_calls[0][1]["info"] == "Positions 3-4 do not exist"
+    assert dataset_client.frame_requests == []
+
+
+def test_process_reports_multiple_out_of_range_dimensions(monkeypatch):
+    dataset_client = DummyDatasetClient(
+        tiles={"IndexRange": {"IndexXY": 1, "IndexZ": 1}})
+    send_error_calls = []
+    WorkerClient = _load_worker_client(monkeypatch, dataset_client, send_error_calls)
+    worker = WorkerClient("dataset", "http://api", "token",
+                          _batch_params(**{"Batch XY": "5", "Batch Z": "3-4"}))
+
+    with pytest.raises(ValueError):
+        worker.process(lambda image: [], lambda location, output: None)
+
+    assert len(send_error_calls) == 1
+    assert send_error_calls[0][0][0] == "Batch coordinates out of range"
+    assert send_error_calls[0][1]["info"] == (
+        "Batch XY: position 5 does not exist; "
+        "Batch Z: positions 3-4 do not exist"
+    )
+    assert dataset_client.frame_requests == []
+
+
 def test_validate_coordinates_raises_directly(monkeypatch):
     dataset_client = DummyDatasetClient(tiles={"IndexRange": {"IndexXY": 1}})
     send_error_calls = []
