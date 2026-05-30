@@ -193,6 +193,10 @@ def compute(datasetId, apiUrl, token, params):
 
     worker = WorkerClient(datasetId, apiUrl, token, params)
 
+    # Fail fast with an actionable error if the requested Batch XY/Z/Time
+    # coordinates are out of range, before loading the (slow) Cellpose-SAM model.
+    worker.validate_coordinates()
+
     # Get the model and diameter from interface values
     model = worker.workerInterface['Model']
     diameter = float(worker.workerInterface['Diameter'])

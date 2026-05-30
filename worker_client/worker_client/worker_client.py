@@ -9,8 +9,9 @@ from typing import Sequence
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendError
 from annotation_utilities import batch_argument_parser
+from annotation_utilities import coordinate_validation
 
 
 class WorkerClient:
@@ -56,9 +57,11 @@ class WorkerClient:
         if batch_time is None:
             batch_time = [tile['Time']]
 
-        self.batch_xy = batch_xy
-        self.batch_z = batch_z
-        self.batch_time = batch_time
+        # Materialize to lists: process_range_list returns a one-shot generator,
+        # and these are now read by both validate_coordinates() and process().
+        self.batch_xy = list(batch_xy)
+        self.batch_z = list(batch_z)
+        self.batch_time = list(batch_time)
 
         annotationClient = annotations.UPennContrastAnnotationClient(
             apiUrl=apiUrl, token=token)
@@ -230,6 +233,34 @@ class WorkerClient:
             self.annotationClient.connectToNearest(
                 self.connectTo, annotationsIds)
 
+    def validate_coordinates(self, stack_xys=None, stack_zs=None, stack_times=None):
+        """Validate the batch coordinates that will be iterated against the
+        dataset's dimensions.
+
+        If any requested XY/Z/Time coordinate is out of range, report an
+        actionable message via ``sendError`` and raise ``ValueError``. A
+        dimension the worker stacks (its ``stack_*`` is not ``None``) is
+        validated against the current tile coordinate, which is valid by
+        construction, so only batched dimensions are really checked.
+
+        Safe to call early (e.g. before loading an expensive model); the
+        ``stack_*`` arguments must match those passed to :meth:`process`.
+        ``process`` calls this too. Returns ``None`` when everything is in
+        range.
+        """
+        xys = list(self.batch_xy) if stack_xys is None else [self.tile['XY']]
+        zs = list(self.batch_z) if stack_zs is None else [self.tile['Z']]
+        times = list(self.batch_time) if stack_times is None else [self.tile['Time']]
+
+        index_range = self.datasetClient.tiles.get('IndexRange', {})
+        invalid = coordinate_validation.find_out_of_range(
+            index_range, xys=xys, zs=zs, times=times)
+        if invalid:
+            message, info = coordinate_validation.format_out_of_range_message(
+                invalid)
+            sendError(message, info=info)
+            raise ValueError(message)
+
     def process(self, f_process, f_annotation, stack_xys=None, stack_zs=None, stack_times=None, stack_channels=None,
                 progress_text='Running Worker'):
 
@@ -237,6 +268,10 @@ class WorkerClient:
             f_annotation = self.create_point_annotations
         elif f_annotation == 'polygon':
             f_annotation = self.create_polygon_annotations
+
+        # Fail fast with an actionable error before doing any work if the
+        # requested batch coordinates fall outside the dataset.
+        self.validate_coordinates(stack_xys, stack_zs, stack_times)
 
         batch = []
         if stack_xys is None:
