@@ -49,8 +49,16 @@
 #   ./build_test_workers.sh --build-and-run-tests
 # =============================================================================
 
-# Limit the number of parallel builds to 1 to avoid memory issues
-export COMPOSE_PARALLEL_LIMIT=1
+# Limit the number of parallel builds to avoid running out of memory: the
+# conda-solve / apt-install heavy worker builds -- and especially the GPU/ML
+# CUDA/torch builds -- can each eat several GB, so building too many at once
+# OOMs the host. Default is 1, which is safe everywhere.
+#
+# This bites even a beefy EC2 GPU build instance: it too can't handle many
+# concurrent heavy builds. Bumping to 2-3 via the environment is the sweet spot
+# there (faster than 1 without OOMing); going much higher is not worth it:
+#   COMPOSE_PARALLEL_LIMIT=3 ./build_workers.sh
+export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 
 # Detect architecture
 ARCH=$(uname -m)

@@ -150,10 +150,15 @@ The script keeps a per-worker buildx cache under `.cache/buildx/<worker>/`
 (and per-base under `.cache/buildx/base-<base>/`) so reruns are fast;
 `--no-cache` disables it for one run.
 
-Piscis (which has a non-standard `predict/` + `train/` subdirectory layout)
-is not handled by this script; build it via `build_machine_learning_workers.sh`.
-GPU/ML workers (cellpose family, stardist, condensatenet) have their
-contexts detected correctly but are best built via the ML build script.
+GPU/ML workers (cellpose family, sam*, stardist, condensatenet, deconwolf,
+deepcell, cellori, piscis) build `FROM` public `nvidia/cuda` images, so they
+need no base redirect and are built+pushed by this script too. They're best
+built on a native amd64/GPU host (an EC2 instance) — cross-building CUDA under
+QEMU on a Mac is slow/fragile, so the script warns before doing so. Use
+`--skip-ml` for a fast standard-only laptop run, or `--only-ml` on a GPU box.
+Piscis (non-standard `predict/` + `train/` layout) is handled as two
+pseudo-workers, `piscis_predict` and `piscis_train`. `build_machine_learning_workers.sh`
+remains the local-dev build path (local tags, no ECR push).
 
 ## Architecture
 

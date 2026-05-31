@@ -74,6 +74,8 @@ The current prod registry is account **`677276105390`**, region **`us-east-1`**.
 --all              Build and push every discovered worker (asks first)
 --list             Print every discovered worker name and exit
 --skip-base        Don't (re)build base images; assume they're already in ECR
+--skip-ml          Exclude GPU/ML workers (FROM nvidia/cuda, incl. piscis)
+--only-ml          Build ONLY the GPU/ML workers (mutually exclusive w/ --skip-ml)
 --region REGION    AWS region (default: $AWS_REGION or us-east-1)
 --prefix PREFIX    ECR repo prefix (default: nimbus)
 --platform PLAT    Build platform (default: linux/amd64)
@@ -141,7 +143,7 @@ from the repo root and worker-dir Dockerfiles failed.)
 | Image-processing workers (crop, histogram_matching, registration, …) | `nimbusimage/image-processing-base` | ✅ | Needs the image-processing base built once. |
 | Older "BASE_IMAGE" workers (random_point, line_length_worker, point_to_nearest_*_distance) | `ghcr.io/arjunrajlaboratory/base_x86_image` (public, default ARG) | ✅ | Pull a public x86 base, then `conda env update`. |
 | Self-contained `ubuntu:jammy` workers | none (apt + conda from scratch) | ✅ slow | Each builds everything from scratch; slow under emulation. |
-| **GPU / ML workers** (cellpose family, sam*, deepcell, stardist, condensatenet, deconwolf, cellori) | `nvidia/cuda:*` | ⚠️ **prefer native x86** | See below. |
+| **GPU / ML workers** (cellpose family, sam*, deepcell, stardist, condensatenet, deconwolf, cellori, piscis) | `nvidia/cuda:*` (public) | ✅ but **prefer native x86** | No base redirect needed (public CUDA base). Cross-building under QEMU on a Mac is slow/fragile — build on a native amd64/GPU host, or `--skip-ml` for a laptop run. See below. |
 
 ### What we deliberately do **not** push
 
@@ -164,13 +166,18 @@ from the repo root and worker-dir Dockerfiles failed.)
   build under emulation. File-copy-only workers are fast; anything with a
   conda solve / `apt install` is **much slower** (minutes to tens of minutes
   each).
-- **GPU/ML workers should be built on a real x86_64 machine** (an EC2 amd64
-  instance, an amd64 CI runner, or a remote buildx builder) using
-  `build_machine_learning_workers.sh`. Emulating CUDA/torch builds on a Mac is
-  impractically slow and can fail. The script can *discover* them and detects
-  their context correctly, but native amd64 is strongly preferred for these.
-- **Piscis** has a non-standard `predict/` + `train/` layout and is not
-  discovered by this script; build it via `build_machine_learning_workers.sh`.
+- **GPU/ML workers are built and pushed by this script** (they build `FROM`
+  public `nvidia/cuda` images, so they need no base redirect). They *should*
+  be built on a real x86_64 machine (an EC2 amd64/GPU instance, an amd64 CI
+  runner, or a remote buildx builder): emulating CUDA/torch builds on a Mac is
+  impractically slow and can fail. On a Mac the script **warns** before
+  cross-building any GPU/ML worker under QEMU; pass `--skip-ml` to do a fast
+  standard-only run, or `--only-ml` on a GPU box. `build_machine_learning_workers.sh`
+  remains the **local-dev** build path (local tags, no ECR push).
+- **Piscis** has a non-standard `predict/` + `train/` layout (two images). It
+  **is** handled by this script as two pseudo-workers, `piscis_predict` and
+  `piscis_train` (both built with the piscis dir as context, matching its
+  `docker-compose.yaml`).
 - **Per-worker buildx cache** lives under `.cache/buildx/<worker>/` (and
   `.cache/buildx/base-<base>/`) so reruns are fast; `--no-cache` disables it.
 
@@ -181,6 +188,16 @@ not worth it for the GPU/ML workers. If you build on a **native `linux/amd64`
 machine**, there's no emulation: builds are fast, reliable, and GPU/ML workers
 build normally. The same `scripts/push_workers_to_ecr.sh` is used — `buildx`
 just builds natively because the host is already amd64.
+
+> **Tip — concurrency.** Local builds are throttled to one at a time
+> (`COMPOSE_PARALLEL_LIMIT=1` in `build_workers.sh`) because the conda/apt-heavy
+> worker builds — and especially the GPU/ML CUDA/torch builds — can OOM the host
+> when too many run at once. This bites **even an EC2 GPU build instance**, so
+> don't crank it high: **2–3 is the sweet spot** there (faster than 1 without
+> OOMing), e.g. `COMPOSE_PARALLEL_LIMIT=3 ./build_workers.sh`. Going much higher
+> is not worth it. (`push_workers_to_ecr.sh` itself builds workers serially
+> today; on a big amd64 box that loop is the obvious place to add bounded
+> parallelism.)
 
 ### A. On an existing amd64 Linux box
 
@@ -245,9 +262,14 @@ terminate it. This is the cleanest path for a full `--all` + GPU run.
    # buildx ships with current Docker; AWS CLI v2 is preinstalled on AL2023.
 
    git clone <this-repo> && cd ImageAnalysisProject
-   ./scripts/push_workers_to_ecr.sh --all          # standard workers
-   ./build_machine_learning_workers.sh             # GPU/ML workers (GPU host)
-   # then tag + push the ML images to nimbus/annotations/<worker> in ECR
+
+   # Builds + pushes EVERY worker, including the GPU/ML ones and piscis
+   # (as piscis_predict / piscis_train). Native amd64 => no emulation.
+   ./scripts/push_workers_to_ecr.sh --all
+
+   # Or split the run if you prefer:
+   #   ./scripts/push_workers_to_ecr.sh --skip-ml   # standard workers only
+   #   ./scripts/push_workers_to_ecr.sh --only-ml   # GPU/ML workers only (GPU box)
    ```
 
 4. **Terminate the instance** when done. Use a **spot instance** to keep the
@@ -257,11 +279,12 @@ terminate it. This is the cleanest path for a full `--all` + GPU run.
 > instance (instance type, IAM ECR role, user-data that clones the repo and
 > runs the build) so "spin up → build all → tear down" becomes one command.
 
-> **Note:** `push_workers_to_ecr.sh` currently covers the standard
-> (non-`nvidia/cuda`) workers. The GPU/ML workers are built by
-> `build_machine_learning_workers.sh`; pushing those to ECR is a manual
-> tag-and-push today (a future improvement is to teach one script to do both
-> on an amd64/GPU host).
+> **Note:** `push_workers_to_ecr.sh` now covers **all** workers it discovers —
+> standard, GPU/ML (`nvidia/cuda`), and piscis (`piscis_predict` /
+> `piscis_train`) — so a single `--all` run on a native amd64/GPU host builds
+> and pushes everything. `build_machine_learning_workers.sh` remains the
+> local-dev build path (local image tags, no ECR push); it is not needed for
+> the ECR workflow.
 
 ## Verifying in the AWS console
 

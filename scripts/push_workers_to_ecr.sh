@@ -10,6 +10,15 @@
 #   <acct>.dkr.ecr.<region>.amazonaws.com/<prefix>/<category>/<worker>:<short-sha>
 #   <acct>.dkr.ecr.<region>.amazonaws.com/<prefix>/<category>/<worker>:latest
 #
+# GPU/ML workers (cellpose family, sam/sam2 family, stardist, condensatenet,
+# deconwolf, deepcell, cellori, piscis) are covered too: they build FROM public
+# nvidia/cuda images, so they need no base redirect and push like any other
+# worker. They are slow/fragile to cross-build on a Mac under QEMU, so build
+# them on a native linux/amd64 host (an amd64/GPU EC2 instance). Use --skip-ml
+# for a fast standard-only run on a laptop, or --only-ml on a GPU box. piscis
+# (non-standard predict/ + train/ layout) is handled as two images:
+# piscis_predict and piscis_train, both built with the piscis dir as context.
+#
 # Run with --help for full usage. Run with --list to see available workers.
 
 set -uo pipefail
@@ -55,6 +64,16 @@ declare -a NON_DEPLOY_WORKERS=(
     test_file_creation_worker
 )
 
+# A few workers don't build with either the repo root or the Dockerfile's own
+# directory as context (so detect_context can't infer it). Pin the context
+# (repo-root-relative path) here. piscis is the case today: its predict/ and
+# train/ Dockerfiles COPY paths relative to the piscis dir (per its
+# docker-compose `context: .`), e.g. `./environment.yml`, `./predict/...`.
+declare -A CONTEXT_OVERRIDE=(
+    [piscis_predict]="workers/annotations/piscis"
+    [piscis_train]="workers/annotations/piscis"
+)
+
 REGION=""
 PREFIX=""
 PLATFORM=""
@@ -64,6 +83,8 @@ ALL=0
 LIST_ONLY=0
 ASSUME_YES=0
 SKIP_BASE=0
+SKIP_ML=0
+ONLY_ML=0
 declare -a REQUESTED=()
 
 log()  { printf '[push-ecr] %s\n' "$*"; }
@@ -98,6 +119,11 @@ Options:
   --platform PLAT    Build platform (default: linux/amd64)
   --no-cache         Disable the local buildx cache for this run
   --skip-base        Don't (re)build base images; assume they're already in ECR
+  --skip-ml          Exclude GPU/ML workers (FROM nvidia/cuda, incl. piscis).
+                     Handy for a fast standard-only run on a laptop.
+  --only-ml          Build ONLY the GPU/ML workers. Use on a native amd64/GPU
+                     host (e.g. an EC2 GPU instance). Mutually exclusive with
+                     --skip-ml.
   --dry-run          Print actions but run nothing
   -y, --yes          Skip confirmation prompts (creating ECR repos, --all)
   -h, --help         Show this help
@@ -108,6 +134,9 @@ Typical workflow:
   ./scripts/push_workers_to_ecr.sh blob_metrics_worker connect_timelapse
 
 Worker names are directory names (see --list), e.g. blob_metrics_worker.
+GPU/ML workers are included (cross-built under QEMU on a Mac, which is slow --
+prefer a native amd64/GPU host). piscis is split into piscis_predict and
+piscis_train.
 
 The script reads the AWS account ID from `aws sts get-caller-identity` and
 fails fast with a clear message if credentials aren't loaded. It only uses
@@ -122,11 +151,12 @@ USAGE
 #   workers/annotations/<name>/Dockerfile
 #   workers/properties/{blobs,points,lines,connections}/<name>/Dockerfile
 #
-# Non-standard layouts (currently only piscis, which has predict/ and train/
-# subdirs and its own docker-compose.yaml) are skipped; build those with
-# build_machine_learning_workers.sh.
+# piscis has a non-standard layout (predict/ + train/ subdirs, no top-level
+# Dockerfile, its own docker-compose.yaml) and produces TWO images. We emit it
+# as two pseudo-workers, piscis_predict and piscis_train, each with its own
+# Dockerfile; their build context is pinned via CONTEXT_OVERRIDE above.
 #
-# `*_M1` worker directories are also skipped: those Dockerfiles hardcode the
+# `*_M1` worker directories are skipped: those Dockerfiles hardcode the
 # aarch64 Miniconda installer for Apple Silicon development and cannot build
 # for linux/amd64 (the production target), so they are never pushed to ECR.
 discover_workers() {
@@ -141,6 +171,56 @@ discover_workers() {
         case "$name" in *_M1) continue ;; esac   # arm64-only dev variant
         printf '%s\tproperties\t%s\n' "$name" "$f"
     done < <(find workers/properties -mindepth 3 -maxdepth 3 -name Dockerfile -type f 2>/dev/null | sort)
+    # piscis: two images from one non-standard worker dir.
+    [ -f workers/annotations/piscis/predict/Dockerfile ] && \
+        printf '%s\tannotations\t%s\n' "piscis_predict" "workers/annotations/piscis/predict/Dockerfile"
+    [ -f workers/annotations/piscis/train/Dockerfile ] && \
+        printf '%s\tannotations\t%s\n' "piscis_train" "workers/annotations/piscis/train/Dockerfile"
+}
+
+# True if a worker's Dockerfile builds FROM an nvidia/cuda image, i.e. it's a
+# GPU/ML worker. Used for --skip-ml/--only-ml and the emulation warning.
+is_ml_worker() {
+    local dfile="$1"
+    grep -qiE '^[[:space:]]*FROM[[:space:]]+nvidia/cuda' "$dfile"
+}
+
+# Drop or keep GPU/ML workers in TARGETS per --skip-ml / --only-ml.
+filter_targets_by_ml() {
+    [ "$SKIP_ML" = "0" ] && [ "$ONLY_ML" = "0" ] && return 0
+    local -a keep=() drop=()
+    local n
+    for n in "${TARGETS[@]}"; do
+        if is_ml_worker "${DOCKERFILE_OF[$n]}"; then
+            if [ "$SKIP_ML" = "1" ]; then drop+=("$n"); else keep+=("$n"); fi
+        else
+            if [ "$ONLY_ML" = "1" ]; then drop+=("$n"); else keep+=("$n"); fi
+        fi
+    done
+    TARGETS=("${keep[@]}")
+    if [ "${#drop[@]}" -gt 0 ]; then
+        if [ "$ONLY_ML" = "1" ]; then
+            log "--only-ml: skipping ${#drop[@]} non-GPU/ML worker(s)."
+        else
+            log "--skip-ml: skipping ${#drop[@]} GPU/ML worker(s): ${drop[*]}"
+        fi
+    fi
+}
+
+# Warn loudly if we're about to cross-build GPU/ML workers under QEMU emulation
+# (amd64 target on a non-x86_64 host) -- these builds are slow and can fail.
+warn_if_emulating_ml() {
+    local target_arch="${PLATFORM##*/}"
+    local host_arch; host_arch="$(uname -m)"
+    case "$host_arch" in x86_64|amd64) return 0 ;; esac
+    [ "$target_arch" = "amd64" ] || return 0
+    local n ml=0
+    for n in "${TARGETS[@]}"; do
+        is_ml_worker "${DOCKERFILE_OF[$n]}" && ml=$((ml + 1))
+    done
+    [ "$ml" -eq 0 ] && return 0
+    warn "${ml} GPU/ML worker(s) will be cross-built for ${PLATFORM} on a ${host_arch} host (QEMU emulation)."
+    warn "This is slow and can fail. Prefer a native amd64/GPU host (EC2), or use --skip-ml here."
 }
 
 while [ $# -gt 0 ]; do
@@ -155,6 +235,8 @@ while [ $# -gt 0 ]; do
         --platform=*)  PLATFORM="${1#*=}"; shift ;;
         --no-cache)    NO_CACHE="--no-cache"; shift ;;
         --skip-base)   SKIP_BASE=1; shift ;;
+        --skip-ml)     SKIP_ML=1; shift ;;
+        --only-ml)     ONLY_ML=1; shift ;;
         --dry-run)     DRY_RUN=1; shift ;;
         -y|--yes)      ASSUME_YES=1; shift ;;
         -h|--help)     print_usage; exit 0 ;;
@@ -167,6 +249,11 @@ done
 REGION="${REGION:-$DEFAULT_REGION}"
 PREFIX="${PREFIX:-$DEFAULT_PREFIX}"
 PLATFORM="${PLATFORM:-$DEFAULT_PLATFORM}"
+
+if [ "$SKIP_ML" = "1" ] && [ "$ONLY_ML" = "1" ]; then
+    err "--skip-ml and --only-ml are mutually exclusive."
+    exit 2
+fi
 
 cd "$REPO_ROOT"
 
@@ -189,9 +276,10 @@ for line in "${WORKER_LIST[@]}"; do
 done
 
 if [ "$LIST_ONLY" = "1" ]; then
-    printf '%-50s %-12s %s\n' "WORKER" "CATEGORY" "DOCKERFILE"
+    printf '%-46s %-12s %-7s %s\n' "WORKER" "CATEGORY" "GPU/ML" "DOCKERFILE"
     for n in "${ALL_NAMES[@]}"; do
-        printf '%-50s %-12s %s\n' "$n" "${CATEGORY_OF[$n]}" "${DOCKERFILE_OF[$n]}"
+        _ml="-"; is_ml_worker "${DOCKERFILE_OF[$n]}" && _ml="yes"
+        printf '%-46s %-12s %-7s %s\n' "$n" "${CATEGORY_OF[$n]}" "$_ml" "${DOCKERFILE_OF[$n]}"
     done
     exit 0
 fi
@@ -217,11 +305,6 @@ if [ "$ALL" = "1" ]; then
     if [ "${#_skipped[@]}" -gt 0 ]; then
         log "Skipping ${#_skipped[@]} non-deployed worker(s) (push by name if needed): ${_skipped[*]}"
     fi
-    log "About to build and push ${#TARGETS[@]} workers."
-    if ! confirm "Proceed?"; then
-        log "Aborted."
-        exit 1
-    fi
 else
     if [ "${#REQUESTED[@]}" -eq 0 ]; then
         err "No workers specified. Use --list to see options or --all."
@@ -240,6 +323,25 @@ else
         exit 2
     fi
     TARGETS=("${REQUESTED[@]}")
+fi
+
+# Apply --skip-ml / --only-ml after the target list is assembled (works for
+# both --all and explicit names).
+filter_targets_by_ml
+
+if [ "${#TARGETS[@]}" -eq 0 ]; then
+    err "No workers left to build after filtering."
+    exit 1
+fi
+
+warn_if_emulating_ml
+
+if [ "$ALL" = "1" ]; then
+    log "About to build and push ${#TARGETS[@]} worker(s)."
+    if ! confirm "Proceed?"; then
+        log "Aborted."
+        exit 1
+    fi
 fi
 
 for tool in docker aws git; do
@@ -454,8 +556,14 @@ build_and_push_worker() {
     local img_latest="${REGISTRY}/${repo}:latest"
     local worker_cache_dir="${CACHE_DIR}/${name}"
 
-    # Build context this worker's Dockerfile actually expects.
-    local ctx; ctx="$(detect_context "$dfile")"
+    # Build context this worker's Dockerfile actually expects. A pinned
+    # CONTEXT_OVERRIDE (e.g. piscis) wins; otherwise infer it from COPY sources.
+    local ctx
+    if [ -n "${CONTEXT_OVERRIDE[$name]:-}" ]; then
+        ctx="${REPO_ROOT}/${CONTEXT_OVERRIDE[$name]}"
+    else
+        ctx="$(detect_context "$dfile")"
+    fi
 
     # If the worker builds FROM a nimbusimage base, build+push that base for
     # the target platform and redirect FROM to the ECR copy.
@@ -539,6 +647,12 @@ declare -a SUCCESS=()
 declare -a FAILURE=()
 START_TS=$SECONDS
 
+# Workers are built one at a time (serial) so build memory stays bounded and
+# the logs / auth-retry stay easy to follow. On a high-memory native amd64 host
+# (e.g. an EC2 build box) this is the slow part of a full --all run, and
+# parallelizing it (e.g. background jobs with a bounded fan-out, or `xargs -P`)
+# is a safe future optimization there. See also COMPOSE_PARALLEL_LIMIT in
+# build_workers.sh for the analogous knob on the compose-based local builds.
 for name in "${TARGETS[@]}"; do
     worker_start=$SECONDS
     if build_and_push_worker "$name"; then
