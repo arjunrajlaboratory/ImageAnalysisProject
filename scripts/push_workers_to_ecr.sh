@@ -142,6 +142,9 @@ The script reads the AWS account ID from `aws sts get-caller-identity` and
 fails fast with a clear message if credentials aren't loaded. It only uses
 production Dockerfiles (the Dockerfile_M1 variants are skipped).
 
+Set $ECR_REGISTRY to override the target registry URL (default: derived from
+the authenticated account + region).
+
 USAGE
 }
 
@@ -356,7 +359,14 @@ if ! ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/
 fi
 log "AWS account: $ACCOUNT_ID  region: $REGION"
 
-REGISTRY="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+# Registry URL. Honor an explicit $ECR_REGISTRY (the shared env-var contract
+# with the AWSDeploy consume side -- see that repo's
+# doc/Build_and_Push_Worker_Images_to_ECR.md); otherwise derive it from the
+# authenticated account + region (which also respects --region).
+REGISTRY="${ECR_REGISTRY:-${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com}"
+if [ -n "${ECR_REGISTRY:-}" ]; then
+    log "Registry:    $REGISTRY (from \$ECR_REGISTRY)"
+fi
 
 if ! SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null)"; then
     err "Not a git repository or no commits yet."
