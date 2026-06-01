@@ -2,9 +2,11 @@
 # Claude Code PostToolUse hook — regenerates worker docs when a PR is created.
 #
 # Triggers after any Bash tool call. Checks whether the command was a
-# "gh pr create" invocation; if so, regenerates all worker .md files and
-# registry.md, then commits and pushes the changes to the current branch so
-# that the PR includes up-to-date documentation.
+# "gh pr create"/"gh pr edit" invocation AND whether the branch actually
+# changed worker source (workers/ or generate_worker_docs.py) vs. the base; if
+# so, regenerates all worker .md files and registry.md, then commits and pushes
+# the changes to the current branch so the PR includes up-to-date documentation.
+# PRs that don't touch worker source are skipped (no churn commit).
 #
 # Hook input (stdin): JSON from Claude Code with shape:
 #   { "tool_name": "Bash", "tool_input": { "command": "..." }, ... }
@@ -37,6 +39,28 @@ echo "[update-worker-docs] PR operation detected — regenerating worker documen
 # ── 3. Locate repo root ───────────────────────────────────────────────────────
 REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
+
+# ── 3b. Skip unless the PR actually changed worker source ─────────────────────
+# The hook fires on any `gh pr create|edit`, including description-only edits.
+# Regenerating + committing docs on a PR that didn't touch any worker source is
+# just noise — an unrelated PR (e.g. a build-script change) would otherwise pick
+# up a registry-churn commit. Only proceed when the branch's diff vs. the base
+# touches workers/ or the generator itself. If no base can be determined, fall
+# through and regenerate (don't silently stop producing docs).
+BASE_REF=""
+for ref in origin/master master origin/main main; do
+    if git rev-parse --verify --quiet "$ref" >/dev/null; then BASE_REF="$ref"; break; fi
+done
+if [ -n "$BASE_REF" ]; then
+    if git diff --name-only "${BASE_REF}...HEAD" -- workers/ generate_worker_docs.py | grep -q .; then
+        echo "[update-worker-docs] Worker source changed vs ${BASE_REF}; regenerating docs."
+    else
+        echo "[update-worker-docs] PR changed no worker source (workers/ or generate_worker_docs.py); skipping doc regen."
+        exit 0
+    fi
+else
+    echo "[update-worker-docs] No base ref found; regenerating docs to be safe."
+fi
 
 # ── 4. Run the documentation generator ───────────────────────────────────────
 if ! python3 generate_worker_docs.py; then

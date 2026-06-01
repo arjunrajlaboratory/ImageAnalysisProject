@@ -89,6 +89,7 @@ class WorkerInfo:
     worker_type: str          # "annotation" or "property"
     category: Optional[str] = None  # "blobs"/"points"/"lines"/"connections"
     description: Optional[str] = None
+    label_description: Optional[str] = None  # Docker `description` label (concise; preferred for the registry one-liner)
     interface_name: Optional[str] = None
     interface_category: Optional[str] = None
     annotation_shape: Optional[str] = None
@@ -108,8 +109,17 @@ class WorkerInfo:
 # ---------------------------------------------------------------------------
 
 def _strip_html(text: str) -> str:
-    """Remove HTML tags and normalise whitespace."""
-    return re.sub(r"<[^>]+>", "", text).strip()
+    """Remove HTML tags and normalise whitespace.
+
+    Tags are replaced with a space (not deleted) so adjacent block elements
+    like ``</p><p>`` or ``<br>`` don't fuse words/sentences (e.g. the
+    "z-slices.It" artifact). A trailing "Learn more" link label, left over
+    after stripping its ``<a>`` tag, is dropped.
+    """
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s*\bLearn more\b\.?\s*$", "", text).strip()
+    return text
 
 
 def extract_docker_labels(dockerfile_path: Path) -> dict:
@@ -318,6 +328,7 @@ def discover_workers() -> list:
                 worker_type="annotation",
                 category=None,
                 description=desc or labels.get("description"),
+                label_description=labels.get("description"),
                 interface_name=labels.get("interfaceName"),
                 interface_category=labels.get("interfaceCategory"),
                 annotation_shape=labels.get("annotationShape"),
@@ -354,6 +365,7 @@ def discover_workers() -> list:
                     worker_type="property",
                     category=category_dir.name,
                     description=desc or labels.get("description"),
+                    label_description=labels.get("description"),
                     interface_name=labels.get("interfaceName"),
                     interface_category=labels.get("interfaceCategory"),
                     annotation_shape=labels.get("annotationShape"),
@@ -601,7 +613,7 @@ def generate_registry(workers: list) -> str:
 
     def _row_ann(w: WorkerInfo) -> str:
         display = w.interface_name or w.name.replace("_", " ").title()
-        desc = _strip_html(w.description or "")
+        desc = _strip_html(w.label_description or w.description or "")
         if len(desc) > 90:
             desc = desc[:87] + "..."
         gpu = "Yes" if w.has_gpu else ""
@@ -612,7 +624,7 @@ def generate_registry(workers: list) -> str:
 
     def _row_prop(w: WorkerInfo) -> str:
         display = w.interface_name or w.name.replace("_", " ").title()
-        desc = _strip_html(w.description or "")
+        desc = _strip_html(w.label_description or w.description or "")
         if len(desc) > 90:
             desc = desc[:87] + "..."
         tests = "Yes" if w.has_tests else ""
