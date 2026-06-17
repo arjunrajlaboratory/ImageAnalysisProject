@@ -170,13 +170,15 @@ def compute(datasetId, apiUrl, token, params):
     assignment, channel, connectTo, tags, tile, workerInterface = itemgetter(
         *keys)(params)
 
-    object_tag = list(set(workerInterface.get('Object to connect tag', None)))
+    object_tags_raw = workerInterface.get('Object to connect tag', None)
+    if not object_tags_raw or len(object_tags_raw) == 0:
+        sendError("No object tag specified",
+                  info="Please specify an 'Object to connect tag' in the worker interface")
+        return
+
+    object_tag = list(set(object_tags_raw))
     max_distance = float(workerInterface['Max distance'])
     gap_size = int(workerInterface['Connect across gaps'])
-
-    if not object_tag or len(object_tag) == 0:
-        sendError("No object tag specified")
-        raise ValueError("No object tag specified")
 
     print(
         f"Connecting {object_tag} objects across {gap_size} time slices "
