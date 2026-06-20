@@ -46,7 +46,7 @@ Create new annotations by segmenting images or connecting existing annotations.
 | SAM2 video | Uses SAM2 to track video through time or Z | Yes |  | [docs](workers/annotations/sam2_video/SAM2_VIDEO.md) |
 | SAM automatic mask generator | Uses SAM to find all masks in the image | Yes |  | [docs](workers/annotations/sam_automatic_mask_generator/SAM_AUTOMATIC_MASK_GENERATOR.md) |
 | SAM few-shot segmentation | Uses SAM1 ViT-H features for few-shot segmentation based on training annotations | Yes | Yes | [docs](workers/annotations/sam_fewshot_segmentation/SAM_FEWSHOT_SEGMENTATION.md) |
-| Stardist | Uses Stardist to find cells and nuclei | Yes |  | [docs](workers/annotations/stardist/STARDIST.md) |
+| Stardist | Uses Stardist to find cells and nuclei | Yes | Yes | [docs](workers/annotations/stardist/STARDIST.md) |
 
 ## Property Workers -- Blobs
 
