@@ -1,4 +1,9 @@
 #!/bin/bash
+# DISABLED: no longer registered in .claude/settings.json. Kept for reference.
+# Removed because requiring a REGISTRY.md update on every worker change blocked
+# logic-only PRs and forced noisy registry regeneration into the diff. Run
+# `python generate_worker_docs.py` manually when docs actually need updating.
+#
 # Pre-PR hook: validates that modified workers have documentation and REGISTRY.md is updated.
 # Called as a PreToolUse hook on Bash commands. Reads tool input JSON from stdin.
 # Exit 0 = allow, Exit 2 = block with message.

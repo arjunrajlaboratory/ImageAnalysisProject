@@ -175,26 +175,6 @@ def assign_temporary_ids(annotations):
     return annotations
 
 
-def assign_parent_ids(annotations, parent_annotations):
-    """
-    Assigns the 'parentId' to each annotation based on the corresponding parent annotation.
-
-    Args:
-        annotations (list): List of child annotation dictionaries.
-        parent_annotations (list): List of parent annotation dictionaries.
-
-    Returns:
-        list: List of child annotations with added 'parentId'.
-    """
-    if len(annotations) != len(parent_annotations):
-        raise ValueError("The number of annotations and parent_annotations must be the same.")
-
-    for child_ann, parent_ann in zip(annotations, parent_annotations):
-        # Attempt to get 'tempId'; if not present, fallback to '_id'; else None
-        child_ann['parentId'] = parent_ann.get('tempId') or parent_ann.get('_id', None)
-    return annotations
-
-
 def strip_ids(annotations):
     """
     Strips 'tempId' and 'parentId' from each annotation.
@@ -365,10 +345,6 @@ def compute(datasetId, apiUrl, token, params):
     sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)
 
-    rangeXY = tileClient.tiles['IndexRange'].get('IndexXY', 1)
-    rangeZ = tileClient.tiles['IndexRange'].get('IndexZ', 1)
-    rangeTime = tileClient.tiles['IndexRange'].get('IndexT', 1)
-
     new_annotations = []
 
     for batch in batches:
@@ -455,17 +431,29 @@ def compute(datasetId, apiUrl, token, params):
             multimask_output=False,
         )
         
-        # Find contours in the mask
-        temp_polygons = sam2_masks_to_polygons(masks, smoothing, padding)
-
-        temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
-        temp_annotations = assign_temporary_ids(temp_annotations) # Assign a temporary id to each annotation
+        # Build the parent list aligned 1:1 with `masks` (same order `polygons`
+        # was built above), giving the newly-segmented parents temporary ids.
         if not resegment_propagation_objects:
             sliced_new_annotations = assign_temporary_ids(sliced_new_annotations)
-            sliced_annotations.extend(sliced_new_annotations)
-            temp_annotations = assign_parent_ids(temp_annotations, sliced_annotations) # Assign a parentId to each annotation
+            parent_annotations = sliced_annotations + sliced_new_annotations
         else:
-            temp_annotations = assign_parent_ids(temp_annotations, sliced_new_annotations) # Assign a parentId to each annotation
+            parent_annotations = sliced_new_annotations
+
+        # Convert each mask individually and carry its parent annotation through,
+        # so a mask that erodes to empty/invalid geometry (yielding no annotation)
+        # simply skips its parent instead of shifting the index-based alignment.
+        # Converting the whole batch at once and matching counts afterward would
+        # raise as soon as any mask is dropped (no contour found, or degenerate
+        # geometry from padding/simplify).
+        temp_annotations = []
+        for parent_ann, mask in zip(parent_annotations, masks):
+            mask_polygons = sam2_masks_to_polygons([mask], smoothing, padding)
+            mask_annotations = annotation_tools.polygons_to_annotations(
+                mask_polygons, datasetId, XY=XY, Time=next_Time, Z=next_Z, tags=tags, channel=channel)
+            for annotation in mask_annotations:  # 0 or 1 (keep_largest_only)
+                annotation['parentId'] = parent_ann.get('tempId') or parent_ann.get('_id', None)
+                temp_annotations.append(annotation)
+        temp_annotations = assign_temporary_ids(temp_annotations) # Assign a temporary id to each annotation
         new_annotations.extend(temp_annotations)
 
         # Update progress after each batch

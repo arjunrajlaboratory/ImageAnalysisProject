@@ -32,7 +32,7 @@ RUN wget \
 
 FROM base as build
 
-COPY ./environment.yml /
+COPY ./workers/annotations/cellpose/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -45,16 +45,18 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
-COPY ./download_models.py /
+COPY ./workers/annotations/cellpose/download_models.py /
 RUN python /download_models.py
 
-COPY ./utils.py /
-COPY ./girder_utils.py /
-COPY ./entrypoint.py /
+COPY ./workers/annotations/cellpose/utils.py /
+COPY ./workers/annotations/cellpose/girder_utils.py /
+COPY ./workers/annotations/cellpose/entrypoint.py /
 
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-RUN pip install /ImageAnalysisProject/annotation_utilities
-RUN pip install /ImageAnalysisProject/worker_client
+COPY ./annotation_utilities /annotation_utilities
+RUN pip install /annotation_utilities
+
+COPY ./worker_client /worker_client
+RUN pip install /worker_client
 
 LABEL isUPennContrastWorker=True \
       isAnnotationWorker=True \

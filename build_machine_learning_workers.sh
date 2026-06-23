@@ -23,16 +23,16 @@ echo "Building Piscis worker"
 docker compose -f ./workers/annotations/piscis/docker-compose.yaml build $NO_CACHE
 
 echo "Building Cellpose worker"
-docker build ./workers/annotations/cellpose/ -t annotations/cellpose_worker:latest $NO_CACHE
+docker build . -f ./workers/annotations/cellpose/Dockerfile -t annotations/cellpose_worker:latest $NO_CACHE
 
 echo "Building Cellpose train worker"
-docker build ./workers/annotations/cellpose_train/ -t annotations/cellpose_train_worker:latest $NO_CACHE
+docker build . -f ./workers/annotations/cellpose_train/Dockerfile -t annotations/cellpose_train_worker:latest $NO_CACHE
 
 echo "Building Cellpose-SAM worker"
-docker build ./workers/annotations/cellposesam/ -t annotations/cellposesam_worker:latest $NO_CACHE
+docker build . -f ./workers/annotations/cellposesam/Dockerfile -t annotations/cellposesam_worker:latest $NO_CACHE
 
 echo "Building Stardist worker"
-docker build ./workers/annotations/stardist/ -t annotations/stardist_worker:latest $NO_CACHE
+docker build . -f ./workers/annotations/stardist/Dockerfile -t annotations/stardist_worker:latest $NO_CACHE
 
 echo "Building SAM2 automatic mask generator worker"
 docker build . -f ./workers/annotations/sam2_automatic_mask_generator/Dockerfile -t annotations/sam2_automatic_mask_generator:latest $NO_CACHE
@@ -66,4 +66,3 @@ docker build . -f ./workers/annotations/condensatenet/$DOCKERFILE -t annotations
 #docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
 #docker build ./workers/test_worker/ -t both/test_worker:latest  --label isUPennContrastWorker --label isAnnotationWorker --label isPropertyWorker --label "annotationShape=point" --label "interfaceName=Test worker" --label "interfaceCategory=Test"
 #docker build ./workers/annotations/test_multiple_annotation/ -t annotations/test_multiple_annotation:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Random square" --label "interfaceCategory=random"
-

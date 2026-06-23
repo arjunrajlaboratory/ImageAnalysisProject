@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# DISABLED: no longer registered in .claude/settings.json. Kept for reference.
+# Removed because it auto-committed a full REGISTRY.md regeneration on every
+# `gh pr create`/`edit`, sweeping unrelated worker-description drift into
+# focused PRs. Run `python generate_worker_docs.py` manually instead.
+#
 # Claude Code PostToolUse hook — regenerates worker docs when a PR is created.
 #
 # Triggers after any Bash tool call. Checks whether the command was a

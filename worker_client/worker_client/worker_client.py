@@ -11,6 +11,8 @@ import annotation_client.tiles as tiles
 
 from annotation_client.utils import sendProgress
 from annotation_utilities import batch_argument_parser
+# Re-exported for workers that import it from worker_client (e.g. cellposesam).
+from annotation_utilities.annotation_tools import geometry_to_polygon_coords
 
 
 class WorkerClient:
@@ -90,9 +92,10 @@ class WorkerClient:
 
         xy, z, time, channel = location
 
+        index_range = self.datasetClient.tiles.get('IndexRange', {})
+
         if stack_xys == 'all':
-            xys = range(
-                self.datasetClient.tiles['IndexRange'].get('IndexXY', 0))
+            xys = range(index_range.get('IndexXY', 1))
         elif isinstance(stack_xys, Sequence) and len(stack_xys):
             xys = stack_xys
         else:
@@ -102,7 +105,7 @@ class WorkerClient:
                 xys = [xy]
 
         if stack_zs == 'all':
-            zs = range(self.datasetClient.tiles['IndexRange'].get('IndexZ', 0))
+            zs = range(index_range.get('IndexZ', 1))
         elif isinstance(stack_zs, Sequence) and len(stack_zs):
             zs = stack_zs
         else:
@@ -112,8 +115,7 @@ class WorkerClient:
                 zs = [z]
 
         if stack_times == 'all':
-            times = range(
-                self.datasetClient.tiles['IndexRange'].get('IndexT', 0))
+            times = range(index_range.get('IndexT', 1))
         elif isinstance(stack_times, Sequence) and len(stack_times):
             times = stack_times
         else:
@@ -123,8 +125,7 @@ class WorkerClient:
                 times = [time]
 
         if stack_channels == 'all':
-            channels = range(
-                self.datasetClient.tiles['IndexRange'].get('IndexC', 0))
+            channels = range(index_range.get('IndexC', 1))
         elif isinstance(stack_channels, Sequence) and len(stack_channels):
             channels = stack_channels
         else:
@@ -214,16 +215,34 @@ class WorkerClient:
             "datasetId": self.datasetId
         }
 
-        print(f"Uploading {len(polygons)} annotations")
         annotation_list = []
+        skipped = 0
 
         for polygon in polygons:
-            polygon = Polygon(polygon)
-            polygon_coords = list(polygon.exterior.coords)
-            annotation = annotation_template | {
-                "coordinates": [{"x": float(x), "y": float(y), "z": float(z)} for x, y in polygon_coords]
-            }
-            annotation_list.append(annotation)
+            try:
+                geom = Polygon(polygon)
+            except (ValueError, TypeError):
+                # Fewer than the 3 distinct vertices a polygon requires.
+                skipped += 1
+                continue
+            coord_lists = geometry_to_polygon_coords(geom)
+            if not coord_lists:
+                # Empty / zero-area geometry (e.g. shrunk away by negative padding).
+                skipped += 1
+                continue
+            for polygon_coords in coord_lists:
+                annotation = annotation_template | {
+                    "coordinates": [{"x": float(x), "y": float(y), "z": float(z)} for x, y in polygon_coords]
+                }
+                annotation_list.append(annotation)
+
+        if skipped:
+            print(f"Skipped {skipped} degenerate polygon(s) (empty or zero-area)")
+        print(f"Uploading {len(annotation_list)} annotations")
+        if not annotation_list:
+            # Posting an empty coordinates payload triggers a server 400, and an
+            # empty batch has nothing to upload, so there is nothing to do.
+            return
 
         annotationsIds = [
             a['_id'] for a in self.annotationClient.createMultipleAnnotations(annotation_list)]

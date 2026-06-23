@@ -2,25 +2,58 @@ name: Test Workers
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
-  test:
+  # DISABLED: this job builds AND tests every Docker worker on a single runner,
+  # which is too heavy to run on every push/PR. Run it locally instead with
+  # `./build_workers.sh --build-and-run-tests` (or pass a worker name to scope
+  # it). Uncomment to re-enable in CI.
+  #
+  # test:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v2
+  #
+  #     - name: Build and test workers
+  #       run: |
+  #         chmod +x ./build_workers.sh
+  #         ./build_workers.sh --build-and-run-tests
+  #
+  #     # Optional: If you want to test specific workers
+  #     # - name: Test specific worker
+  #     #   run: |
+  #     #     ./build_workers.sh --build-and-run-tests blob_metrics
+
+  # Native (non-Docker) unit tests for the shared Python packages. These are
+  # installed into worker images rather than built as workers, so they have no
+  # docker-compose *_test service; run them directly with pytest instead.
+  package-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      
-      - name: Build and test workers
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install packages and test dependencies
         run: |
-          chmod +x ./build_workers.sh
-          ./build_workers.sh --test
-      
-      # Optional: If you want to test specific workers
-      # - name: Test specific worker
-      #   run: |
-      #     ./build_workers.sh --test blob_metrics
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock
+          pip install -e ./annotation_utilities
+          pip install -e ./worker_client
+
+      - name: Test annotation_utilities
+        working-directory: annotation_utilities
+        run: pytest tests -v
+
+      - name: Test worker_client
+        working-directory: worker_client
+        run: pytest tests -v

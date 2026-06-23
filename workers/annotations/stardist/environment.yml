@@ -5,6 +5,9 @@ channels:
 dependencies:
   - python=3.10
   - pip
+  # stardist 0.9.1 imports pkg_resources at import time, which setuptools
+  # removed in 82.0.0. Pin below that so pkg_resources stays available.
+  - setuptools<82
   - numpy=1.23.5
   - scipy=1.10.1
   - scikit-image=0.19.3
