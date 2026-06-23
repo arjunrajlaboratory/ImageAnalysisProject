@@ -28,14 +28,21 @@ python generate_worker_docs.py --registry-only
 
 The script reads each `entrypoint.py` via AST parsing to extract the interface definition and Docker labels, then writes the markdown files. **By default, it only creates stubs for workers that don't already have a doc file** — existing hand-written documentation is preserved. Use `--force` to overwrite. Workers with dynamically-computed interface values (e.g. model lists fetched from Girder) are handled gracefully — static fields are extracted and dynamic ones are flagged.
 
-### Automatic Documentation via Claude Code Hook
+### Automatic Documentation via Claude Code Hook (DISABLED)
 
-A `PostToolUse` Claude Code hook (`.claude/hooks/update-worker-docs.sh`) fires automatically after any `gh pr create` or `gh pr edit` Bash command. It:
-1. Runs `generate_worker_docs.py` to regenerate all worker docs and `registry.md`
-2. Commits any changes
-3. Pushes the commit to the current branch so the PR always contains up-to-date docs
+> **Disabled.** This hook is no longer registered in `.claude/settings.json`.
+> The script (`.claude/hooks/update-worker-docs.sh`) is kept for reference and
+> can be re-registered if desired. It was disabled because it auto-regenerated
+> `REGISTRY.md` on every `gh pr create`/`edit` and committed the result, which
+> repeatedly swept **unrelated description drift** (stale one-line summaries for
+> workers untouched by the PR) into otherwise-focused PRs. Regenerate docs
+> manually with `python generate_worker_docs.py` when a worker's interface or
+> labels actually change.
 
-The hook is registered in `.claude/settings.json`.
+When it was active, the `PostToolUse` hook (`.claude/hooks/update-worker-docs.sh`) fired automatically after any `gh pr create` or `gh pr edit` Bash command and:
+1. Ran `generate_worker_docs.py` to regenerate all worker docs and `registry.md`
+2. Committed any changes
+3. Pushed the commit to the current branch so the PR always contained up-to-date docs
 
 ### Documentation Conventions
 
@@ -490,9 +497,16 @@ Use existing docs as reference:
 - **Comprehensive template**: `workers/annotations/deconwolf/DECONWOLF.md`
 - **Concise template**: `workers/annotations/condensatenet/CONDENSATENET.md`
 
-### Pre-PR Validation Hook
+### Pre-PR Validation Hook (DISABLED)
 
-A Claude Code hook (`.claude/hooks/validate-worker-docs.sh`) runs before `gh pr create` and checks:
+> **Disabled.** This hook is no longer registered in `.claude/settings.json`.
+> The script (`.claude/hooks/validate-worker-docs.sh`) is kept for reference and
+> can be re-registered if desired. It was disabled alongside the auto-doc hook
+> above: its `REGISTRY.md`-was-updated check blocked PRs that only changed worker
+> *logic* (no interface change), forcing a noisy registry regeneration into the
+> PR just to pass. Keeping worker docs current is now a manual step.
+
+When it was active, the `PreToolUse` hook (`.claude/hooks/validate-worker-docs.sh`) ran before `gh pr create` and checked:
 - Every modified annotation worker has a `WORKERNAME.md` doc file
 - Every modified property worker has a `WORKERNAME.md` doc file (not just a boilerplate README.md)
 - `REGISTRY.md` was updated if any worker files changed
