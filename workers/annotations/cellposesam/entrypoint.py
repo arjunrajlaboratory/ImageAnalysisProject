@@ -18,7 +18,7 @@ from girder_utils import CELLPOSE_DIR, MODELS_DIR
 
 from shapely.geometry import Polygon
 
-from worker_client import WorkerClient
+from worker_client import WorkerClient, geometry_to_polygon_coords
 
 BASE_MODELS = ['cellpose-sam']
 
@@ -158,9 +158,11 @@ def run_model(image, cellpose, tile_size, tile_overlap, padding, smoothing):
     if padding != 0:
         dilated_polygons = []
         for polygon in polygons:
-            polygon = Polygon(polygon)
-            dilated_polygon = polygon.buffer(padding)
-            dilated_polygons.append(list(dilated_polygon.exterior.coords))
+            # A negative buffer (shrinking) can erode a small object away to an
+            # empty geometry or pinch it into a MultiPolygon, so normalize the
+            # result and drop anything that no longer forms a valid polygon.
+            dilated_polygon = Polygon(polygon).buffer(padding)
+            dilated_polygons.extend(geometry_to_polygon_coords(dilated_polygon))
     else:
         dilated_polygons = polygons
 
@@ -168,7 +170,7 @@ def run_model(image, cellpose, tile_size, tile_overlap, padding, smoothing):
         smoothed_polygons = []
         for polygon in dilated_polygons:
             smoothed_polygon = Polygon(polygon).simplify(smoothing)
-            smoothed_polygons.append(list(smoothed_polygon.exterior.coords))
+            smoothed_polygons.extend(geometry_to_polygon_coords(smoothed_polygon))
         return smoothed_polygons
     else:
         return dilated_polygons

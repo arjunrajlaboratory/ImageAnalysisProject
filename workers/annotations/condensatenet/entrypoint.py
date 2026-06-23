@@ -15,7 +15,7 @@ from deeptile.core.utils import compute_dask
 from deeptile.extensions.segmentation import mask_to_polygons
 from deeptile.extensions.stitch import stitch_polygons
 
-from worker_client import WorkerClient
+from worker_client import WorkerClient, geometry_to_polygon_coords
 
 from condensatenet import CondensateNetPipeline
 
@@ -237,10 +237,11 @@ def run_model(image, condensatenet, tile_size, tile_overlap, padding, smoothing)
     if padding != 0:
         dilated_polygons = []
         for polygon in polygons:
-            polygon = Polygon(polygon)
-            dilated_polygon = polygon.buffer(padding)
-            if not dilated_polygon.is_empty:
-                dilated_polygons.append(list(dilated_polygon.exterior.coords))
+            # A negative buffer (shrinking) can erode a small object away to an
+            # empty geometry or pinch it into a MultiPolygon, so normalize the
+            # result and drop anything that no longer forms a valid polygon.
+            dilated_polygon = Polygon(polygon).buffer(padding)
+            dilated_polygons.extend(geometry_to_polygon_coords(dilated_polygon))
         polygons = dilated_polygons
 
     # Apply smoothing
@@ -248,8 +249,7 @@ def run_model(image, condensatenet, tile_size, tile_overlap, padding, smoothing)
         smoothed_polygons = []
         for polygon in polygons:
             smoothed_polygon = Polygon(polygon).simplify(smoothing, preserve_topology=True)
-            if not smoothed_polygon.is_empty and smoothed_polygon.is_valid:
-                smoothed_polygons.append(list(smoothed_polygon.exterior.coords))
+            smoothed_polygons.extend(geometry_to_polygon_coords(smoothed_polygon))
         return smoothed_polygons
     else:
         return polygons

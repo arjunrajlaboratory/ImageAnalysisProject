@@ -122,6 +122,36 @@ def annotations_to_polygons(annotations):
     return polygons
 
 
+def geometry_to_polygon_coords(geometry):
+    """Flatten a shapely geometry into a list of exterior coordinate lists,
+    dropping anything empty or zero-area.
+
+    A negative ``buffer`` (used for polygon padding) or a ``simplify`` can turn a
+    polygon into an empty geometry (small objects shrink to nothing) or split it
+    into a ``MultiPolygon`` (objects pinched in two). Neither survives the naive
+    ``geometry.exterior.coords`` path: an empty geometry yields ``coordinates: []``
+    which the server rejects with a 400 (failing the *entire* batch upload), and a
+    ``MultiPolygon`` has no ``.exterior`` attribute (raising ``AttributeError``).
+
+    This normalizes both cases: empty / zero-area geometries are dropped and each
+    piece of a ``MultiPolygon`` (or ``GeometryCollection``) becomes its own
+    coordinate list. Returns a (possibly empty) list of coordinate lists, each a
+    list of ``(x, y)`` tuples suitable for building a single polygon annotation.
+    """
+    if geometry is None or geometry.is_empty:
+        return []
+    sub_geoms = getattr(geometry, "geoms", None)
+    if sub_geoms is not None:  # MultiPolygon / GeometryCollection
+        coords = []
+        for geom in sub_geoms:
+            coords.extend(geometry_to_polygon_coords(geom))
+        return coords
+    exterior = getattr(geometry, "exterior", None)
+    if exterior is None or geometry.area <= 0:  # not a polygon, or degenerate sliver
+        return []
+    return [list(exterior.coords)]
+
+
 def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0):
     """
     Convert shapely Polygon objects to a list of annotations.
@@ -136,28 +166,32 @@ def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, c
     datasetId (str): The datasetId for all annotations.
 
     Returns:
-    list: A list of annotation dictionaries.
+    list: A list of annotation dictionaries. Empty / zero-area polygons are
+    dropped and each piece of a MultiPolygon becomes its own annotation, so a
+    degenerate geometry never produces an empty-coordinates payload (which the
+    server rejects) or crashes on a missing ``.exterior`` attribute.
     """
     if not isinstance(polygons, list):
         polygons = [polygons]
 
     annotations = []
     for polygon in polygons:
-        coordinates = [{'x': float(y), 'y': float(x)} for x, y in list(polygon.exterior.coords)[
-            :-1]]  # Exclude the last point as it's the same as the first
+        for ring in geometry_to_polygon_coords(polygon):
+            coordinates = [{'x': float(y), 'y': float(x)} for x, y in ring[
+                :-1]]  # Exclude the last point as it's the same as the first
 
-        annotation = {
-            'coordinates': coordinates,
-            'location': {'XY': XY, 'Time': Time, 'Z': Z},
-            'shape': 'polygon',
-            'channel': channel,
-            'datasetId': datasetId
-        }
+            annotation = {
+                'coordinates': coordinates,
+                'location': {'XY': XY, 'Time': Time, 'Z': Z},
+                'shape': 'polygon',
+                'channel': channel,
+                'datasetId': datasetId
+            }
 
-        if tags:
-            annotation['tags'] = tags
+            if tags:
+                annotation['tags'] = tags
 
-        annotations.append(annotation)
+            annotations.append(annotation)
 
     return annotations
 

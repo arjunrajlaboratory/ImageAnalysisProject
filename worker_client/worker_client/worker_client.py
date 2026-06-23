@@ -11,6 +11,8 @@ import annotation_client.tiles as tiles
 
 from annotation_client.utils import sendProgress
 from annotation_utilities import batch_argument_parser
+# Re-exported for workers that import it from worker_client (e.g. cellposesam).
+from annotation_utilities.annotation_tools import geometry_to_polygon_coords
 
 
 class WorkerClient:
@@ -213,16 +215,34 @@ class WorkerClient:
             "datasetId": self.datasetId
         }
 
-        print(f"Uploading {len(polygons)} annotations")
         annotation_list = []
+        skipped = 0
 
         for polygon in polygons:
-            polygon = Polygon(polygon)
-            polygon_coords = list(polygon.exterior.coords)
-            annotation = annotation_template | {
-                "coordinates": [{"x": float(x), "y": float(y), "z": float(z)} for x, y in polygon_coords]
-            }
-            annotation_list.append(annotation)
+            try:
+                geom = Polygon(polygon)
+            except (ValueError, TypeError):
+                # Fewer than the 3 distinct vertices a polygon requires.
+                skipped += 1
+                continue
+            coord_lists = geometry_to_polygon_coords(geom)
+            if not coord_lists:
+                # Empty / zero-area geometry (e.g. shrunk away by negative padding).
+                skipped += 1
+                continue
+            for polygon_coords in coord_lists:
+                annotation = annotation_template | {
+                    "coordinates": [{"x": float(x), "y": float(y), "z": float(z)} for x, y in polygon_coords]
+                }
+                annotation_list.append(annotation)
+
+        if skipped:
+            print(f"Skipped {skipped} degenerate polygon(s) (empty or zero-area)")
+        print(f"Uploading {len(annotation_list)} annotations")
+        if not annotation_list:
+            # Posting an empty coordinates payload triggers a server 400, and an
+            # empty batch has nothing to upload, so there is nothing to do.
+            return
 
         annotationsIds = [
             a['_id'] for a in self.annotationClient.createMultipleAnnotations(annotation_list)]
