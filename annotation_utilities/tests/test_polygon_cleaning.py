@@ -58,6 +58,19 @@ def test_helper_keep_largest_only_collapses_multipolygon():
     assert len(largest[0]) >= 4
 
 
+def test_helper_keep_largest_only_flattens_nested_geometrycollection():
+    from shapely.geometry import MultiPolygon, GeometryCollection
+    big = Polygon([(0, 0), (4, 0), (4, 4), (0, 4)])      # area 16
+    small = Polygon([(10, 10), (12, 10), (12, 12), (10, 12)])  # area 4
+    nested = GeometryCollection([MultiPolygon([big, small])])
+    # keep_largest_only must recurse through the collection -> the largest leaf.
+    result = geometry_to_polygon_coords(nested, keep_largest_only=True)
+    assert len(result) == 1
+    assert Polygon(result[0]).area == 16  # the big piece, not []
+    # Default mode still flattens to both leaves.
+    assert len(geometry_to_polygon_coords(nested)) == 2
+
+
 def test_helper_expands_multipolygon_from_negative_buffer():
     dumbbell = Polygon([
         (0, 0), (10, 0), (10, 4), (6, 4), (6, 5), (10, 5), (10, 9),

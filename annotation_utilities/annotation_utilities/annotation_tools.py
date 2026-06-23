@@ -152,18 +152,16 @@ def geometry_to_polygon_coords(geometry, keep_largest_only=False):
         return []
     sub_geoms = getattr(geometry, "geoms", None)
     if sub_geoms is not None:  # MultiPolygon / GeometryCollection
-        if keep_largest_only:
-            # Collapse to one piece so callers that assume 1:1 cardinality
-            # (e.g. SAM2 parent/child matching) are not handed extra annotations.
-            valid = [g for g in sub_geoms
-                     if getattr(g, "exterior", None) is not None
-                     and g.is_valid and g.area > 0]
-            if not valid:
-                return []
-            return geometry_to_polygon_coords(max(valid, key=lambda g: g.area))
+        # Recurse first so nested multi-geometries (e.g. a GeometryCollection
+        # wrapping a MultiPolygon) flatten down to their valid leaf rings.
         coords = []
         for geom in sub_geoms:
             coords.extend(geometry_to_polygon_coords(geom))
+        if keep_largest_only and coords:
+            # Collapse to the single largest-area ring so callers that assume
+            # 1:1 cardinality (e.g. SAM2 parent/child matching) are not handed
+            # extra annotations.
+            coords = [max(coords, key=lambda ring: Polygon(ring).area)]
         return coords
     exterior = getattr(geometry, "exterior", None)
     if exterior is None or not geometry.is_valid or geometry.area <= 0:
