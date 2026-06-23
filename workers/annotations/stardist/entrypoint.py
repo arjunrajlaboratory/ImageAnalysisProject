@@ -12,6 +12,7 @@ from annotation_client.utils import sendProgress
 import numpy as np
 from stardist.models import StarDist2D
 from shapely.geometry import Polygon
+from annotation_utilities.annotation_tools import geometry_to_polygon_coords
 from rasterio import features
 import rasterio.transform
 
@@ -153,24 +154,38 @@ def compute(datasetId, apiUrl, token, params):
     # Prepare annotations
     sendProgress(0.8, 'Preparing annotations', 'Converting polygons to annotations')
     out_annotations = []
+    skipped = 0
     for polygon in processed_polygons:
-        annotation = {
-            "tags": params.get('tags', []),
-            "shape": "polygon",
-            "channel": channel,
-            "location": {
-                "XY": tile['XY'],
-                "Z": tile['Z'],
-                "Time": tile['Time']
-            },
-            "datasetId": datasetId,
-            "coordinates": [{"x": float(x), "y": float(y)} for x, y in polygon.exterior.coords],
-        }
-        out_annotations.append(annotation)
+        # Negative padding can erode a small object away to an empty geometry or
+        # pinch it into a MultiPolygon; normalize and drop anything degenerate so
+        # we never send empty coordinates (a server 400) or crash on a missing
+        # .exterior attribute.
+        rings = geometry_to_polygon_coords(polygon)
+        if not rings:
+            skipped += 1
+            continue
+        for ring in rings:
+            annotation = {
+                "tags": params.get('tags', []),
+                "shape": "polygon",
+                "channel": channel,
+                "location": {
+                    "XY": tile['XY'],
+                    "Z": tile['Z'],
+                    "Time": tile['Time']
+                },
+                "datasetId": datasetId,
+                "coordinates": [{"x": float(x), "y": float(y)} for x, y in ring],
+            }
+            out_annotations.append(annotation)
+
+    if skipped:
+        print(f"Skipped {skipped} degenerate polygon(s) (empty or zero-area)")
 
     # Upload annotations
     sendProgress(0.9, 'Uploading annotations', f'Uploading {len(out_annotations)} annotations')
-    annotationClient.createMultipleAnnotations(out_annotations)
+    if out_annotations:
+        annotationClient.createMultipleAnnotations(out_annotations)
 
     end_time = timeit.default_timer()
     execution_time = end_time - start_time

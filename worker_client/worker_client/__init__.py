@@ -1,1 +1,1 @@
-from .worker_client import WorkerClient
+from .worker_client import WorkerClient, geometry_to_polygon_coords
