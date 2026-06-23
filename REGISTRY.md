@@ -23,8 +23,8 @@ Create new annotations by segmenting images or connecting existing annotations.
 |--------|-------------|-----|-------|------|
 | Claude natural language analyzer | Uses Claude AI to analyze images |  |  | [docs](workers/annotations/ai_analysis/AI_ANALYSIS.md) |
 | Cellori Segmentation |  | Yes |  | [docs](workers/annotations/cellori_segmentation/CELLORI_SEGMENTATION.md) |
-| Cellpose | Uses Cellpose to find cells and nuclei | Yes |  | [docs](workers/annotations/cellpose/CELLPOSE.md) |
-| Cellpose retrain | Retrains Cellpose models based on user-selected images | Yes |  | [docs](workers/annotations/cellpose_train/CELLPOSE_TRAIN.md) |
+| Cellpose | This tool runs the Cellpose model to segment the image into cells. Learn more | Yes |  | [docs](workers/annotations/cellpose/CELLPOSE.md) |
+| Cellpose retrain | This tool trains a Cellpose model using user-corrected annotations. Learn more | Yes |  | [docs](workers/annotations/cellpose_train/CELLPOSE_TRAIN.md) |
 | Cellpose-SAM | This tool runs the Cellpose-SAM model to segment the image into cells. Learn more | Yes |  | [docs](workers/annotations/cellposesam/CELLPOSESAM.md) |
 | CondensateNet segmentation | Segments biomolecular condensates using CondensateNet deep learning model | Yes |  | [docs](workers/annotations/condensatenet/CONDENSATENET.md) |
 | Connect Sequential | This tool connects objects sequentially across time or z-slices.It is useful for connec... |  | Yes | [docs](workers/annotations/connect_sequential/CONNECT_SEQUENTIAL.md) |
@@ -36,17 +36,17 @@ Create new annotations by segmenting images or connecting existing annotations.
 | Gaussian Blur | Applies Gaussian blur to images |  | Yes | [docs](workers/annotations/gaussian_blur/GAUSSIAN_BLUR.md) |
 | H&E Deconvolution | Deconvolves H&E stains |  | Yes | [docs](workers/annotations/h_and_e_deconvolution/H_AND_E_DECONVOLUTION.md) |
 | Histogram Matching | Corrects images using histogram matching |  | Yes | [docs](workers/annotations/histogram_matching/HISTOGRAM_MATCHING.md) |
-| Laplacian of Gaussian | Detects spots in images using the Laplacian of Gaussian method |  |  | [docs](workers/annotations/laplacian_of_gaussian/LAPLACIAN_OF_GAUSSIAN.md) |
+| Laplacian of Gaussian | This tool finds spots in an image using the Laplacian of Gaussian method.It uses a filt... |  |  | [docs](workers/annotations/laplacian_of_gaussian/LAPLACIAN_OF_GAUSSIAN.md) |
 | Time lapse registration | Corrects images using time lapse registration |  | Yes | [docs](workers/annotations/registration/REGISTRATION.md) |
 | Rolling Ball | Corrects images using a rolling ball |  | Yes | [docs](workers/annotations/rolling_ball/ROLLING_BALL.md) |
 | SAM2 automatic mask generator | Uses SAM2 to find all masks in the image | Yes |  | [docs](workers/annotations/sam2_automatic_mask_generator/SAM2_AUTOMATIC_MASK_GENERATOR.md) |
 | SAM2 few-shot segmentation | Uses SAM2 features for few-shot segmentation based on training annotations | Yes | Yes | [docs](workers/annotations/sam2_fewshot_segmentation/SAM2_FEWSHOT_SEGMENTATION.md) |
-| SAM2 propagator | Uses SAM2 to propagate annotations through time or Z-slices | Yes |  | [docs](workers/annotations/sam2_propagate/SAM2_PROPAGATE.md) |
-| SAM2 Refiner | Uses SAM2 to refine annotations | Yes |  | [docs](workers/annotations/sam2_refine/SAM2_REFINE.md) |
+| SAM2 propagator | This tool uses the SAM2 model to take an existing annotation and propagate it through t... | Yes |  | [docs](workers/annotations/sam2_propagate/SAM2_PROPAGATE.md) |
+| SAM2 Refiner | This tool uses the SAM2 model to refine existing annotations. It takes existing annotat... | Yes |  | [docs](workers/annotations/sam2_refine/SAM2_REFINE.md) |
 | SAM2 video | Uses SAM2 to track video through time or Z | Yes |  | [docs](workers/annotations/sam2_video/SAM2_VIDEO.md) |
 | SAM automatic mask generator | Uses SAM to find all masks in the image | Yes |  | [docs](workers/annotations/sam_automatic_mask_generator/SAM_AUTOMATIC_MASK_GENERATOR.md) |
 | SAM few-shot segmentation | Uses SAM1 ViT-H features for few-shot segmentation based on training annotations | Yes | Yes | [docs](workers/annotations/sam_fewshot_segmentation/SAM_FEWSHOT_SEGMENTATION.md) |
-| Stardist | Uses Stardist to find cells and nuclei | Yes |  | [docs](workers/annotations/stardist/STARDIST.md) |
+| Stardist | Uses Stardist to find cells and nuclei | Yes | Yes | [docs](workers/annotations/stardist/STARDIST.md) |
 
 ## Property Workers -- Blobs
 
@@ -54,16 +54,16 @@ Compute properties on polygon / blob annotations.
 
 | Worker | Description | Tests | Docs |
 |--------|-------------|-------|------|
-| Annulus intensity percentile measurements | Compute intensity at a specific percentile for an annular region around blobs | Yes | [docs](workers/properties/blobs/blob_annulus_intensity_percentile_worker/BLOB_ANNULUS_INTENSITY_PERCENTILE_WORKER.md) |
-| Annulus intensity measurements | Compute intensity measurements (mean, median, etc.) for an annular region around blobs | Yes | [docs](workers/properties/blobs/blob_annulus_intensity_worker/BLOB_ANNULUS_INTENSITY_WORKER.md) |
+| Annulus intensity percentile measurements | This tool computes the pixel intensity in an annulus around the objects in the specifie... | Yes | [docs](workers/properties/blobs/blob_annulus_intensity_percentile_worker/BLOB_ANNULUS_INTENSITY_PERCENTILE_WORKER.md) |
+| Annulus intensity measurements | This tool computes the pixel intensity in an annulus around the objects in the specifie... | Yes | [docs](workers/properties/blobs/blob_annulus_intensity_worker/BLOB_ANNULUS_INTENSITY_WORKER.md) |
 | Colony two color intensity | Compute intensity across two channels for blobs; useful for colony intensity measurements |  | [docs](workers/properties/blobs/blob_colony_two_color_intensity_worker/BLOB_COLONY_TWO_COLOR_INTENSITY_WORKER.md) |
-| Blob intensity percentile measurements | Compute intensity at a specific percentile for blobs | Yes | [docs](workers/properties/blobs/blob_intensity_percentile_worker/BLOB_INTENSITY_PERCENTILE_WORKER.md) |
-| Blob intensity measurements | Compute intensity measurements (mean, median, etc.) for blobs | Yes | [docs](workers/properties/blobs/blob_intensity_worker/BLOB_INTENSITY_WORKER.md) |
-| Blob metrics | Compute area, perimeter, and other metrics for blobs | Yes | [docs](workers/properties/blobs/blob_metrics_worker/BLOB_METRICS_WORKER.md) |
-| Blob overlap | Compute overlap between blobs | Yes | [docs](workers/properties/blobs/blob_overlap_worker/BLOB_OVERLAP_WORKER.md) |
+| Blob intensity percentile measurements | This tool computes the pixel intensity of objects in the specified channel at the speci... | Yes | [docs](workers/properties/blobs/blob_intensity_percentile_worker/BLOB_INTENSITY_PERCENTILE_WORKER.md) |
+| Blob intensity measurements | This tool computes the pixel intensity of objects in the specified channel. It will com... | Yes | [docs](workers/properties/blobs/blob_intensity_worker/BLOB_INTENSITY_WORKER.md) |
+| Blob metrics | This tool computes a variety of metrics for the objects in the specified channel. The m... | Yes | [docs](workers/properties/blobs/blob_metrics_worker/BLOB_METRICS_WORKER.md) |
+| Blob overlap | This tool computes the overlaps between two sets of annotations. The overlap is compute... | Yes | [docs](workers/properties/blobs/blob_overlap_worker/BLOB_OVERLAP_WORKER.md) |
 | Point count 3D projection | Count points in a 3D projection |  | [docs](workers/properties/blobs/blob_point_count_3D_projection_worker/BLOB_POINT_COUNT_3D_PROJECTION_WORKER.md) |
-| Point count | Count the number of points that fall within a blob/polygon; can work in 2D or 3D | Yes | [docs](workers/properties/blobs/blob_point_count_worker/BLOB_POINT_COUNT_WORKER.md) |
-| Random Forest Classifier | Classify blobs using a Random Forest Classifier | Yes | [docs](workers/properties/blobs/blob_random_forest_classifier/BLOB_RANDOM_FOREST_CLASSIFIER.md) |
+| Point count | This tool counts the number of points within polygon annotations. The points will be of... | Yes | [docs](workers/properties/blobs/blob_point_count_worker/BLOB_POINT_COUNT_WORKER.md) |
+| Random Forest Classifier | This tool uses a Random Forest Classifier to classify blobs. | Yes | [docs](workers/properties/blobs/blob_random_forest_classifier/BLOB_RANDOM_FOREST_CLASSIFIER.md) |
 
 ## Property Workers -- Points
 
@@ -72,9 +72,9 @@ Compute properties on point annotations.
 | Worker | Description | Tests | Docs |
 |--------|-------------|-------|------|
 | Point circle intensity | Computes mean intensity metrics around a point; radius 1 for pixel precision |  | [docs](workers/properties/points/point_circle_intensity_mean_worker/POINT_CIRCLE_INTENSITY_MEAN_WORKER.md) |
-| Point intensity | Computes a variety of intensity metrics around a point; radius 1 for pixel precision | Yes | [docs](workers/properties/points/point_circle_intensity_worker/POINT_CIRCLE_INTENSITY_WORKER.md) |
+| Point intensity | This tool computes the average, maximum, minimum, median, total, 25th percentile, and 7... | Yes | [docs](workers/properties/points/point_circle_intensity_worker/POINT_CIRCLE_INTENSITY_WORKER.md) |
 | Point Intensity Worker |  |  | [docs](workers/properties/points/point_intensity_worker/POINT_INTENSITY_WORKER.md) |
-| Point metrics | Computes a variety of metrics for points, like X and Y coordinates | Yes | [docs](workers/properties/points/point_metrics_worker/POINT_METRICS_WORKER.md) |
+| Point metrics | This tool adds a property to the points to document their coordinates. It gives each po... | Yes | [docs](workers/properties/points/point_metrics_worker/POINT_METRICS_WORKER.md) |
 | Point Threshold Intensity Mean Worker |  |  | [docs](workers/properties/points/point_threshold_intensity_mean_worker/POINT_THRESHOLD_INTENSITY_MEAN_WORKER.md) |
 | Distance to nearest blob |  | Yes | [docs](workers/properties/points/point_to_nearest_blob_distance/POINT_TO_NEAREST_BLOB_DISTANCE.md) |
 | Distance from point to nearest other point |  |  | [docs](workers/properties/points/point_to_nearest_connected_point_distance/POINT_TO_NEAREST_CONNECTED_POINT_DISTANCE.md) |
@@ -86,8 +86,8 @@ Compute properties on line annotations.
 
 | Worker | Description | Tests | Docs |
 |--------|-------------|-------|------|
-| length | Compute the length of lines |  | [docs](workers/properties/lines/line_length_worker/LINE_LENGTH_WORKER.md) |
-| Line scan CSV | This tool computes the intensity along a line and puts the results in a CSV file. The i... |  | [docs](workers/properties/lines/line_scan_worker/LINE_SCAN_WORKER.md) |
+| length | Computes the length of lines. |  | [docs](workers/properties/lines/line_length_worker/LINE_LENGTH_WORKER.md) |
+| Line scan CSV | This tool computes the intensity along a line and puts the results in a CSV file. The i... | Yes | [docs](workers/properties/lines/line_scan_worker/LINE_SCAN_WORKER.md) |
 | Test File Creation |  |  | [docs](workers/properties/lines/test_file_creation_worker/TEST_FILE_CREATION_WORKER.md) |
 
 ## Property Workers -- Connections
@@ -96,8 +96,8 @@ Compute properties based on relationships between annotations.
 
 | Worker | Description | Tests | Docs |
 |--------|-------------|-------|------|
-| Count connected objects | Count the number of children objects that are connected to a parent polygon | Yes | [docs](workers/properties/connections/children_count_worker/CHILDREN_COUNT_WORKER.md) |
-| Connection IDs | Creates a set of identifiers that indicate the parent-child relationships between polygons | Yes | [docs](workers/properties/connections/parent_child_worker/PARENT_CHILD_WORKER.md) |
+| Count connected objects | This tool counts the number of children objects that are connected to a parent polygon.... | Yes | [docs](workers/properties/connections/children_count_worker/CHILDREN_COUNT_WORKER.md) |
+| Connection IDs | This tool adds a property to the objects to document the connections between them, whic... | Yes | [docs](workers/properties/connections/parent_child_worker/PARENT_CHILD_WORKER.md) |
 
 ## Test / Sample Workers
 
@@ -108,8 +108,8 @@ Workers used for testing and demonstration -- not intended for production use.
 | Annulus Generator M1 |  |  |  | [docs](workers/annotations/annulus_generator_M1/ANNULUS_GENERATOR_M1.md) |
 | Random point | Creates random point annotations |  |  | [docs](workers/annotations/random_point/RANDOM_POINT.md) |
 | Random Point Annotation M1 |  |  |  | [docs](workers/annotations/random_point_annotation_M1/RANDOM_POINT_ANNOTATION_M1.md) |
-| Random squares | Generates random square polygon annotations for testing |  | Yes | [docs](workers/annotations/random_squares/RANDOM_SQUARES.md) |
-| Sample interface | Demonstrates all interface types, messaging patterns, and batch mode |  | Yes | [docs](workers/annotations/sample_interface/SAMPLE_INTERFACE.md) |
+| Random squares | Generates random square polygon annotations within the image bounds. Useful for testing... |  | Yes | [docs](workers/annotations/random_squares/RANDOM_SQUARES.md) |
+| Sample interface | This is a sample interface worker that demonstrates all available interface types, tool... |  | Yes | [docs](workers/annotations/sample_interface/SAMPLE_INTERFACE.md) |
 | Test Multiple Annotation |  |  |  | [docs](workers/annotations/test_multiple_annotation/TEST_MULTIPLE_ANNOTATION.md) |
 | Test Multiple Annotation M1 |  |  |  | [docs](workers/annotations/test_multiple_annotation_M1/TEST_MULTIPLE_ANNOTATION_M1.md) |
 
