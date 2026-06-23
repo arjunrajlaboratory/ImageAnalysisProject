@@ -148,3 +148,20 @@ def test_create_polygon_annotations_no_upload_when_all_degenerate(monkeypatch):
 
     # Nothing valid -> never POST (an empty coordinates payload would 400).
     assert recorder.created == []
+
+
+def test_create_polygon_annotations_skips_invalid_polygon(monkeypatch):
+    recorder = RecordingAnnotationClient()
+    wc = _load_worker_client_module(monkeypatch, recorder)
+    worker = wc.WorkerClient("ds", "http://api", "tok", _params())
+
+    valid = [(0, 0), (10, 0), (10, 10), (0, 10)]
+    # Self-intersecting outline: positive area but invalid; would corrupt
+    # downstream geometry measurements, so it should be dropped.
+    invalid = [(0, 0), (4, 0), (4, 2), (2, 2), (2, 3), (5, 3),
+               (5, 5), (0, 5), (0, 3), (3, 3), (3, 2), (0, 2)]
+
+    worker.create_polygon_annotations((0, 0, 0, 0), [valid, invalid])
+
+    assert len(recorder.created) == 1
+    assert len(recorder.created[0]) == 1

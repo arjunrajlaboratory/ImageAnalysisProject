@@ -35,6 +35,29 @@ def test_helper_drops_zero_area_polygon():
     assert geometry_to_polygon_coords(sliver) == []
 
 
+def test_helper_drops_invalid_positive_area_polygon():
+    # Self-intersecting outline: invalid but with positive area, so the
+    # zero-area filter alone would NOT catch it -- is_valid must.
+    bad = Polygon([(0, 0), (4, 0), (4, 2), (2, 2), (2, 3), (5, 3),
+                   (5, 5), (0, 5), (0, 3), (3, 3), (3, 2), (0, 2)])
+    assert not bad.is_valid and bad.area > 0
+    assert geometry_to_polygon_coords(bad) == []
+
+
+def test_helper_keep_largest_only_collapses_multipolygon():
+    dumbbell = Polygon([
+        (0, 0), (10, 0), (10, 4), (6, 4), (6, 5), (10, 5), (10, 9),
+        (0, 9), (0, 5), (4, 5), (4, 4), (0, 4),
+    ]).buffer(-1.0)
+    assert dumbbell.geom_type == "MultiPolygon"
+    # Default mode expands to every piece...
+    assert len(geometry_to_polygon_coords(dumbbell)) == 2
+    # ...keep_largest_only collapses to the single largest piece.
+    largest = geometry_to_polygon_coords(dumbbell, keep_largest_only=True)
+    assert len(largest) == 1
+    assert len(largest[0]) >= 4
+
+
 def test_helper_expands_multipolygon_from_negative_buffer():
     dumbbell = Polygon([
         (0, 0), (10, 0), (10, 4), (6, 4), (6, 5), (10, 5), (10, 9),
@@ -64,7 +87,9 @@ def test_polygons_to_annotations_skips_empty_polygon():
     assert len(annotations[0]["coordinates"]) > 0
 
 
-def test_polygons_to_annotations_expands_multipolygon():
+def test_polygons_to_annotations_collapses_multipolygon_to_largest():
+    # SAM2 callers (sam2_propagate/video) require one annotation per input mask,
+    # so a MultiPolygon must collapse to its single largest piece -- NOT expand.
     dumbbell = Polygon([
         (0, 0), (10, 0), (10, 4), (6, 4), (6, 5), (10, 5), (10, 9),
         (0, 9), (0, 5), (4, 5), (4, 4), (0, 4),
@@ -73,8 +98,19 @@ def test_polygons_to_annotations_expands_multipolygon():
 
     annotations = polygons_to_annotations([dumbbell], "ds")
 
-    assert len(annotations) == 2
-    assert all(len(a["coordinates"]) > 0 for a in annotations)
+    assert len(annotations) == 1
+    assert len(annotations[0]["coordinates"]) > 0
+
+
+def test_polygons_to_annotations_skips_invalid_polygon():
+    valid = Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
+    bad = Polygon([(0, 0), (4, 0), (4, 2), (2, 2), (2, 3), (5, 3),
+                   (5, 5), (0, 5), (0, 3), (3, 3), (3, 2), (0, 2)])
+    assert not bad.is_valid
+
+    annotations = polygons_to_annotations([valid, bad], "ds")
+
+    assert len(annotations) == 1
 
 
 def test_polygons_to_annotations_returns_empty_when_all_degenerate():

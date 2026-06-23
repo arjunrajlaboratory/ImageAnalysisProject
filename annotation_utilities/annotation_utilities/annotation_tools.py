@@ -122,9 +122,9 @@ def annotations_to_polygons(annotations):
     return polygons
 
 
-def geometry_to_polygon_coords(geometry):
+def geometry_to_polygon_coords(geometry, keep_largest_only=False):
     """Flatten a shapely geometry into a list of exterior coordinate lists,
-    dropping anything empty or zero-area.
+    dropping anything empty, zero-area, or invalid.
 
     A negative ``buffer`` (used for polygon padding) or a ``simplify`` can turn a
     polygon into an empty geometry (small objects shrink to nothing) or split it
@@ -133,21 +133,41 @@ def geometry_to_polygon_coords(geometry):
     which the server rejects with a 400 (failing the *entire* batch upload), and a
     ``MultiPolygon`` has no ``.exterior`` attribute (raising ``AttributeError``).
 
-    This normalizes both cases: empty / zero-area geometries are dropped and each
-    piece of a ``MultiPolygon`` (or ``GeometryCollection``) becomes its own
-    coordinate list. Returns a (possibly empty) list of coordinate lists, each a
-    list of ``(x, y)`` tuples suitable for building a single polygon annotation.
+    This normalizes those cases: empty / zero-area / invalid (e.g.
+    self-intersecting) geometries are dropped, so a degenerate outline never
+    reaches the server where it could 400 or corrupt downstream geometry-based
+    measurements. By default each piece of a ``MultiPolygon`` (or
+    ``GeometryCollection``) becomes its own coordinate list.
+
+    With ``keep_largest_only=True`` a multi-part geometry instead collapses to the
+    single largest valid piece (one coordinate list). Use it where callers require
+    a 1:1 input->output mapping -- e.g. SAM2 propagation/tracking, where parent and
+    child annotation counts must match and emitting several pieces (or zero) for
+    one input mask would break that alignment.
+
+    Returns a (possibly empty) list of coordinate lists, each a list of ``(x, y)``
+    tuples suitable for building a single polygon annotation.
     """
     if geometry is None or geometry.is_empty:
         return []
     sub_geoms = getattr(geometry, "geoms", None)
     if sub_geoms is not None:  # MultiPolygon / GeometryCollection
+        if keep_largest_only:
+            # Collapse to one piece so callers that assume 1:1 cardinality
+            # (e.g. SAM2 parent/child matching) are not handed extra annotations.
+            valid = [g for g in sub_geoms
+                     if getattr(g, "exterior", None) is not None
+                     and g.is_valid and g.area > 0]
+            if not valid:
+                return []
+            return geometry_to_polygon_coords(max(valid, key=lambda g: g.area))
         coords = []
         for geom in sub_geoms:
             coords.extend(geometry_to_polygon_coords(geom))
         return coords
     exterior = getattr(geometry, "exterior", None)
-    if exterior is None or geometry.area <= 0:  # not a polygon, or degenerate sliver
+    if exterior is None or not geometry.is_valid or geometry.area <= 0:
+        # not a polygon, invalid (self-intersecting), or a degenerate sliver
         return []
     return [list(exterior.coords)]
 
@@ -166,17 +186,19 @@ def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, c
     datasetId (str): The datasetId for all annotations.
 
     Returns:
-    list: A list of annotation dictionaries. Empty / zero-area polygons are
-    dropped and each piece of a MultiPolygon becomes its own annotation, so a
-    degenerate geometry never produces an empty-coordinates payload (which the
-    server rejects) or crashes on a missing ``.exterior`` attribute.
+    list: A list of annotation dictionaries. Empty / zero-area / invalid polygons
+    are dropped so a degenerate geometry never produces an empty-coordinates
+    payload (which the server rejects) or crashes on a missing ``.exterior``
+    attribute. A MultiPolygon collapses to its single largest piece -- callers
+    here (SAM2 propagation/tracking) require one annotation per input mask, so
+    splitting it would break parent/child count matching and per-frame grouping.
     """
     if not isinstance(polygons, list):
         polygons = [polygons]
 
     annotations = []
     for polygon in polygons:
-        for ring in geometry_to_polygon_coords(polygon):
+        for ring in geometry_to_polygon_coords(polygon, keep_largest_only=True):
             coordinates = [{'x': float(y), 'y': float(x)} for x, y in ring[
                 :-1]]  # Exclude the last point as it's the same as the first
 
