@@ -10,7 +10,6 @@ import annotation_client.annotations as annotations
 from annotation_client.utils import sendProgress
 
 import numpy as np
-from stardist.models import StarDist2D
 from shapely.geometry import Polygon
 from annotation_utilities.annotation_tools import geometry_to_polygon_coords
 from rasterio import features
@@ -106,6 +105,9 @@ def labels_to_polygons(labels):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps stardist off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from stardist.models import StarDist2D
+
     start_time = timeit.default_timer()
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)

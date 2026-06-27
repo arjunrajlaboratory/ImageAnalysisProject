@@ -12,4 +12,4 @@ LABEL isUPennContrastWorker="" \
       annotationConfigurationPanel="False" \
       defaultToolName="H&E Deconvolution"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
+# ENTRYPOINT inherited from image-processing-base (run_worker.sh /entrypoint.py — see todo/worker-startup-latency.md)

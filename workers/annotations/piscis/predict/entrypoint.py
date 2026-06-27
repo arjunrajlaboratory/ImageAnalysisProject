@@ -1,13 +1,11 @@
 import utils
 from worker_client import WorkerClient
 from piscis.paths import MODELS_DIR
-from piscis import Piscis
 import annotation_client.workers as workers
 from functools import partial
 import argparse
 import json
 import sys
-import torch
 
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'False'
@@ -129,6 +127,11 @@ def compute(datasetId, apiUrl, token, params):
         tile: tile position (TODO: roi) ({XY, Z, Time}),
         connectTo: how new annotations should be connected
     """
+
+    # Lazy import: keeps torch off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    # Lazy import: keeps piscis off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from piscis import Piscis
 
     worker = WorkerClient(datasetId, apiUrl, token, params)
 

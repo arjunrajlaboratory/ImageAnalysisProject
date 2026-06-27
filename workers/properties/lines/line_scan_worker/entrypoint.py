@@ -166,26 +166,27 @@ def compute(datasetId, apiUrl, token, params):
     sendProgress(1.0, 'Finished', 'Line scan CSV creation completed')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Line scan CSV worker')
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    # Define the command-line interface for the entry point
+    parser = argparse.ArgumentParser(
+        description='Compute the intensity along a line and save it to a CSV file')
+
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
-    parser.add_argument('--parameters', type=str, required=True, action='store')
+    parser.add_argument('--parameters', type=str,
+                        required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 
     params = json.loads(args.parameters)
+    datasetId = args.datasetId
     apiUrl = args.apiUrl
     token = args.token
 
-    if args.request == 'compute':
-        if not args.datasetId:
-            print("Error: datasetId is required for compute request")
-            sys.exit(1)
-        compute(args.datasetId, apiUrl, token, params)
-    elif args.request == 'interface':
-        interface(params['image'], apiUrl, token)
-    else:
-        print(f"Error: Unknown request type '{args.request}'")
-        sys.exit(1)
+    match args.request:
+        case 'compute':
+            compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)

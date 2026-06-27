@@ -10,8 +10,6 @@ import numpy as np
 
 from shapely.geometry import Polygon, box
 
-from cellpose import io, models, train, core
-
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
 import annotation_client.annotations as annotations
@@ -139,6 +137,9 @@ def compute(datasetId, apiUrl, token, params):
         tile: tile position (TODO: roi) ({XY, Z, Time}),
         connectTo: how new annotations should be connected
     """
+
+    # Lazy import: keeps cellpose off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from cellpose import io, models, train, core
 
     workerInterface = params['workerInterface']
 

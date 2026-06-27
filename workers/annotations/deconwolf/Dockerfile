@@ -85,4 +85,7 @@ LABEL isUPennContrastWorker="" \
       annotationConfigurationPanel="False" \
       defaultToolName="Deconwolf Deconvolution"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
+# Fast env activation in place of `conda run` (see todo/worker-startup-latency.md)
+COPY ./workers/base_docker_images/run_worker.sh /usr/local/bin/run_worker.sh
+RUN chmod +x /usr/local/bin/run_worker.sh
+ENTRYPOINT ["/usr/local/bin/run_worker.sh", "/entrypoint.py"]

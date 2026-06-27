@@ -10,4 +10,4 @@ LABEL isUPennContrastWorker="" \
       interfaceCategory="Relational" \
       description="Compute overlap between blobs"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]
+# ENTRYPOINT inherited from worker-base (run_worker.sh /entrypoint.py — see todo/worker-startup-latency.md)
