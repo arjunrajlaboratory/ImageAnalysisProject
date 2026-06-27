@@ -18,10 +18,6 @@ from shapely.geometry import Polygon
 from skimage.measure import find_contours
 from shapely.geometry import Polygon
 
-import torch
-from sam2.build_sam import build_sam2
-from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-from sam2.sam2_image_predictor import SAM2ImagePredictor
 from PIL import Image
 
 from annotation_client.utils import sendProgress
@@ -72,6 +68,12 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps torch/sam2 off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    from sam2.build_sam import build_sam2
+    from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
     annotationClient = annotations_client.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)

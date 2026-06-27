@@ -13,6 +13,7 @@ Master index of deferred work, technical debt, and future improvements for the I
 | ID | Title | Status | Priority | File | Related PR |
 |----|-------|--------|----------|------|------------|
 | TODO-001 | ML worker build optimization (mamba + shared base images) | Deferred | Medium | [ml-worker-build-optimization.md](ml-worker-build-optimization.md) | [#132](https://github.com/arjunrajlaboratory/ImageAnalysisProject/pull/132) |
+| TODO-002 | Worker startup latency audit & slimming plan (drop `conda run`) | In progress (#1–#3 done & verified; GPU workers static-validated, need build-host validation) | High | [worker-startup-latency.md](worker-startup-latency.md) | — |
 
 ## Completed TODOs
 

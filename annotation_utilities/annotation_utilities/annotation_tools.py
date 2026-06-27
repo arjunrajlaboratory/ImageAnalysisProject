@@ -1,6 +1,5 @@
 from shapely.geometry import Point, Polygon
 import numpy as np
-import matplotlib.colors as mcolors
 
 
 # Note that this function should reverse x and y. It is used by point_count_worker, which mixes up x and y for the polygons as well, so it works consistently.
@@ -298,6 +297,11 @@ def get_layers(GirderClient, datasetId):
 
 
 def process_and_merge_channels(images, layers, mode='lighten'):
+    # Imported lazily: matplotlib is heavy (~50ms) and this is the only function
+    # in annotation_tools that uses it, yet annotation_tools is imported at module
+    # load by nearly every worker. See todo/worker-startup-latency.md.
+    import matplotlib.colors as mcolors
+
     layers = sorted(layers, key=lambda x: x['channel'])
     processed_channels = []
 

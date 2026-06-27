@@ -16,10 +16,6 @@ import numpy as np
 from shapely.geometry import Polygon
 from skimage.measure import find_contours
 
-import torch
-from sam2.build_sam import build_sam2
-from sam2.sam2_image_predictor import SAM2ImagePredictor
-
 from annotation_client.utils import sendProgress
 
 
@@ -178,6 +174,10 @@ def compute(datasetId, apiUrl, token, params):
     
     Refines existing annotations by using them as prompts for SAM2 segmentation.
     """
+    # Lazy import: keeps torch/sam2 off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
 
     # Initialize clients
     annotationClient = annotations_client.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)

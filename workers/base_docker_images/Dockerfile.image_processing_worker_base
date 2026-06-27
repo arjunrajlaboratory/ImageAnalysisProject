@@ -10,12 +10,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   build-essential \
   wget \
   python3 \
-  r-base \
   libffi-dev \
   libssl-dev \
   libjpeg-dev \
   zlib1g-dev \
-  r-base \
   git \
   libpython3-dev \
   libtiff-dev \
@@ -81,9 +79,24 @@ RUN pip install .
 RUN pip install histomicstk --find-links https://girder.github.io/large_image_wheels
 RUN pip install large-image-source-tiff large-image-source-zarr large-image-source-gdal large-image-converter large-image --find-links https://girder.github.io/large_image_wheels
 
+# Slim the image: drop conda's package cache/tarballs
+RUN conda clean --all --yes
+
 # Reset WORKDIR for worker entrypoint
 WORKDIR /
 
+# Shared fast-activation entrypoint. Replaces per-worker
+# `conda run --no-capture-output -n worker python /entrypoint.py`, which spawns a
+# second Python process (the conda CLI) and adds ~0.8-1.0s of startup latency to
+# every job. run_worker.sh activates the env in-process (PATH + activate.d hooks,
+# preserving GDAL/PROJ vars) and execs the env python. Workers inherit this
+# ENTRYPOINT and only need to COPY their /entrypoint.py.
+# See todo/worker-startup-latency.md.
+COPY ./workers/base_docker_images/run_worker.sh /usr/local/bin/run_worker.sh
+RUN chmod +x /usr/local/bin/run_worker.sh
+ENTRYPOINT ["/usr/local/bin/run_worker.sh", "/entrypoint.py"]
+
 # Base image setup is complete.
-# Image processing worker images will build FROM this, COPY their specific environment.yml,
-# run conda env update, COPY their entrypoint.py, and set ENTRYPOINT/LABELs. 
+# Image processing worker images will build FROM this, COPY their specific
+# environment.yml, run conda env update, and COPY their entrypoint.py. The
+# ENTRYPOINT above is inherited; workers only need to set their own LABELs.

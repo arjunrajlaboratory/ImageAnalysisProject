@@ -9,9 +9,6 @@ import annotation_client.workers as workers
 from annotation_client.utils import sendError, sendWarning, sendProgress
 
 import numpy as np  # library for array manipulation
-import deeptile
-from deeptile.extensions.segmentation import cellpose_segmentation
-from deeptile.extensions.stitch import stitch_polygons
 
 import girder_utils
 from girder_utils import CELLPOSE_DIR, MODELS_DIR
@@ -148,6 +145,10 @@ def interface(image, apiUrl, token):
 
 def run_model(image, cellpose, tile_size, tile_overlap, padding, smoothing):
 
+    # Lazy import: keeps deeptile off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import deeptile
+    from deeptile.extensions.stitch import stitch_polygons
+
     dt = deeptile.load(image)
     image = dt.get_tiles(tile_size=(tile_size, tile_size),
                          overlap=(tile_overlap, tile_overlap))
@@ -192,6 +193,9 @@ def compute(datasetId, apiUrl, token, params):
         tile: tile position (TODO: roi) ({XY, Z, Time}),
         connectTo: how new annotations should be connected
     """
+
+    # Lazy import: keeps deeptile off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from deeptile.extensions.segmentation import cellpose_segmentation
 
     worker = WorkerClient(datasetId, apiUrl, token, params)
 

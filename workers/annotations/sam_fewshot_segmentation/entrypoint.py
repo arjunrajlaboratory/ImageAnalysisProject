@@ -16,10 +16,6 @@ import numpy as np
 from shapely.geometry import Polygon
 from skimage.measure import find_contours
 
-import torch
-import torch.nn.functional as F
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
-
 from annotation_client.utils import sendProgress, sendError
 
 
@@ -43,8 +39,6 @@ def _patch_torchvision_nms():
             sam_amg.batched_nms = _safe_batched_nms
     except Exception:
         pass
-
-_patch_torchvision_nms()
 
 
 def interface(image, apiUrl, token):
@@ -206,6 +200,10 @@ def pool_features_with_mask(features, mask_np, feat_h, feat_w):
     Returns:
         feature_vector: tensor of shape (C,)
     """
+    # Lazy import: keeps torch off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    import torch.nn.functional as F
+
     # Resize mask to feature map dimensions
     mask_tensor = torch.from_numpy(mask_np.astype(np.float32)).unsqueeze(0).unsqueeze(0)
     mask_resized = F.interpolate(mask_tensor, size=(feat_h, feat_w), mode='bilinear', align_corners=False)
@@ -267,6 +265,16 @@ def annotation_to_mask(annotation, image_shape):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps torch off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    import torch.nn.functional as F
+    # Lazy import: keeps segment_anything off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+
+    # Apply the torchvision NMS compatibility patch lazily (it imports torchvision +
+    # segment_anything); previously this ran at module load. See todo/worker-startup-latency.md
+    _patch_torchvision_nms()
+
     annotationClient = annotations_client.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)

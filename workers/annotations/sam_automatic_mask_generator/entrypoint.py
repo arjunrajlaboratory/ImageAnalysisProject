@@ -14,8 +14,6 @@ from shapely.geometry import Polygon
 from skimage.measure import find_contours
 from shapely.geometry import Polygon
 
-import torch
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 from PIL import Image
 
 
@@ -62,6 +60,10 @@ def auto_scale_image(image):
 
 
 def segment_image(image, model_type="vit_h", checkpoint_path="./sam_vit_h_4b8939.pth"):
+    # Lazy import: keeps torch + segment_anything off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+
     # image is assumed to already be an numpy array of a color image
         
     # Set up the model

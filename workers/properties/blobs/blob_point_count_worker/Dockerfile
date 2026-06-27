@@ -10,4 +10,4 @@ LABEL isUPennContrastWorker="" \
       interfaceCategory="Quantification" \
       description="Count the number of points that fall within a blob/polygon; can work in 2D or 3D"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]
+# ENTRYPOINT inherited from worker-base (run_worker.sh /entrypoint.py — see todo/worker-startup-latency.md)

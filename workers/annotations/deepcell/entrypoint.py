@@ -8,9 +8,6 @@ import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 
 import numpy as np  # library for array manipulation
-import deeptile
-from deeptile.extensions.segmentation import deepcell_mesmer_segmentation
-from deeptile.extensions.stitch import stitch_masks
 from rasterio.features import shapes
 
 
@@ -37,6 +34,11 @@ def compute(datasetId, apiUrl, token, params):
         print("Invalid worker parameters", params)
         return
     assignment, channel, connectTo, tags, tile = itemgetter(*keys)(params)
+
+    # Lazy import: keeps deeptile off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import deeptile
+    from deeptile.extensions.segmentation import deepcell_mesmer_segmentation
+    from deeptile.extensions.stitch import stitch_masks
 
     # Setup helper classes with url and credentials
     annotationClient = annotations.UPennContrastAnnotationClient(
