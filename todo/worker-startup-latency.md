@@ -2,7 +2,7 @@
 
 **Status:** In progress
 **Priority:** High
-**Related PR:** —
+**Related PR:** [#148](https://github.com/arjunrajlaboratory/ImageAnalysisProject/pull/148)
 
 ## Summary
 
