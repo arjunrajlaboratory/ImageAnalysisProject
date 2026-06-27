@@ -204,11 +204,15 @@ the base-image change out to all 76 images.
 
 ## Status / Next steps
 
-- Item **#1 (drop `conda run`)** has been **implemented and verified** (see the
-  Implementation Log below). Items **#2 (defer ML imports)** and **#3 (lazy
-  matplotlib)** are also done. Item #4 (trim other always-on imports) and the
-  Section B image-size items (#5–#7) remain open.
-- The GPU-worker portion of #2 is **static-validated only** and requires
+- Items **#1 (drop `conda run`)**, **#2 (defer ML imports)**, and **#3 (lazy
+  matplotlib)** are **implemented and verified** (see the Implementation Log).
+- The entrypoint change (#1) has been **rolled out to all production workers** —
+  the 19 shared-base workers (via the base images) plus the 28 GPU /
+  self-contained production Dockerfiles (see the 2026-06-27 *continued* log).
+- Image-size wins **#5 (drop r-base)** and **#7 (conda clean)** are **done and
+  verified**. **#6 (multi-stage prune)** and **#4 (trim other always-on imports)**
+  remain open.
+- The GPU-worker import changes (#2) are **static-validated only** and require
   build-host (amd64) validation before deploy — see the caveat in the log.
 
 ## Implementation Log — 2026-06-27
@@ -322,11 +326,65 @@ used by `interface()` to list models).
 > still triggers piscis's package `__init__` at startup — if that `__init__` is
 > heavy, consider deferring the `interface` model-list too.
 
+## Implementation Log — 2026-06-27 (continued): rollout + image-size wins
+
+### 4. Entrypoint rollout to all remaining production workers (task a) — DONE
+
+The base-image bake (above) covered only workers built `FROM` the 2 shared
+bases. The **28 remaining production Dockerfiles** — which build their own conda
+env (GPU workers on `nvidia/cuda`, plus the inline CPU workers) — were converted
+to `run_worker.sh` directly (`COPY` + `chmod` + the `run_worker.sh` `ENTRYPOINT`,
+replacing `conda run`), including their `_M1` variants:
+
+- 13 GPU workers: cellpose, cellpose_train, cellposesam, condensatenet, deepcell,
+  stardist, sam2_automatic_mask_generator, sam2_fewshot_segmentation,
+  sam_fewshot_segmentation, sam2_propagate, sam2_refine, sam2_video,
+  piscis_predict, piscis_train
+- deconwolf (compose, `nvidia/cuda`)
+- ai_analysis, blob_random_forest_classifier (inline CPU)
+
+`run_worker.sh` auto-detects the self-built env (`/root/miniforge3/envs/worker`
+on amd64, `/root/miniconda3/envs/worker` on arm64), so the same script works for
+these workers unchanged.
+
+Also: **sam_automatic_mask_generator** (flagged in review — it had been missed in
+the item-#2 pass) had its module-level `torch` / `segment_anything` deferred into
+its `segment_image` helper, and its entrypoint converted.
+
+**Verified:** all 28 Dockerfiles statically checked (COPY present, `run_worker.sh`
+ENTRYPOINT, no `conda run` remaining). Runtime-validated on
+`blob_random_forest_classifier` (a self-built-env worker — env auto-detected,
+`--help` exits 0 at ~0.8 s, 4 tests pass). **GPU workers still require build-host
+(amd64) validation** per the caveat above.
+
+Deliberately **left on `conda run`**: deprecated workers (not in the production
+manifest) and the `$BASE_IMAGE`-ARG workers (unknown env layout).
+
+### 5. Image-size wins #5 + #7 (task b) — DONE & VERIFIED
+
+- Removed the unused **`r-base`** from both base images' apt installs.
+- Added **`conda clean --all --yes`** after env setup in both bases.
+
+| Base image | Before | After |
+|------------|--------|-------|
+| `nimbusimage/worker-base` | 5.18 GB | 4.74 GB |
+| `nimbusimage/image-processing-base` | 9.65 GB | 9.09 GB |
+
+Verified `Rscript` is gone from both bases and that workers on each base still
+build and import (`blob_metrics`; `crop` with GDAL vars intact). These are
+disk/build wins only — they do not affect startup latency.
+
+### Review fixes
+
+- The new files (`run_worker.sh`, this doc) are now tracked.
+- `build_all_property_and_annotation_workers.sh` points the 3 refactored workers
+  at the literal `Dockerfile` (their `$DOCKERFILE`→`_M1` files were deleted).
+- piscis predict/train entrypoints normalized CRLF→LF (`git diff --check` clean).
+
 ### Remaining future work (not done)
 
-- Rolling the entrypoint change (#1) out to the **other** GPU / self-contained
-  workers' Dockerfiles also needs them to adopt `run_worker.sh` — the bake only
-  covers workers built `FROM` the 2 shared bases.
-- Item #4 (trim other always-on imports) remains open.
-- Section B image-size wins (#5 r-base removal, #6 multi-stage, #7 conda clean)
-  remain open.
+- **#6 (multi-stage prune)** — drop `build-essential` / `git` / dev headers from
+  the final base layers. The riskier image-size win; warrants its own pass.
+- **#4** (trim other always-on imports) remains open.
+- **GPU build-host validation** of the item-#2 import changes (see caveat).
+- Deprecated / `$BASE_IMAGE` workers remain on `conda run` (not shipped).
