@@ -213,7 +213,7 @@ the base-image change out to all 76 images.
   verified**. **#6 (multi-stage prune)** and **#4 (trim other always-on imports)**
   remain open.
 - The GPU-worker import changes (#2) were **build-host validated 2026-06-28**:
-  all 13 GPU workers build + smoke-clean on a g4dn/driver-580 host. Two
+  all 13 GPU workers build + smoke-clean on a g4dn/driver-580 host. Three
   piscis-specific issues surfaced and were fixed there (a `run_worker.sh`
   build-context error, a vestigial jax/flax dependency, and a torch import on the
   `interface` path) — see the 2026-06-28 log. Still untested: a real end-to-end
