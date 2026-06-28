@@ -212,8 +212,12 @@ the base-image change out to all 76 images.
 - Image-size wins **#5 (drop r-base)** and **#7 (conda clean)** are **done and
   verified**. **#6 (multi-stage prune)** and **#4 (trim other always-on imports)**
   remain open.
-- The GPU-worker import changes (#2) are **static-validated only** and require
-  build-host (amd64) validation before deploy — see the caveat in the log.
+- The GPU-worker import changes (#2) were **build-host validated 2026-06-28**:
+  all 13 GPU workers build + smoke-clean on a g4dn/driver-580 host. Two
+  piscis-specific issues surfaced and were fixed there (a `run_worker.sh`
+  build-context error, a vestigial jax/flax dependency, and a torch import on the
+  `interface` path) — see the 2026-06-28 log. Still untested: a real end-to-end
+  `compute` run against live data.
 
 ## Implementation Log — 2026-06-27
 
@@ -315,16 +319,22 @@ sam2_propagate's `SAM2AutomaticMaskGenerator`, sam2_video's `build_sam2`).
 
 **Verified (static):** all 13 pass `python3 -m py_compile`; independent grep
 confirms NO module-level heavy imports remain **except**
-`from piscis.paths import MODELS_DIR` in the two piscis workers (legitimately
-used by `interface()` to list models).
+`from piscis.paths import MODELS_DIR` in the two piscis workers (used by
+`interface()` to list models). **[Update 2026-06-28: that exception turned out to
+defeat the speedup for piscis — `from piscis.paths import …` runs
+`piscis/__init__.py` → `from piscis.core import Piscis` → `import torch`, so the
+`interface` request still paid the full ~4 s torch import. Fixed; see the
+2026-06-28 log.]**
 
-> **CAVEAT — GPU workers require build-host validation before deploy.** The
-> item-#2 changes are **static-validated only** (py_compile + usage analysis);
-> GPU images cannot be built locally (no CUDA/torch). Each GPU image must be
-> built on the **amd64 build host** and smoke-tested: confirm imports resolve at
-> runtime and a `compute` run works. Also verify whether piscis's `MODELS_DIR`
-> still triggers piscis's package `__init__` at startup — if that `__init__` is
-> heavy, consider deferring the `interface` model-list too.
+> **CAVEAT — GPU workers require build-host validation before deploy. [RESOLVED
+> 2026-06-28 — see the 2026-06-28 log.]** The item-#2 changes were
+> static-validated only (py_compile + usage analysis); GPU images cannot be built
+> locally (no CUDA/torch). All 13 GPU workers have since been built on an amd64
+> g4dn host (driver 580) and smoke-tested — imports resolve at runtime and the
+> workers start on GPU. The piscis `MODELS_DIR` question is answered: **yes**, it
+> triggered piscis's `__init__` → `import torch` (~4 s on every `interface`); now
+> fixed with a torch-free `MODELS_DIR`. Still untested: a full `compute` run
+> against live image data.
 
 ## Implementation Log — 2026-06-27 (continued): rollout + image-size wins
 
@@ -439,5 +449,55 @@ analysis) only and need amd64 build-host runtime validation.
 ### Remaining future work (not done)
 - **#6 (multi-stage prune)** — drop `build-essential` / `git` / dev headers from
   the final base layers. The riskier image-size win; warrants its own pass.
-- **GPU build-host validation** of the deferral + unused-import changes.
+- ~~**GPU build-host validation** of the deferral + unused-import changes.~~
+  **DONE 2026-06-28** — all 13 GPU workers built + smoke-clean on a g4dn host
+  (see the 2026-06-28 log).
 - Deprecated / `$BASE_IMAGE` workers remain on `conda run` (not shipped).
+
+## Implementation Log — 2026-06-28: GPU build-host validation + piscis fixes
+
+The item-#2 (deferral) and entrypoint changes were validated on an amd64 GPU
+build host (`g4dn.2xlarge`, Tesla T4, driver 580 — the same AMI prod workers
+run), building each worker's image and smoke-testing it (`--help` full startup +
+an `--gpus all` probe that imports exactly the libs deferred into `compute()`).
+
+**All 13 GPU workers build + smoke-clean.** The lazy-import refactor is
+runtime-clean — no `NameError`/`ImportError` from deferring imports into
+`compute()`; every torch worker reports `torch.cuda.is_available() == True`, and
+stardist (TF 2.11) sees the GPU. (`--help` exits 0 for all, confirming
+`run_worker.sh` activation + module-level imports load.)
+
+Three piscis-specific issues — none catchable by static validation — were found
+and fixed (all on `claude/worker-startup-latency`):
+
+1. **`run_worker.sh` build-context error (commit `8748cac`).** piscis is the only
+   GPU worker built via compose with `context: .` = the `workers/annotations/piscis/`
+   subdir, so the new `COPY ./workers/base_docker_images/run_worker.sh` (correct
+   for the 12 repo-root-context workers) didn't resolve → both piscis images
+   failed to build. Fixed by building piscis from repo-root context (compose
+   `context: ../../..`) and re-rooting the piscis-local `COPY`s.
+
+2. **Vestigial jax/flax (commit `60afa80`).** A first attempt added `jax[cuda12]`
+   to "GPU-enable" piscis, but the current piscis is **torch-only**: the worker
+   entrypoints import only `torch`, and neither piscis 1.0.0 (PyPI) nor the
+   zjniu/Piscis source declares jax/flax. jax entered solely via a leftover
+   `pip install flax`. Both the `jax[cuda12]` line and `pip install flax` were
+   removed; piscis runs on torch (image ~30 GB vs ~45 GB with the jax stack).
+
+3. **`interface` request paid a ~4 s torch import (commit `bc70262`).** This is
+   the caveat flagged in the item-#2 log. Both entrypoints **and** the worker's
+   `utils.py` had module-level `from piscis.paths import MODELS_DIR`, and
+   `from piscis.paths import …` runs `piscis/__init__.py` → `from piscis.core
+   import Piscis` → `import torch`. Because the entrypoints `import utils` at
+   module load (and `interface()` calls `utils.list_girder_models`), torch loaded
+   on every interface request despite being deferred in `compute()`. Fixed by
+   defining `MODELS_DIR = Path.home()/'.piscis'/'models'` (plain pathlib, no
+   piscis import) in `utils.py` and pointing both entrypoints at
+   `utils.MODELS_DIR`. **Verified on a GPU build:** loading `entrypoint.py` no
+   longer imports torch (`importtime` clean); interface-path import **0.35–0.41 s
+   vs ~4.2 s**; model list unchanged; compute path + GPU unaffected.
+
+**Still untested:** a real end-to-end `compute` run against live Girder image
+data — all of the above covers build + startup + import resolution + GPU
+visibility, not a full inference pass. Verify piscis predict/train on the
+platform opportunistically once this merges.
