@@ -49,11 +49,6 @@ RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.t
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
 RUN pip install piscis==1.0.0
-RUN pip install flax
-# Install a CUDA-enabled jax so Piscis runs on the GPU. `pip install flax` above
-# pulls the CPU-only jaxlib by default; reinstall jax with the cuda12 extra pinned
-# to the version flax resolved, adding the GPU backend without drifting the version.
-RUN pip install --upgrade "jax[cuda12]==$(python -c 'import jax; print(jax.__version__)')"
 
 WORKDIR /
 RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
