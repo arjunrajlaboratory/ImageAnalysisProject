@@ -1,6 +1,5 @@
 import utils
 from worker_client import WorkerClient
-from piscis.paths import MODELS_DIR
 import annotation_client.workers as workers
 from functools import partial
 import argparse
@@ -14,7 +13,7 @@ os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'False'
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
-    models = sorted(path.stem for path in MODELS_DIR.glob('*'))
+    models = sorted(path.stem for path in utils.MODELS_DIR.glob('*'))
     girder_models = [model['model_name'] for model in utils.list_girder_models(client.client)[0]]
     models = sorted(list(set(models + girder_models)))
 

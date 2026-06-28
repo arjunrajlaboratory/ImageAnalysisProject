@@ -1,4 +1,12 @@
-from piscis.paths import MODELS_DIR
+from pathlib import Path
+
+# Local path to the downloaded Piscis models. Mirrors piscis.paths.MODELS_DIR
+# (= ~/.piscis/models) but WITHOUT importing the piscis package: `import piscis`
+# runs piscis/__init__.py -> `from piscis.core import Piscis` -> `import torch`,
+# which would make the lightweight `interface` request pay the full multi-second
+# torch import for nothing. Keeping this a plain path lets interface() list
+# models torch-free; compute() loads piscis/torch lazily when it actually runs.
+MODELS_DIR = Path.home() / '.piscis' / 'models'
 
 
 def mkdir(gc, parent_id, folder_name):

@@ -10,8 +10,6 @@ import annotation_client.workers as workers
 
 from annotation_client.utils import sendError
 
-from piscis.paths import MODELS_DIR
-
 from annotation_utilities.point_in_polygon import point_in_polygon
 
 import utils
@@ -20,7 +18,7 @@ import utils
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
-    models = sorted(path.stem for path in MODELS_DIR.glob('*'))
+    models = sorted(path.stem for path in utils.MODELS_DIR.glob('*'))
     girder_models = [model['model_name'] for model in utils.list_girder_models(client.client)[0]]
     models = sorted(list(set(models + girder_models)))
 
