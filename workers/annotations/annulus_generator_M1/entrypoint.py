@@ -13,7 +13,6 @@ import imageio
 import numpy as np
 
 from skimage import filters
-from skimage.feature import peak_local_max
 
 from shapely.geometry import Polygon
 

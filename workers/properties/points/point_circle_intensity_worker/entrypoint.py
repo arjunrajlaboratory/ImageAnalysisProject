@@ -1,7 +1,6 @@
 import argparse
 import json
 import sys
-import time
 
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles

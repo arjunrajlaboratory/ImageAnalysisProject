@@ -3,7 +3,6 @@ import json
 import sys
 import os
 
-from functools import partial
 from itertools import product
 
 import annotation_client.annotations as annotations_client
@@ -18,7 +17,6 @@ from shapely.geometry import Polygon
 from skimage.measure import find_contours
 from shapely.geometry import Polygon
 
-from PIL import Image
 
 from annotation_client.utils import sendProgress
 

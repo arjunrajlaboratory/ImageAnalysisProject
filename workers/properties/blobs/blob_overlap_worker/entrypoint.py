@@ -8,8 +8,6 @@ from annotation_client.utils import sendProgress
 import annotation_utilities.annotation_tools as annotation_tools
 
 from shapely.geometry import Polygon, Point
-import numpy as np
-import geopandas as gpd
 
 
 def interface(image, apiUrl, token):
@@ -39,6 +37,9 @@ def interface(image, apiUrl, token):
 
 
 def extract_spatial_annotation_data(obj_list):
+    # Lazy import: keeps geopandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import geopandas as gpd
+
     data = []
     for obj in obj_list:
         shape = obj['shape']
@@ -69,6 +70,9 @@ def extract_spatial_annotation_data(obj_list):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps geopandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import geopandas as gpd
+
     workerClient = workers.UPennContrastWorkerClient(
         datasetId, apiUrl, token, params)
 

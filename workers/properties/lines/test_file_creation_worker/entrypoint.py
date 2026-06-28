@@ -3,7 +3,6 @@ import json
 import sys
 import pandas as pd
 import io
-import girder_client
 
 import annotation_client.workers as workers
 import annotation_client.annotations as annotations

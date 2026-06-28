@@ -1,7 +1,6 @@
 import argparse
 import json
 import sys
-from collections import defaultdict
 
 import annotation_client.annotations as annotations
 from annotation_client.utils import sendProgress

@@ -3,7 +3,6 @@ import json
 import sys
 import os
 from collections import defaultdict
-from itertools import product
 
 import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers

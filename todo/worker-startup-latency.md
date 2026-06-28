@@ -381,10 +381,63 @@ disk/build wins only — they do not affect startup latency.
   at the literal `Dockerfile` (their `$DOCKERFILE`→`_M1` files were deleted).
 - piscis predict/train entrypoints normalized CRLF→LF (`git diff --check` clean).
 
-### Remaining future work (not done)
+## Implementation Log — 2026-06-28: interface-path import deferral + unused-import sweep
 
+Grounded in fresh measurements: stdlib and `skimage` (lazy submodule loading) are
+~0; the real weight is `scipy.spatial` (~0.28s), `geopandas` (~0.25s), `pandas`
+(~0.20s), `numpy` (~0.10s). Crucial rule confirmed empirically: **a dead/unused
+import only costs startup if its library isn't already loaded by a needed
+module.** `annotation_utilities.annotation_tools` (imported by ~all workers) always
+pulls `numpy`+`shapely`, so cutting a worker's direct `import numpy` saves ~0
+(verified: removing all 11 of crop's dead imports → 0.44s→0.44s).
+
+### Deferred heavy compute-only libs into compute()/helpers (interface path faster)
+17 production entrypoints: libs used only in compute/helpers (never in
+`interface`/`preview`) moved into those functions, each with a `# Lazy import: …`
+comment. Libraries deferred: pandas, geopandas, scipy, sklearn, mahotas,
+large_image, rasterio.
+
+- connect_to_nearest / connect_sequential / connect_timelapse — pandas, geopandas, scipy
+- blob_overlap_worker (geopandas); blob_random_forest_classifier (pandas, sklearn, mahotas);
+  children_count_worker (pandas); line_scan_worker (pandas, scipy)
+- crop / gaussian_blur / h_and_e_deconvolution / histogram_matching / rolling_ball /
+  deconwolf — large_image
+- stardist / piscis_train — rasterio (STATIC-VALIDATED ONLY; GPU build host needed)
+
+Measured interface-path proxy (`--help`, median of 3): **blob_random_forest 0.82→0.32s
+(−0.50s)**, crop 0.43→0.34s, connect_to_nearest 0.33s, registration 0.39s.
+
+**Caveat — `registration`:** only `large_image` deferred; `StackReg` left at module
+top because the tests `patch('entrypoint.StackReg')` and the code references
+`StackReg.TRANSLATION/.RIGID_BODY/.AFFINE` class constants. Not worth a test rewrite
+for the small pystackreg win.
+
+### Unused-import sweep
+Removed **143 unused module-level imports across 41 entrypoints** (AST: zero
+name-references; conservative — single-line top-level imports only, kept used names
+in multi-name lines, skipped conditional/parenthesized imports). Most are ~0 startup
+(stdlib / `numpy`-shadowed / lazy `skimage`) — pure hygiene. The few real wins were
+dead heavy imports: `imageio` (crop / histogram_matching / registration) and
+`scipy.spatial.distance` (point_to_nearest_blob_distance). The sweep also covered
+deprecated workers — dead `cv2`/`numpy` were removed from `line_length_worker`,
+`point_to_nearest_point_distance`, and `point_to_nearest_connected_point_distance`
+(these are `$BASE_IMAGE` workers that can't be built locally, so they are
+py_compile/reference-validated only). `ai_analysis` was left untouched (slated for
+deprecation).
+
+### Verification
+All buildable worker-profile test suites pass — connect family, crop,
+blob_random_forest (4), blob_overlap, children_count (7), line_scan (7),
+point_to_nearest_blob_distance (13), gaussian_blur (15), h_and_e_deconvolution (9),
+histogram_matching (16), rolling_ball (17), registration (20), deconwolf (38), plus
+the unchanged-logic property workers. The suspicious removals were confirmed safe
+(h_and_e doesn't use skimage's `hed2rgb`; blob_point_count doesn't use the local
+`point_in_polygon`; parent_child doesn't use `defaultdict`). GPU workers
+(cellpose/sam2/stardist/piscis) are static-validated (py_compile + reference
+analysis) only and need amd64 build-host runtime validation.
+
+### Remaining future work (not done)
 - **#6 (multi-stage prune)** — drop `build-essential` / `git` / dev headers from
   the final base layers. The riskier image-size win; warrants its own pass.
-- **#4** (trim other always-on imports) remains open.
-- **GPU build-host validation** of the item-#2 import changes (see caveat).
+- **GPU build-host validation** of the deferral + unused-import changes.
 - Deprecated / `$BASE_IMAGE` workers remain on `conda run` (not shipped).

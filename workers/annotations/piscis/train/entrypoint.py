@@ -4,12 +4,11 @@ import sys
 import datetime
 
 import numpy as np
-from rasterio.features import rasterize
 from shapely.geometry import Polygon
 
 import annotation_client.workers as workers
 
-from annotation_client.utils import sendError, sendWarning, sendProgress
+from annotation_client.utils import sendError
 
 from piscis.paths import MODELS_DIR
 
@@ -97,6 +96,8 @@ def compute(datasetId, apiUrl, token, params):
         connectTo: how new annotations should be connected
     """
 
+    # Lazy import: keeps rasterio off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from rasterio.features import rasterize
     # Lazy import: keeps torch off the interface/startup path (~seconds). See todo/worker-startup-latency.md
     import torch
     # Lazy import: keeps piscis off the interface/startup path (~seconds). See todo/worker-startup-latency.md

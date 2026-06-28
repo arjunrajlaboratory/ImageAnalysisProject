@@ -2,15 +2,12 @@ import argparse
 import json
 import sys
 import numpy as np
-import pandas as pd
 import io
 
 import annotation_client.workers as workers
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 from annotation_client.utils import sendProgress
-
-from scipy.ndimage import map_coordinates
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
@@ -42,6 +39,11 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps pandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import pandas as pd
+    # Lazy import: keeps scipy off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from scipy.ndimage import map_coordinates
+
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     datasetClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)

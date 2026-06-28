@@ -1,17 +1,14 @@
 import argparse
 import json
 import sys
-from pathlib import Path
 from functools import partial
-from itertools import product
 
 import annotation_client.workers as workers
-from annotation_client.utils import sendError, sendWarning, sendProgress
+from annotation_client.utils import sendError
 
-import numpy as np  # library for array manipulation
 
 import girder_utils
-from girder_utils import CELLPOSE_DIR, MODELS_DIR
+from girder_utils import MODELS_DIR
 
 from shapely.geometry import Polygon
 

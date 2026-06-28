@@ -1,10 +1,6 @@
-import base64
 import argparse
 import json
 import sys
-import random
-import time
-import timeit
 
 from operator import itemgetter
 
@@ -17,11 +13,8 @@ from annotation_client.utils import sendProgress, sendWarning
 import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
-import pandas as pd
-import geopandas as gpd
 
 from shapely.geometry import Point, Polygon
-from scipy.spatial import cKDTree
 
 
 def interface(image, apiUrl, token):
@@ -95,6 +88,9 @@ def interface(image, apiUrl, token):
 
 
 def extract_spatial_annotation_data(obj_list):
+    # Lazy import: keeps geopandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import geopandas as gpd
+
     data = []
     for obj in obj_list:
         shape = obj['shape']
@@ -134,6 +130,13 @@ def compute_nearest_child_to_parent(
     restrict_connection='None',
     max_children=None
 ):
+    # Lazy import: keeps pandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import pandas as pd
+    # Lazy import: keeps geopandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import geopandas as gpd
+    # Lazy import: keeps scipy off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from scipy.spatial import cKDTree
+
     # Empty DataFrame to store results
     child_to_parent = pd.DataFrame(columns=['child_id', 'nearest_parent_id'])
 

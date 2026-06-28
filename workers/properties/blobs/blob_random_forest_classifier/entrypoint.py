@@ -2,27 +2,17 @@ import argparse
 import json
 import sys
 import timeit
-import pprint
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress, sendWarning, sendError
 import annotation_client.tiles as tiles
 
 import annotation_utilities.annotation_tools as annotation_tools
-import annotation_utilities.batch_argument_parser as batch_argument_parser
 from annotation_utilities.progress import update_progress
 
 import numpy as np
 from skimage import draw
 from collections import defaultdict
 from shapely.geometry import Polygon
-import pandas as pd
-
-# Import mahotas for texture features
-import mahotas as mh
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
 
 
 def interface(image, apiUrl, token):
@@ -81,6 +71,9 @@ def compute_texture_features(image_patch, levels=8):
     Returns:
         Dictionary of texture features
     """
+    # Lazy import: keeps mahotas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import mahotas as mh
+
     features = {}
 
     # Ensure the image is properly scaled for texture analysis
@@ -146,6 +139,12 @@ def compute(datasetId, apiUrl, token, params):
         layer: Which specific layer should be used for intensity calculations
         tags: A list of annotation tags, used when counting for instance the number of connections to specific tagged annotations
     """
+    # Lazy import: keeps pandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import pandas as pd
+    # Lazy import: keeps scikit-learn off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import classification_report
 
     workerClient = workers.UPennContrastWorkerClient(
         datasetId, apiUrl, token, params)

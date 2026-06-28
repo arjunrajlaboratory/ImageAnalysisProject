@@ -12,7 +12,6 @@ from annotation_client.utils import sendProgress, sendWarning, sendError
 
 import numpy as np
 import tifffile
-import large_image as li
 
 
 def interface(image, apiUrl, token):
@@ -316,6 +315,9 @@ def get_manual_params(workerInterface):
 
 def copy_image_unchanged(tileClient, datasetId, gc):
     """Copy the image unchanged (for 2D case)."""
+    # Lazy import: keeps large_image off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import large_image as li
+
     sink = li.new()
 
     if 'frames' in tileClient.tiles:
@@ -347,6 +349,8 @@ def copy_image_unchanged(tileClient, datasetId, gc):
 
 def compute(datasetId, apiUrl, token, params):
     """Main computation function for deconvolution."""
+    # Lazy import: keeps large_image off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import large_image as li
 
     tileClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)

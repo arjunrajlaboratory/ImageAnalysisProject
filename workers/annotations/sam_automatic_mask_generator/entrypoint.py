@@ -2,8 +2,6 @@ import argparse
 import json
 import sys
 
-from functools import partial
-from itertools import product
 
 import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers
@@ -14,7 +12,6 @@ from shapely.geometry import Polygon
 from skimage.measure import find_contours
 from shapely.geometry import Polygon
 
-from PIL import Image
 
 
 def interface(image, apiUrl, token):

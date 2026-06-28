@@ -6,8 +6,6 @@ import annotation_client.annotations as annotations
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 
-import pandas as pd
-import numpy as np
 
 
 def interface(image, apiUrl, token):
@@ -35,6 +33,9 @@ def interface(image, apiUrl, token):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps pandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import pandas as pd
+
     propertyId = params.get('id', 'unknown_property')
     workerInterface = params['workerInterface']
 

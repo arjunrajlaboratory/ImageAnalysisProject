@@ -4,7 +4,7 @@ import sys
 import timeit
 
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress, sendWarning, sendError
+from annotation_client.utils import sendProgress, sendWarning
 import annotation_client.tiles as tiles
 
 import annotation_utilities.annotation_tools as annotation_tools

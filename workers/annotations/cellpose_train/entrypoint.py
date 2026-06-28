@@ -2,13 +2,10 @@ import argparse
 from collections import defaultdict
 import json
 import sys
-from pathlib import Path
-from functools import partial
-from itertools import product
 from skimage import draw
 import numpy as np
 
-from shapely.geometry import Polygon, box
+from shapely.geometry import Polygon
 
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
@@ -17,7 +14,7 @@ from annotation_client.utils import sendProgress, sendError, sendWarning
 import annotation_utilities.annotation_tools as annotation_tools
 
 import girder_utils
-from girder_utils import CELLPOSE_DIR, MODELS_DIR
+from girder_utils import MODELS_DIR
 
 BASE_MODELS = ['cyto', 'cyto2', 'cyto3', 'nuclei']
 
