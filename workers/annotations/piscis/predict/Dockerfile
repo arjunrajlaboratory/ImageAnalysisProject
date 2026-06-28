@@ -39,7 +39,7 @@ FROM base as build
 RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
-COPY ./environment.yml /
+COPY ./workers/annotations/piscis/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -50,17 +50,21 @@ RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
 RUN pip install piscis==1.0.0
 RUN pip install flax
+# Install a CUDA-enabled jax so Piscis runs on the GPU. `pip install flax` above
+# pulls the CPU-only jaxlib by default; reinstall jax with the cuda12 extra pinned
+# to the version flax resolved, adding the GPU backend without drifting the version.
+RUN pip install --upgrade "jax[cuda12]==$(python -c 'import jax; print(jax.__version__)')"
 
 WORKDIR /
 RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 RUN pip install /ImageAnalysisProject/worker_client
 
-COPY ./download_models.py /
+COPY ./workers/annotations/piscis/download_models.py /
 RUN python /download_models.py
 
-COPY ./utils.py /
-COPY ./predict/entrypoint.py /
+COPY ./workers/annotations/piscis/utils.py /
+COPY ./workers/annotations/piscis/predict/entrypoint.py /
 
 LABEL isUPennContrastWorker=True \
       isAnnotationWorker=True \

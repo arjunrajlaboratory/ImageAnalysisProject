@@ -39,7 +39,7 @@ FROM base as build
 RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
-COPY ./environment.yml /
+COPY ./workers/annotations/piscis/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -53,6 +53,10 @@ RUN git clone https://github.com/zjniu/Piscis.git
 WORKDIR /Piscis
 RUN pip install .
 RUN pip install flax
+# Install a CUDA-enabled jax so Piscis runs on the GPU. `pip install flax` above
+# pulls the CPU-only jaxlib by default; reinstall jax with the cuda12 extra pinned
+# to the version flax resolved, adding the GPU backend without drifting the version.
+RUN pip install --upgrade "jax[cuda12]==$(python -c 'import jax; print(jax.__version__)')"
 
 WORKDIR /
 RUN pip install rasterio shapely
@@ -61,11 +65,11 @@ RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 RUN pip install /ImageAnalysisProject/worker_client
 
-COPY ./download_models.py /
+COPY ./workers/annotations/piscis/download_models.py /
 RUN python /download_models.py
 
-COPY ./utils.py /
-COPY ./train/entrypoint.py /
+COPY ./workers/annotations/piscis/utils.py /
+COPY ./workers/annotations/piscis/train/entrypoint.py /
 
 LABEL isUPennContrastWorker=True \
       isAnnotationWorker=True \
