@@ -39,7 +39,7 @@ FROM base as build
 RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
-COPY ./environment.yml /
+COPY ./workers/annotations/piscis/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -49,18 +49,17 @@ RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.t
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
 RUN pip install piscis==1.0.0
-RUN pip install flax
 
 WORKDIR /
 RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 RUN pip install /ImageAnalysisProject/worker_client
 
-COPY ./download_models.py /
+COPY ./workers/annotations/piscis/download_models.py /
 RUN python /download_models.py
 
-COPY ./utils.py /
-COPY ./predict/entrypoint.py /
+COPY ./workers/annotations/piscis/utils.py /
+COPY ./workers/annotations/piscis/predict/entrypoint.py /
 
 LABEL isUPennContrastWorker=True \
       isAnnotationWorker=True \
@@ -69,4 +68,7 @@ LABEL isUPennContrastWorker=True \
       description="Uses Piscis to find spots" \
       defaultToolName="Spots"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
+# Fast env activation in place of `conda run` (see todo/worker-startup-latency.md)
+COPY ./workers/base_docker_images/run_worker.sh /usr/local/bin/run_worker.sh
+RUN chmod +x /usr/local/bin/run_worker.sh
+ENTRYPOINT ["/usr/local/bin/run_worker.sh", "/entrypoint.py"]

@@ -4,18 +4,11 @@ import sys
 import datetime
 
 import numpy as np
-import torch
-from rasterio.features import rasterize
 from shapely.geometry import Polygon
 
 import annotation_client.workers as workers
 
-from annotation_client.utils import sendError, sendWarning, sendProgress
-
-from piscis.data import generate_dataset
-from piscis.paths import MODELS_DIR
-from piscis.training import train_model
-from piscis.utils import fit_coords, remove_duplicate_coords, snap_coords
+from annotation_client.utils import sendError
 
 from annotation_utilities.point_in_polygon import point_in_polygon
 
@@ -25,7 +18,7 @@ import utils
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
-    models = sorted(path.stem for path in MODELS_DIR.glob('*'))
+    models = sorted(path.stem for path in utils.MODELS_DIR.glob('*'))
     girder_models = [model['model_name'] for model in utils.list_girder_models(client.client)[0]]
     models = sorted(list(set(models + girder_models)))
 
@@ -101,6 +94,15 @@ def compute(datasetId, apiUrl, token, params):
         connectTo: how new annotations should be connected
     """
 
+    # Lazy import: keeps rasterio off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from rasterio.features import rasterize
+    # Lazy import: keeps torch off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    # Lazy import: keeps piscis off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from piscis.data import generate_dataset
+    from piscis.training import train_model
+    from piscis.utils import fit_coords, remove_duplicate_coords, snap_coords
+
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationClient = workerClient.annotationClient
 
@@ -120,7 +122,7 @@ def compute(datasetId, apiUrl, token, params):
         sendError("No annotation tag selected.",
                   info="Please select at least one annotation tag.")
         raise ValueError("No annotation tag selected.")
-    
+
     if not region_tag or len(region_tag) == 0:
         sendError("No region tag selected.",
                   info="Please select at least one region tag.")
@@ -128,18 +130,18 @@ def compute(datasetId, apiUrl, token, params):
 
     annotationList = annotationClient.getAnnotationsByDatasetId(
         datasetId, shape='point', tags=json.dumps(annotation_tag))
-    
+
     # Check if any annotations were found
     if not annotationList or len(annotationList) == 0:
         sendError("No annotations found with the selected annotation tag.",
                   info=f"No point annotations found with tag(s): {annotation_tag}. Please check your annotation tags.")
         raise ValueError("No annotations found with the selected annotation tag.")
-    
+
     points = np.array([[point['location'][i]
                         for i in ['Time', 'XY', 'Z']] + list(point['coordinates'][0].values())[1::-1]
                        for point in annotationList])
     points[:, -2:] -= np.array((0.5, 0.5))
-    
+
     regionList = annotationClient.getAnnotationsByDatasetId(
         datasetId, shape='polygon', tags=json.dumps(region_tag))
     regionList.extend(annotationClient.getAnnotationsByDatasetId(
@@ -177,13 +179,13 @@ def compute(datasetId, apiUrl, token, params):
                           for i in ['Time', 'XY', 'Z']]), axis=1)][:, -2:]
         c = c[point_in_polygon(c, polygon)] - np.array([mini, minj])
         c = np.array(c)
-        
+
         # Check if this region has any points
         if c.size == 0 or (c.ndim == 1 and len(c) == 0):
             sendError("Region with no points found.",
                       info="Every training region must contain at least one point annotation. Please ensure all regions have points inside them.")
             raise ValueError("Region with no points found.")
-        
+
         # Ensure c is 2D for the coordinate processing functions
         if c.ndim == 1:
             if len(c) == 0:
@@ -192,7 +194,7 @@ def compute(datasetId, apiUrl, token, params):
                 raise ValueError("Region with no points found.")
             # If it's 1D but has data, it might be a single point, reshape it
             c = c.reshape(1, -1)
-        
+
         c = snap_coords(c, image)
         c = fit_coords(c, image)
         c = remove_duplicate_coords(c)
@@ -211,7 +213,7 @@ def compute(datasetId, apiUrl, token, params):
         sendError("No training data available.",
                   info="No valid training data could be extracted from the annotations and regions. Please check your annotations.")
         raise ValueError("No training data available.")
-    
+
     # Check if all coordinate arrays are empty (would cause training to fail)
     total_points = sum(len(coord_array) for coord_array in coords)
     if total_points == 0:

@@ -2,7 +2,6 @@ import argparse
 import json
 import sys
 import timeit
-from functools import partial
 
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
@@ -10,11 +9,8 @@ import annotation_client.annotations as annotations
 from annotation_client.utils import sendProgress
 
 import numpy as np
-from stardist.models import StarDist2D
 from shapely.geometry import Polygon
 from annotation_utilities.annotation_tools import geometry_to_polygon_coords
-from rasterio import features
-import rasterio.transform
 
 
 def interface(image, apiUrl, token):
@@ -82,6 +78,11 @@ def run_stardist(image, model, prob_thresh, nms_thresh):
 
 
 def labels_to_polygons(labels):
+    # Lazy import: keeps rasterio off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from rasterio import features
+    # Lazy import: keeps rasterio off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import rasterio.transform
+
     polygons = []
     # Create a default transform
     default_transform = rasterio.transform.from_bounds(
@@ -106,6 +107,9 @@ def labels_to_polygons(labels):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps stardist off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from stardist.models import StarDist2D
+
     start_time = timeit.default_timer()
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)

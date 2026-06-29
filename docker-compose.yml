@@ -48,7 +48,7 @@ services:
   laplacian_of_gaussian:
     build:
       context: .
-      dockerfile: ./workers/annotations/laplacian_of_gaussian/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/annotations/laplacian_of_gaussian/Dockerfile
     image: annotations/laplacian_of_gaussian:latest
     profiles: ["worker", "annotations"]
 
@@ -92,7 +92,7 @@ services:
   blob_colony_two_color_intensity:
     build:
       context: .
-      dockerfile: ./workers/properties/blobs/blob_colony_two_color_intensity_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/blobs/blob_colony_two_color_intensity_worker/Dockerfile
     image: properties/blob_colony_two_color_intensity:latest
     profiles: ["worker", "properties"]
 
@@ -156,7 +156,7 @@ services:
   line_scan_worker:
     build:
       context: .
-      dockerfile: ./workers/properties/lines/line_scan_worker/${DOCKERFILE:-Dockerfile}
+      dockerfile: ./workers/properties/lines/line_scan_worker/Dockerfile
     image: properties/line_scan_worker:latest
     profiles: ["worker", "properties"]
 

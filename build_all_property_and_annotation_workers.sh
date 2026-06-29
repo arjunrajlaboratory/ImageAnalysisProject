@@ -37,7 +37,7 @@ docker build -f ./workers/annotations/connect_timelapse/$DOCKERFILE -t annotatio
 # docker build -f ./workers/annotations/connect_timelapse/Dockerfile_M1 -t annotations/connect_time_lapse:latest ./workers/annotations/connect_timelapse/
 
 echo "Building annotation worker: laplacian_of_gaussian"
-docker build -f ./workers/annotations/laplacian_of_gaussian/$DOCKERFILE -t annotations/laplacian_of_gaussian:latest . $NO_CACHE
+docker build -f ./workers/annotations/laplacian_of_gaussian/Dockerfile -t annotations/laplacian_of_gaussian:latest . $NO_CACHE
 # docker build -f ./workers/annotations/laplacian_of_gaussian/Dockerfile_M1 -t annotations/laplacian_of_gaussian:latest ./workers/annotations/laplacian_of_gaussian/
 
 
@@ -69,7 +69,7 @@ docker build -f ./workers/properties/blobs/blob_annulus_intensity_percentile_wor
 # docker build -f ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/Dockerfile_M1 -t properties/blob_annulus_intensity_percentile:latest ./workers/properties/blobs/blob_annulus_intensity_percentile_worker/
 
 echo "Building property worker: blob_colony_two_color_intensity_worker"
-docker build -f ./workers/properties/blobs/blob_colony_two_color_intensity_worker/$DOCKERFILE -t properties/blob_colony_two_color_intensity:latest . $NO_CACHE
+docker build -f ./workers/properties/blobs/blob_colony_two_color_intensity_worker/Dockerfile -t properties/blob_colony_two_color_intensity:latest . $NO_CACHE
 # docker build -f ./workers/properties/blobs/blob_colony_two_color_intensity_worker/Dockerfile_M1 -t properties/blob_colony_two_color_intensity:latest ./workers/properties/blobs/blob_colony_two_color_intensity_worker/
 
 echo "Building property worker: blob_point_count_worker"
@@ -102,7 +102,7 @@ docker build -f ./workers/properties/points/point_to_nearest_blob_distance/$DOCK
 # docker build -f ./workers/properties/points/point_to_nearest_blob_distance/Dockerfile_M1 -t properties/point_to_nearest_blob_distance:latest ./workers/properties/points/point_to_nearest_blob_distance/
 
 echo "Building property worker: line_scan_worker"
-docker build -f ./workers/properties/lines/line_scan_worker/$DOCKERFILE -t properties/line_scan_worker:latest . $NO_CACHE
+docker build -f ./workers/properties/lines/line_scan_worker/Dockerfile -t properties/line_scan_worker:latest . $NO_CACHE
 # docker build -f ./workers/properties/lines/line_scan_worker/Dockerfile_M1 -t properties/line_scan_worker:latest ./workers/properties/lines/line_scan_worker/
 
 # Image processing workers

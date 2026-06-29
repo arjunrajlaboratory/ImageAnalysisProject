@@ -39,7 +39,7 @@ FROM base as build
 RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
-COPY ./environment.yml /
+COPY ./workers/annotations/piscis/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
@@ -52,7 +52,6 @@ RUN pip install -e /NimbusImage/devops/girder/annotation_client/
 RUN git clone https://github.com/zjniu/Piscis.git
 WORKDIR /Piscis
 RUN pip install .
-RUN pip install flax
 
 WORKDIR /
 RUN pip install rasterio shapely
@@ -61,11 +60,11 @@ RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 RUN pip install /ImageAnalysisProject/worker_client
 
-COPY ./download_models.py /
+COPY ./workers/annotations/piscis/download_models.py /
 RUN python /download_models.py
 
-COPY ./utils.py /
-COPY ./train/entrypoint.py /
+COPY ./workers/annotations/piscis/utils.py /
+COPY ./workers/annotations/piscis/train/entrypoint.py /
 
 LABEL isUPennContrastWorker=True \
       isAnnotationWorker=True \
@@ -74,4 +73,7 @@ LABEL isUPennContrastWorker=True \
       description="Retrain Piscis to detect your particular spots" \
       defaultToolName="Piscis training"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
+# Fast env activation in place of `conda run` (see todo/worker-startup-latency.md)
+COPY ./workers/base_docker_images/run_worker.sh /usr/local/bin/run_worker.sh
+RUN chmod +x /usr/local/bin/run_worker.sh
+ENTRYPOINT ["/usr/local/bin/run_worker.sh", "/entrypoint.py"]

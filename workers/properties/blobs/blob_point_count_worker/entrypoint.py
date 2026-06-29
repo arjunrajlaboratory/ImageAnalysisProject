@@ -5,14 +5,12 @@ import sys
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress
 
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Polygon
 
-from annotation_utilities.point_in_polygon import point_in_polygon
 from annotation_utilities import annotation_tools
 
 from rtree import index
 
-import numpy as np
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)

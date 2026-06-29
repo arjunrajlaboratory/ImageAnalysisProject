@@ -9,4 +9,4 @@ LABEL isUPennContrastWorker="" \
       interfaceName="Distance to nearest blob" \
       interfaceCategory="Distance"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
+# ENTRYPOINT inherited from worker-base (run_worker.sh /entrypoint.py — see todo/worker-startup-latency.md)

@@ -16,12 +16,6 @@ import numpy as np
 from shapely.geometry import Polygon
 from skimage.measure import find_contours
 
-import torch
-import torch.nn.functional as F
-from sam2.build_sam import build_sam2
-from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
-from sam2.sam2_image_predictor import SAM2ImagePredictor
-
 from annotation_client.utils import sendProgress, sendError
 
 
@@ -187,6 +181,10 @@ def pool_features_with_mask(features, mask_np, feat_h, feat_w):
     Returns:
         feature_vector: tensor of shape (C,)
     """
+    # Lazy import: keeps torch/sam2 off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    import torch.nn.functional as F
+
     # Resize mask to feature map dimensions
     mask_tensor = torch.from_numpy(mask_np.astype(np.float32)).unsqueeze(0).unsqueeze(0)
     mask_resized = F.interpolate(mask_tensor, size=(feat_h, feat_w), mode='bilinear', align_corners=False)
@@ -248,6 +246,13 @@ def annotation_to_mask(annotation, image_shape):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps torch/sam2 off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import torch
+    import torch.nn.functional as F
+    from sam2.build_sam import build_sam2
+    from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
     annotationClient = annotations_client.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)

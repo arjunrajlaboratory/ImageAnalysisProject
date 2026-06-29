@@ -6,8 +6,6 @@ import annotation_client.workers as workers
 import annotation_client.annotations as annotations
 import annotation_tools
 
-import cv2 as cv
-import numpy as np
 import math
 
 def calculate_distance(point1, point2):

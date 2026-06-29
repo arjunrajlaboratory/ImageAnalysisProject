@@ -1,8 +1,6 @@
 import argparse
 import json
 import sys
-import numpy as np
-from scipy.spatial import distance
 from shapely.geometry import Point, Polygon
 
 import annotation_client.workers as workers

@@ -8,16 +8,7 @@ import annotation_client.workers as workers
 import numpy as np
 from shapely.geometry import Polygon
 
-import deeptile
-from deeptile.core.lift import lift
-from deeptile.core.data import Output
-from deeptile.core.utils import compute_dask
-from deeptile.extensions.segmentation import mask_to_polygons
-from deeptile.extensions.stitch import stitch_polygons
-
 from worker_client import WorkerClient, geometry_to_polygon_coords
-
-from condensatenet import CondensateNetPipeline
 
 from annotation_client.utils import sendProgress
 
@@ -155,6 +146,14 @@ def condensatenet_segmentation(prob_threshold, min_size, max_size, model_path):
         Lifted function for the CondensateNet segmentation algorithm.
     """
 
+    # Lazy import: keeps deeptile off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from deeptile.core.lift import lift
+    from deeptile.core.data import Output
+    from deeptile.core.utils import compute_dask
+    from deeptile.extensions.segmentation import mask_to_polygons
+    # Lazy import: keeps the condensatenet package (pulls torch) off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    from condensatenet import CondensateNetPipeline
+
     # Load CondensateNet model once
     sendProgress(0, "Loading model", f"Initializing CondensateNet from {model_path}...")
     pipeline = CondensateNetPipeline.from_local(
@@ -224,6 +223,10 @@ def run_model(image, condensatenet, tile_size, tile_overlap, padding, smoothing)
     list
         List of polygon coordinates.
     """
+    # Lazy import: keeps deeptile off the interface/startup path (~seconds). See todo/worker-startup-latency.md
+    import deeptile
+    from deeptile.extensions.stitch import stitch_polygons
+
     dt = deeptile.load(image)
     tiles = dt.get_tiles(
         tile_size=(tile_size, tile_size),

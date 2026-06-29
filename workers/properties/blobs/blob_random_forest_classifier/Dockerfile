@@ -58,4 +58,7 @@ LABEL isUPennContrastWorker="" \
       interfaceCategory="Classification" \
       description="Classify blobs using a Random Forest Classifier"
 
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "/entrypoint.py"]
+# Fast env activation in place of `conda run` (see todo/worker-startup-latency.md)
+COPY ./workers/base_docker_images/run_worker.sh /usr/local/bin/run_worker.sh
+RUN chmod +x /usr/local/bin/run_worker.sh
+ENTRYPOINT ["/usr/local/bin/run_worker.sh", "/entrypoint.py"]

@@ -2,15 +2,12 @@ import argparse
 import json
 import sys
 import numpy as np
-import pandas as pd
 import io
 
 import annotation_client.workers as workers
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 from annotation_client.utils import sendProgress
-
-from scipy.ndimage import map_coordinates
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
@@ -42,6 +39,11 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 def compute(datasetId, apiUrl, token, params):
+    # Lazy import: keeps pandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import pandas as pd
+    # Lazy import: keeps scipy off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from scipy.ndimage import map_coordinates
+
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
     datasetClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
@@ -166,26 +168,27 @@ def compute(datasetId, apiUrl, token, params):
     sendProgress(1.0, 'Finished', 'Line scan CSV creation completed')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Line scan CSV worker')
-    parser.add_argument('--datasetId', type=str, required=False, action='store')
+    # Define the command-line interface for the entry point
+    parser = argparse.ArgumentParser(
+        description='Compute the intensity along a line and save it to a CSV file')
+
+    parser.add_argument('--datasetId', type=str,
+                        required=False, action='store')
     parser.add_argument('--apiUrl', type=str, required=True, action='store')
     parser.add_argument('--token', type=str, required=True, action='store')
     parser.add_argument('--request', type=str, required=True, action='store')
-    parser.add_argument('--parameters', type=str, required=True, action='store')
+    parser.add_argument('--parameters', type=str,
+                        required=True, action='store')
 
     args = parser.parse_args(sys.argv[1:])
 
     params = json.loads(args.parameters)
+    datasetId = args.datasetId
     apiUrl = args.apiUrl
     token = args.token
 
-    if args.request == 'compute':
-        if not args.datasetId:
-            print("Error: datasetId is required for compute request")
-            sys.exit(1)
-        compute(args.datasetId, apiUrl, token, params)
-    elif args.request == 'interface':
-        interface(params['image'], apiUrl, token)
-    else:
-        print(f"Error: Unknown request type '{args.request}'")
-        sys.exit(1)
+    match args.request:
+        case 'compute':
+            compute(datasetId, apiUrl, token, params)
+        case 'interface':
+            interface(params['image'], apiUrl, token)

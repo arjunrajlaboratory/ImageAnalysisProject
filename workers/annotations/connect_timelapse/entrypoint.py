@@ -11,11 +11,8 @@ from annotation_client.utils import sendProgress, sendError, sendWarning
 import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
-import pandas as pd
-import geopandas as gpd
 
-from shapely.geometry import Point, Polygon
-from scipy.spatial import cKDTree
+from shapely.geometry import Polygon
 
 
 def interface(image, apiUrl, token):
@@ -88,6 +85,11 @@ def extract_spatial_annotation_data(obj_list):
 
 def compute_nearest_child_to_parent(child_df, parent_df, max_distance=None):
     """Compute nearest parents for children, assuming all grouping is done externally"""
+    # Lazy import: keeps pandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import pandas as pd
+    # Lazy import: keeps scipy off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    from scipy.spatial import cKDTree
+
     if child_df.empty or parent_df.empty:
         return pd.DataFrame()
 
@@ -160,6 +162,10 @@ def compute(datasetId, apiUrl, token, params):
         tile: tile position (TODO: roi) ({XY, Z, Time}),
         connectTo: how new annotations should be connected
     """
+    # Lazy import: keeps pandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import pandas as pd
+    # Lazy import: keeps geopandas off the interface path; only needed during compute. See todo/worker-startup-latency.md
+    import geopandas as gpd
 
     # roughly validate params
     keys = ["assignment", "channel", "connectTo",

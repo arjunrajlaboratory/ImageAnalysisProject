@@ -12,7 +12,6 @@ import annotation_utilities.annotation_tools as annotation_tools
 
 import numpy as np
 from skimage import draw
-from skimage import morphology
 from collections import defaultdict
 from shapely.geometry import Polygon
 

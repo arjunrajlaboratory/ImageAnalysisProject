@@ -1,10 +1,7 @@
-import base64
 import argparse
 import json
 import sys
-import pprint
 
-from operator import itemgetter
 
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
@@ -13,16 +10,10 @@ from annotation_client.utils import sendProgress, sendError
 
 import numpy as np
 
-from worker_client import WorkerClient
 
-from functools import partial
-from skimage import feature, filters, measure, restoration
-from skimage.exposure import match_histograms
 
-from skimage import data
-from skimage.color import rgb2hed, hed2rgb
+from skimage.color import rgb2hed
 from skimage.exposure import rescale_intensity
-import large_image as li
 
 
 def interface(image, apiUrl, token):
@@ -60,6 +51,9 @@ def compute(datasetId, apiUrl, token, params):
         tile: tile position (TODO: roi) ({XY, Z, Time}),
         connectTo: how new annotations should be connected
     """
+
+    # Lazy import: keeps large_image off the interface/preview path; only needed during compute. See todo/worker-startup-latency.md
+    import large_image as li
 
     tileClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
