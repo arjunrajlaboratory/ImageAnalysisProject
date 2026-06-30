@@ -5,7 +5,7 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 ## How It Works
 
 1. **Channel Assembly**: Collects up to three input channels from user-selected channel checkboxes and stacks them
-2. **Model Selection**: Loads the built-in `cellpose-sam` model or a user-trained model from Girder
+2. **Model Selection**: Loads a built-in Cellpose-SAM checkpoint (`cpsam_v2` by default, or the original `cpsam`) or a user-trained model from Girder
 3. **Tiling**: Splits the image into overlapping tiles using DeepTile
 4. **Segmentation**: Runs Cellpose-SAM inference on each tile with GPU acceleration
 5. **Stitching**: Merges polygons spanning tile boundaries using DeepTile's `stitch_polygons()`
@@ -19,7 +19,7 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 | **Batch XY** | text | -- | XY positions to iterate over (e.g., "1-3, 5-8") |
 | **Batch Z** | text | -- | Z slices to iterate over |
 | **Batch Time** | text | -- | Time points to iterate over |
-| **Model** | select | cellpose-sam | Model to use. Includes built-in `cellpose-sam` and user-trained models from Girder |
+| **Model** | select | cellpose-sam | Model to use. `cellpose-sam` runs the `cpsam_v2` checkpoint (current default); `cellpose-sam (legacy cpsam)` runs the original April 2025 `cpsam` checkpoint. User-trained models from Girder are also listed |
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |
 | **Channel for Slot 3** | channelCheckboxes | -- | Optional third input slot channel |
@@ -42,8 +42,12 @@ Unlike the standard Cellpose worker which uses Primary/Secondary channel selecto
 
 ### Model Behavior
 
-- **Base model** (`cellpose-sam`): Runs with `gpu=True` and no diameter or channel parameters in `eval_parameters`, relying on the model's built-in defaults
+- **Base models**: The dropdown labels map to cellpose built-in checkpoints in `models_config.py` — `cellpose-sam` → `cpsam_v2`, `cellpose-sam (legacy cpsam)` → `cpsam`. The selected checkpoint name is passed explicitly as `pretrained_model` (rather than relying on cellpose's internal default, which can shift between versions). Runs with `gpu=True` and no diameter/channel parameters in `eval_parameters`.
 - **Custom models**: Loaded from Girder by path and use the user-specified diameter in `eval_parameters`
+
+### Built-in Checkpoints
+
+`cpsam_v2` (SAM-ViTL backbone, released June 2026) is the default; it reduces spurious masks in low-contrast regions compared to the original `cpsam` (April 2025). Both checkpoints (~1.23 GB each) are pre-downloaded at build time by `download_models.py` so neither downloads on first run. Requires `cellpose==4.2.1.1` (cpsam_v2 was added in the 4.2.x line). To add or change the offered checkpoints, edit `models_config.py` — it is the single source of truth for both the interface and the build-time download.
 
 ### GPU Handling
 

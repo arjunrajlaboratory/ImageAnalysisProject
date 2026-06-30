@@ -14,7 +14,7 @@ from shapely.geometry import Polygon
 
 from worker_client import WorkerClient, geometry_to_polygon_coords
 
-BASE_MODELS = ['cellpose-sam']
+from models_config import BASE_MODELS, BASE_MODEL_CHECKPOINTS, DEFAULT_MODEL
 
 
 def interface(image, apiUrl, token):
@@ -68,8 +68,10 @@ def interface(image, apiUrl, token):
         'Model': {
             'type': 'select',
             'items': models,
-            'default': 'cellpose-sam',
-            'tooltip': 'cellpose-sam is the base model',
+            'default': DEFAULT_MODEL,
+            'tooltip': 'cellpose-sam runs the cpsam_v2 checkpoint (the current default).\n'
+                       'Choose "cellpose-sam (legacy cpsam)" to reproduce results from the '
+                       'original April 2025 model. Custom trained models are also listed here.',
             'noCache': True,
             'displayOrder': 4,
         },
@@ -249,8 +251,13 @@ def compute(datasetId, apiUrl, token, params):
     print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
 
     if model in BASE_MODELS:
+        # Pass the checkpoint name explicitly so behavior is pinned to the
+        # selected model rather than relying on cellpose's internal default,
+        # which can change between cellpose versions.
+        checkpoint = BASE_MODEL_CHECKPOINTS[model]
         cellpose = cellpose_segmentation(
-            model_parameters={'gpu': True}, eval_parameters={}, output_format='polygons')
+            model_parameters={'gpu': True, 'pretrained_model': checkpoint},
+            eval_parameters={}, output_format='polygons')
     else:
         # Get the full path to the model
         model_path = str(MODELS_DIR / model)
