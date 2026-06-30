@@ -47,7 +47,12 @@ When it was active, the `PostToolUse` hook (`.claude/hooks/update-worker-docs.sh
 ### Documentation Conventions
 
 - Each worker's doc file is named `{worker_name}.md` and lives in the worker's directory.
-- Do **not** edit these files manually — they are auto-generated. Edit `entrypoint.py` instead.
+- These docs are **hand-maintained**. `generate_worker_docs.py` only creates a
+  stub for a worker that has **no** doc file yet (existing docs are preserved, per
+  above), and the auto-doc hook is disabled — so edit the `{worker_name}.md`
+  directly when a worker's interface or behavior changes. Avoid
+  `generate_worker_docs.py --force`: it overwrites hand-written docs with
+  auto-generated stubs.
 - The `interfaceName`, `interfaceCategory`, `annotationShape`, and `description` Docker labels are reflected in the docs; keep these labels accurate in the Dockerfile.
 
 ## Build Commands

@@ -14,18 +14,19 @@ from shapely.geometry import Polygon
 
 from worker_client import WorkerClient, geometry_to_polygon_coords
 
-from models_config import BASE_MODELS, BASE_MODEL_CHECKPOINTS, DEFAULT_MODEL
+from models_config import (
+    BASE_MODELS, BASE_MODEL_CHECKPOINTS, DEFAULT_MODEL, build_model_items)
 
 
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(
         apiUrl=apiUrl, token=token)
 
-    # models = sorted(path.stem for path in MODELS_DIR.glob('*'))
-    models = BASE_MODELS
     girder_models = [model['name']
                      for model in girder_utils.list_girder_models(client.client)[0]]
-    models = sorted(list(set(models + girder_models)))
+    # Reserved base labels win over any custom model of the same name (see
+    # build_model_items); this keeps the dropdown consistent with compute()'s routing.
+    models = build_model_items(girder_models)
 
     # Available types: number, text, tags, layer
     interface = {

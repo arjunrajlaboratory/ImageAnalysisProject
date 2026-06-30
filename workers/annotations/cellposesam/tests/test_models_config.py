@@ -39,3 +39,38 @@ def test_base_models_offers_both_builtins():
         'cellpose-sam',
         'cellpose-sam (legacy cpsam)',
     }
+
+
+def test_build_model_items_includes_base_and_custom():
+    """Custom Girder model names appear alongside the built-in labels."""
+    items = models_config.build_model_items(['my custom model'])
+    assert 'cellpose-sam' in items
+    assert 'cellpose-sam (legacy cpsam)' in items
+    assert 'my custom model' in items
+
+
+def test_build_model_items_excludes_reserved_name_collision():
+    """A custom model named exactly like a base label is dropped, not duplicated.
+
+    Otherwise it would silently route to the built-in checkpoint in compute()
+    and the custom weights would never be used.
+    """
+    items = models_config.build_model_items(
+        ['cellpose-sam', 'cellpose-sam (legacy cpsam)'])
+    assert items.count('cellpose-sam') == 1
+    assert items.count('cellpose-sam (legacy cpsam)') == 1
+    assert set(items) == set(models_config.BASE_MODELS)
+
+
+def test_build_model_items_sorted_and_deduped():
+    """Output is sorted and free of duplicates."""
+    items = models_config.build_model_items(['zeta', 'alpha', 'alpha'])
+    assert items == sorted(set(items))
+    assert items.count('alpha') == 1
+
+
+def test_build_model_items_empty_returns_base_models():
+    """With no custom models, only the built-in labels are offered."""
+    items = models_config.build_model_items([])
+    assert set(items) == set(models_config.BASE_MODELS)
+    assert models_config.DEFAULT_MODEL in items

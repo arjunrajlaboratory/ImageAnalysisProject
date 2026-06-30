@@ -24,3 +24,17 @@ DEFAULT_MODEL = 'cellpose-sam'
 
 # The list of built-in model labels offered in the interface.
 BASE_MODELS = list(BASE_MODEL_CHECKPOINTS)
+
+
+def build_model_items(girder_model_names):
+    """Build the sorted Model-dropdown options from the built-in labels plus
+    custom Girder model names.
+
+    The built-in labels are reserved: a custom Girder model whose name collides
+    with one is dropped, because ``compute()`` routes any name in ``BASE_MODELS``
+    to the built-in checkpoint — so a same-named custom model could never be
+    loaded and would only create a confusing duplicate entry.
+    """
+    custom = [name for name in girder_model_names
+              if name not in BASE_MODEL_CHECKPOINTS]
+    return sorted(set(BASE_MODELS) | set(custom))
