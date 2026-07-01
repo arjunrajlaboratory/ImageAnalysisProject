@@ -45,6 +45,9 @@ RUN git clone https://github.com/Kitware/UPennContrast/
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 
+# models_config.py is the single source of truth for the built-in checkpoints,
+# so it must be present before download_models.py runs.
+COPY ./workers/annotations/cellposesam/models_config.py /
 COPY ./workers/annotations/cellposesam/download_models.py /
 RUN python /download_models.py
 

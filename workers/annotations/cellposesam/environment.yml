@@ -6,5 +6,5 @@ dependencies:
 - rasterio
 - shapely
 - pip:
-  - cellpose==4.0.1
+  - cellpose==4.2.1.1
   - deeptile
