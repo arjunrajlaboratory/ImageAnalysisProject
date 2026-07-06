@@ -1,0 +1,14 @@
+# ./workers/annotations/illumination_correction/tests/Dockerfile_Test
+FROM annotations/illumination_correction:latest AS test
+
+# Install test dependencies
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+RUN pip install pytest pytest-mock
+
+# Copy test files
+RUN mkdir -p /tests
+COPY ./workers/annotations/illumination_correction/tests/*.py /tests
+WORKDIR /tests
+
+# Command to run tests
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"]

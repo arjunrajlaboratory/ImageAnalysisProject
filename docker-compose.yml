@@ -224,6 +224,24 @@ services:
     depends_on:
       - image-processing-base
 
+  illumination_correction:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/illumination_correction/Dockerfile
+    image: annotations/illumination_correction:latest
+    profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
+
+  image_restoration:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/image_restoration/${DOCKERFILE:-Dockerfile}
+    image: annotations/image_restoration:latest
+    profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
+
   # AI workers
   ai_analysis:
     build:
@@ -472,4 +490,22 @@ services:
     image: annotations/deconwolf:test
     depends_on:
       - deconwolf
+    profiles: ["test"]
+
+  illumination_correction_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/illumination_correction/tests/Dockerfile_Test
+    image: annotations/illumination_correction:test
+    depends_on:
+      - illumination_correction
+    profiles: ["test"]
+
+  image_restoration_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/image_restoration/tests/Dockerfile_Test
+    image: annotations/image_restoration:test
+    depends_on:
+      - image_restoration
     profiles: ["test"]

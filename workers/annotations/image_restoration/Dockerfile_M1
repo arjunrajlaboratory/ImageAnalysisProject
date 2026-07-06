@@ -1,0 +1,53 @@
+# CPU-only build for Mac (arm64) development. `nimbusimage/image-processing-base`
+# already provides the multi-arch "worker" conda env with annotation_client,
+# annotation_utilities, worker_client, and large_image pre-installed (see
+# workers/base_docker_images/Dockerfile.image_processing_worker_base) -- we
+# only need to add this worker's own (heavier, ML-specific) dependencies on
+# top of it, using CPU-only PyTorch instead of the CUDA build used in the
+# production Dockerfile.
+FROM nimbusimage/image-processing-base:latest
+
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+
+# CPU-only torch, then the restoration-method dependencies.
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install careamics "cellpose>=3" tifffile
+# triton (only needed for fluoresfm) is CUDA-oriented and may not have wheels
+# for all CPU/arm64 build hosts; don't fail the build if it's unavailable --
+# fluoresfm will simply be unusable on such a build until weights + a
+# compatible torch/triton are supplied.
+RUN pip install triton || echo "triton unavailable on this platform; FluoResFM inference will be disabled in this build"
+
+# --- ZS-DeconvNet (vendored for provenance; see main Dockerfile and
+# IMAGE_RESTORATION.md for why entrypoint.py implements its own zero-shot
+# reimplementation rather than driving this repo's CLI directly) ---
+RUN git clone https://github.com/TristaZeng/ZS-DeconvNet.git /zs_deconvnet && \
+    cd /zs_deconvnet && git checkout 04d2c21
+
+# --- FluoResFM (vendored inference code only; weights are never required to
+# build -- see download_models.py) ---
+RUN git clone https://github.com/qiqi-lu/fluoresfm.git /fluoresfm && \
+    cd /fluoresfm && git checkout v1.0.1
+ENV FLUORESFM_REPO_PATH=/fluoresfm
+ENV FLUORESFM_WEIGHTS=/opt/fluoresfm_weights/fluoresfm.pt
+
+COPY ./workers/annotations/image_restoration/models_config.py /
+COPY ./workers/annotations/image_restoration/download_models.py /
+# No FLUORESFM_WEIGHTS_URL on Mac dev builds -- FluoResFM weight download is
+# skipped (best-effort only, see download_models.py); Cellpose3 checkpoint
+# download is also best-effort and will not fail the build.
+RUN python /download_models.py
+
+COPY ./workers/annotations/image_restoration/entrypoint.py /
+
+LABEL isUPennContrastWorker="" \
+      isAnnotationWorker="" \
+      interfaceName="Image Restoration" \
+      interfaceCategory="Image Processing" \
+      description="Restores images (Noise2Void/N2V2, Cellpose3, ZS-DeconvNet, FluoResFM) -- CPU-only Mac dev build" \
+      hasPreview="False" \
+      advancedOptionsPanel="False" \
+      annotationConfigurationPanel="False" \
+      defaultToolName="Image Restoration"
+
+# ENTRYPOINT inherited from image-processing-base (run_worker.sh /entrypoint.py — see todo/worker-startup-latency.md)
