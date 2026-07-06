@@ -99,7 +99,8 @@ No `Dockerfile_M1` needed unless a dep is x86-only — use the same Dockerfile f
 | `cidre` | CIDRE-style retrospective | retrospective | in-house numpy/scipy | no |
 | `cellprofiler` | CellProfiler-style illumination function | retrospective or per-image | in-house numpy/scipy/skimage | no |
 | `flatfield` | Flat/Dark-field (reference-based) | reference | in-house numpy | **yes** |
-| `destripe` | Stripe / tiling-seam correction | classical destriping | `pystripe` (pip) | no |
+| `destripe` | Stripe / tiling-seam correction (classical, fast, no weights) | classical destriping | `pystripe` (pip) | no |
+| `sscor` | SSCOR deep-learning stripe self-correction | DL (subprocess to vendored repo) | vendored `lxxcontinue/SSCOR` + runtime checkpoint | no |
 
 Default `Method` = `basic`.
 
@@ -466,8 +467,13 @@ Correction = blank), Tests = Yes, Docs link. Do NOT run
 
 ## Out of scope / honest substitutions (state in docs)
 
-- **SSCOR** (DL stripe correction): no packaged weights → `destripe` uses
-  classical `pystripe` (wavelet-FFT) instead.
+- **SSCOR** (DL stripe correction): now implemented as the `sscor` method,
+  vendored from `github.com/lxxcontinue/SSCOR` (pinned commit) and driven via
+  subprocess to its `restore.py` CLI. It exposes SSCOR's inference stage with a
+  user-supplied trained generator checkpoint (env `SSCOR_WEIGHTS`); the upstream
+  per-image self-training stage is run offline per the repo README. Operates in
+  8-bit (lossy round-trip for >8-bit sources). The classical `pystripe`
+  `destripe` method is retained as the fast, no-weights alternative.
 - **EVEN** (ML evaluation/optimization framework): not vendored → optional
   lightweight QC metrics report instead.
 - **CIDRE**: no maintained pip package → faithful in-house gain/offset

@@ -2,10 +2,11 @@
 
 This worker corrects spatial illumination artifacts in fluorescence microscopy images --
 shading, vignetting, background/dark bias, and scanner/tiling stripes -- using a single
-`Method` dropdown that selects between five algorithms: **BaSiC**, a **CIDRE-style**
+`Method` dropdown that selects between six algorithms: **BaSiC**, a **CIDRE-style**
 retrospective estimator, a **CellProfiler-style** illumination function, classical
-**flat/dark-field** reference correction, and **destripe** (wavelet-FFT stripe removal).
-An optional lightweight QC report can be generated after correction.
+**flat/dark-field** reference correction, **destripe** (wavelet-FFT stripe removal), and
+**SSCOR** (deep-learning stripe self-correction). An optional lightweight QC report can be
+generated after correction.
 
 ## How It Works
 
@@ -19,8 +20,13 @@ An optional lightweight QC report can be generated after correction.
    receive this same stack but process each frame independently.
 3. **Correction**: `compute()` dispatches on `Method` to one standalone function
    (`correct_basic`, `correct_cidre`, `correct_cellprofiler`, `correct_flatfield`,
-   `correct_destripe`), each with the signature
-   `f(stack, opts) -> (corrected_stack, diagnostics)`.
+   `correct_destripe`, `correct_sscor`), each with the signature
+   `f(stack, opts) -> (corrected_stack, diagnostics)`. `sscor` is the one exception to the
+   "no upfront validation" rule below the fold: since it requires an externally-supplied
+   checkpoint, `compute()` resolves `SSCOR_WEIGHTS` (via `resolve_sscor_checkpoint`) and
+   GPU availability *before* the channel loop, `sendError`-and-returns if no checkpoint is
+   available, and injects the resolved path/GPU choice into `method_opts` -- mirroring how
+   the `flatfield` method's flat-reference check works.
 4. **QC (optional)**: If "Report correction quality (QC)" is enabled, `compute_qc_metrics`
    computes a few simple flat-field-quality numbers on the corrected collection for each
    selected channel.
@@ -47,6 +53,7 @@ unused parameters for the currently-selected method are simply ignored.
 | `cellprofiler` | CellProfiler-style illumination function | retrospective or per-image | in-house numpy/scipy | no |
 | `flatfield` | Flat/Dark-field (reference-based) | reference | in-house numpy | **yes** |
 | `destripe` | Stripe / tiling-seam correction | classical destriping | `pystripe` (wavelet-FFT) | no |
+| `sscor` | Deep-learning stripe self-correction | pix2pix-style GAN inference | vendored `SSCOR` repo + `SSCOR_WEIGHTS` checkpoint | no (needs a trained checkpoint instead) |
 
 Default `Method` is `basic`.
 
@@ -54,7 +61,7 @@ Default `Method` is `basic`.
 
 | Parameter | Type | Default | Applies to | Description |
 |-----------|------|---------|------------|-------------|
-| **Method** | select | `basic` | all | Illumination-correction algorithm: `basic`, `cidre`, `cellprofiler`, `flatfield`, `destripe`. |
+| **Method** | select | `basic` | all | Illumination-correction algorithm: `basic`, `cidre`, `cellprofiler`, `flatfield`, `destripe`, `sscor`. |
 | **Channels to correct** | channelCheckboxes | -- | all | Channels to process; unselected channels pass through unchanged. |
 | **Estimate darkfield** | checkbox | `True` | basic | Also estimate a darkfield (offset) term. |
 | **Flatfield smoothness** | number (0-100) | `1.0` | basic | Smoothness regularization of the fitted flatfield. |
@@ -69,6 +76,10 @@ Default `Method` is `basic`.
 | **Destripe sigma** | number (1-2000) | `128` | destripe | Band-pass sigma for pystripe's wavelet-FFT stripe removal. |
 | **Destripe wavelet** | select | `db3` | destripe | Wavelet family: `db3`, `db5`, `haar`, `sym4`. |
 | **Destripe level** | number (0-12) | `0` | destripe | DWT decomposition level (`0` = auto). |
+| **SSCOR patch size** | number (1-4096) | `256` | sscor | Sliding-window patch size (px) fed to the generator. |
+| **SSCOR offset size** | number (1-4096) | `100` | sscor | Sliding-window step/offset size (px) between patches. |
+| **SSCOR repeat** | number (1-5) | `1` | sscor | Number of repeated passes (with shifted offsets) combined via max-projection, per upstream `restore.py`. |
+| **SSCOR dark threshold** | number (0-255) | `10` | sscor | 8-bit intensity threshold below which the original (uncorrected) pixel is kept instead of the restored value. |
 | **Report correction quality (QC)** | checkbox | `False` | all | Computes lightweight EVEN-style QC metrics per corrected channel and stores them in the output item's metadata. |
 
 ## Implementation Details
@@ -112,8 +123,11 @@ unreliable with very few images.
   exits rather than silently producing a meaningless correction.
 - **`destripe`**: Uses `pystripe` (`pystripe.core.filter_streaks`), a wavelet-FFT
   destriping method originally built for light-sheet microscopy, applied independently
-  per frame. **This is a classical stand-in for SSCOR** (a non-packaged DL/GAN stripe
-  correction method with no available weights) -- it is not a deep-learning method.
+  per frame. This is the fast, classical, **no-weights-needed** stripe-removal option --
+  prefer it when a trained `sscor` checkpoint isn't available.
+- **`sscor`**: Deep-learning stripe self-correction, vendored from
+  [`lxxcontinue/SSCOR`](https://github.com/lxxcontinue/SSCOR) (pinned commit
+  `985479cd79bcf1359e3d9ba44bacd5f372eb2e60`). See "SSCOR integration details" below.
 - **QC report (`compute_qc_metrics`)**: **This is a lightweight quantitative stand-in
   for EVEN** (Nat. Commun. 2026, an ML/LDA-based illumination evaluation-and-optimization
   framework) -- EVEN itself is not vendored here. The QC report computes, per corrected
@@ -123,6 +137,47 @@ unreliable with very few images.
   (coefficient of variation of per-frame mean intensity across the collection). These are
   meant only to let a user quickly compare methods against each other, not as a
   publication-grade quality metric.
+
+### SSCOR integration details
+
+SSCOR ([`lxxcontinue/SSCOR`](https://github.com/lxxcontinue/SSCOR), pinned commit
+`985479cd79bcf1359e3d9ba44bacd5f372eb2e60`) is a pytorch-CycleGAN-and-pix2pix-style
+codebase with no clean importable inference API, so it is integrated exactly like
+`deconwolf` shells out to the `dw` binary: via `subprocess`, driving the repo's CLI script
+`restore.py` directly (see `correct_sscor` in `entrypoint.py`).
+
+- **Env-gated weights (`SSCOR_WEIGHTS`)**: SSCOR's trained generator checkpoints are not
+  baked into the Docker image -- the upstream repo distributes them via Google Drive, not
+  a stable direct-download URL, and producing one requires an image-specific **offline
+  self-training stage** (proximity sampling + adversarial training with stripe-orientation
+  parameters tuned to the dataset) that this worker does not run. `resolve_sscor_checkpoint`
+  reads the `SSCOR_WEIGHTS` environment variable; if unset or not a file, `compute()`
+  `sendError`s with actionable instructions (download a checkpoint per the upstream
+  README, mount it into the container, set `SSCOR_WEIGHTS` to its path -- a
+  `latest_net_G.pth` file -- or choose a different Method) **before the channel loop
+  runs**, mirroring the `flatfield` method's upfront flat-reference check. This worker
+  therefore only exercises SSCOR's **inference** stage.
+- **Subprocess-to-`restore.py` integration**: For each frame, `correct_sscor` writes an
+  8-bit RGB PNG to a temp "dataroot" directory, copies the resolved checkpoint to
+  `<tmp_checkpoints_dir>/sscor/latest_net_G.pth`, and invokes
+  `restore.py --dataroot <dir> --name sscor --model sscor --image_name <file> --offset_size
+  <SSCOR offset size> --patch_size <SSCOR patch size> --repeat <SSCOR repeat>
+  --dark_threshold <SSCOR dark threshold> --checkpoints_dir <tmp_checkpoints_dir> --gpu_ids
+  <0 or -1> --eval` with `cwd` set to the vendored repo (`SSCOR_REPO_PATH`, default
+  `/sscor`). The restored image is read back from `<dir>/result/restore-<file>` and
+  converted from RGB back to a single intensity channel (mean over channels). A non-zero
+  return code raises `RuntimeError` with the captured `stderr`, matching how `deconwolf`
+  surfaces `dw` failures.
+- **8-bit operation (lossy)**: SSCOR's generator only supports 8-bit RGB I/O (PIL-loaded
+  input, `tensor2im`-produced `uint8` output). Each frame is therefore rescaled to `uint8`
+  `[0, 255]` via per-frame min/max before being handed to `restore.py`, and the 8-bit
+  result is rescaled back to the frame's original `[min, max]` range afterward. **This
+  round trip is inherently lossy** (8-bit quantization) -- it is a limitation of SSCOR's
+  design, not an artifact of this integration.
+- **GPU strongly recommended**: `compute()` resolves GPU availability once per run (a
+  lazy, best-effort `torch.cuda.is_available()` check; if `torch` isn't importable, it
+  falls back to CPU) and passes `--gpu_ids 0` or `--gpu_ids -1` accordingly. If falling
+  back to CPU, `sendWarning` fires once: SSCOR on CPU is very slow.
 
 ### Numerical stability safeguard
 
@@ -149,24 +204,35 @@ bloating a 16-bit input into a float64 output TIFF. Frame iteration and the
 
 ### Heavy imports are lazy
 
-`basicpy` (inside `correct_basic`) and `pystripe` (inside `correct_destripe`) are
-imported **inside** those functions only, never at module top level. This keeps the
-`interface()` preview path fast (see `todo/worker-startup-latency.md`) and lets the test
-suite run natively without either package installed -- tests patch
-`entrypoint.correct_basic` / `entrypoint.correct_cidre` / etc. directly, mirroring
-`histogram_matching/tests/test_histogram_matching.py`'s pattern of patching
-`entrypoint.match_histograms`.
+`basicpy` (inside `correct_basic`), `pystripe` (inside `correct_destripe`), and
+`subprocess`/`PIL`/`torch` (inside `correct_sscor` and the upfront GPU-detection check in
+`compute()`) are imported **inside** those functions only, never at module top level. This
+keeps the `interface()` preview path fast (see `todo/worker-startup-latency.md`) and lets
+the test suite run natively without any of those packages installed -- tests patch
+`entrypoint.correct_basic` / `entrypoint.correct_cidre` / `entrypoint.correct_sscor` / etc.
+directly, mirroring `histogram_matching/tests/test_histogram_matching.py`'s pattern of
+patching `entrypoint.match_histograms`. (`entrypoint.resolve_sscor_checkpoint` is likewise
+patched directly in tests rather than exercising the real `SSCOR_WEIGHTS` env-var check.)
 
 ## Notes
 
-- **No GPU required.** All five methods run on CPU; BaSiCPy's PyTorch backend runs fine
-  without CUDA for the collection sizes typical of a single dataset.
+- **No GPU required for five of the six methods.** `basic`, `cidre`, `cellprofiler`,
+  `flatfield`, and `destripe` all run on CPU; BaSiCPy's PyTorch backend runs fine without
+  CUDA for the collection sizes typical of a single dataset. `sscor` is the exception --
+  see below.
 - **Small collections**: retrospective methods (`basic`, `cidre`, `cellprofiler`) warn
   when a channel's collection has fewer than 3 frames; results are unreliable in that
   regime regardless of method.
 - **`flatfield` requires calibration frames** in the dataset itself (identified by XY
   coordinate); if you don't have dedicated flat/dark calibration images, use `basic`,
   `cidre`, or `cellprofiler` instead.
+- **`sscor` requires a trained checkpoint and a GPU is strongly recommended.** Unlike the
+  other five methods, `sscor` needs a user-supplied generator checkpoint (`SSCOR_WEIGHTS`,
+  see "SSCOR integration details" above) that must be produced offline via SSCOR's
+  self-training procedure -- there is no bundled/default checkpoint. If you don't have one,
+  use `destripe` (`pystripe`) instead: it needs no weights and is much faster, at the cost
+  of being a classical (non-deep-learning) method. Inference also works on CPU but is very
+  slow; a GPU is strongly recommended.
 - Related workers: `histogram_matching` (post-hoc intensity histogram matching across
   frames), `deconwolf` (deconvolution, a different kind of optical correction),
   `rolling_ball` (simple background subtraction).

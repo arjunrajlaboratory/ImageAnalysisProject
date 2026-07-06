@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 
 import numpy as np
@@ -33,12 +34,14 @@ def interface(image, apiUrl, token):
     interface = {
         'Method': {
             'type': 'select',
-            'items': ['basic', 'cidre', 'cellprofiler', 'flatfield', 'destripe'],
+            'items': ['basic', 'cidre', 'cellprofiler', 'flatfield', 'destripe', 'sscor'],
             'default': 'basic',
             'tooltip': 'Illumination-correction algorithm. basic (BaSiC) recommended when no '
-                       'calibration frames are available. Every parameter below is shown '
-                       'regardless of Method; each tooltip notes which method(s) it applies to '
-                       '-- unused parameters for the chosen method are simply ignored.',
+                       'calibration frames are available. sscor is a deep-learning stripe '
+                       'self-correction method that requires a user-supplied trained checkpoint '
+                       '(see SSCOR_WEIGHTS). Every parameter below is shown regardless of Method; '
+                       'each tooltip notes which method(s) it applies to -- unused parameters for '
+                       'the chosen method are simply ignored.',
             'displayOrder': 0,
         },
         'Channels to correct': {
@@ -156,6 +159,41 @@ def interface(image, apiUrl, token):
             'tooltip': 'destripe: DWT decomposition level (0 = auto).',
             'displayOrder': 14,
         },
+        # --- SSCOR ---
+        'SSCOR patch size': {
+            'type': 'number',
+            'min': 1,
+            'max': 4096,
+            'default': 256,
+            'tooltip': 'sscor: sliding-window patch size (px) fed to the generator.',
+            'displayOrder': 15,
+        },
+        'SSCOR offset size': {
+            'type': 'number',
+            'min': 1,
+            'max': 4096,
+            'default': 100,
+            'tooltip': 'sscor: sliding-window step/offset size (px) between patches.',
+            'displayOrder': 16,
+        },
+        'SSCOR repeat': {
+            'type': 'number',
+            'min': 1,
+            'max': 5,
+            'default': 1,
+            'tooltip': 'sscor: number of repeated passes (with shifted offsets) to combine via '
+                       'max-projection, per the upstream restore.py.',
+            'displayOrder': 17,
+        },
+        'SSCOR dark threshold': {
+            'type': 'number',
+            'min': 0,
+            'max': 255,
+            'default': 10,
+            'tooltip': 'sscor: 8-bit intensity threshold below which the original (uncorrected) '
+                       'pixel is kept instead of the restored value.',
+            'displayOrder': 18,
+        },
         # --- QC ---
         'Report correction quality (QC)': {
             'type': 'checkbox',
@@ -163,7 +201,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'Compute lightweight EVEN-style flat-field-quality metrics per corrected '
                        'channel and store them in the output item metadata. Not the full EVEN '
                        'framework -- a quick quantitative stand-in for comparing methods.',
-            'displayOrder': 15,
+            'displayOrder': 19,
         },
     }
     # Send the interface object to the server
@@ -362,6 +400,144 @@ def correct_destripe(stack, opts):
     return corrected, diagnostics
 
 
+def resolve_sscor_checkpoint():
+    """Resolve the path to the SSCOR generator checkpoint.
+
+    SSCOR weights are not bundled in the Docker image -- the upstream repo
+    (https://github.com/lxxcontinue/SSCOR) distributes trained models via
+    Google Drive, not a stable direct-download URL, and producing a
+    checkpoint requires an image-specific self-training stage (proximity
+    sampling + adversarial training) that must be run offline per the
+    upstream README. The runtime source of truth is therefore the
+    SSCOR_WEIGHTS environment variable, which should point to a mounted
+    generator checkpoint (a `latest_net_G.pth` file). Returns the resolved
+    path, or None (after sending an actionable sendError) if unavailable.
+    """
+    weights_path = os.environ.get('SSCOR_WEIGHTS', '').strip()
+    if not weights_path or not os.path.isfile(weights_path):
+        sendError(
+            'SSCOR weights are not available.',
+            info=(
+                'SSCOR weights are not bundled in this image -- they are distributed via '
+                'Google Drive from https://github.com/lxxcontinue/SSCOR. Download a trained '
+                'generator checkpoint, mount it into the container, and set the SSCOR_WEIGHTS '
+                'environment variable to its path (a `latest_net_G.pth` file), or choose a '
+                'different Method (e.g. destripe, which needs no weights).'
+            ),
+        )
+        return None
+    return weights_path
+
+
+def correct_sscor(stack, opts):
+    """SSCOR deep-learning stripe self-correction
+    (https://github.com/lxxcontinue/SSCOR, pinned commit
+    985479cd79bcf1359e3d9ba44bacd5f372eb2e60).
+
+    SSCOR is a pytorch-CycleGAN-and-pix2pix-style codebase with no clean
+    importable inference API, so this integration shells out to its CLI
+    script `restore.py` exactly like `deconwolf` shells out to the `dw`
+    binary. It runs ONLY the repo's inference stage, using a user-supplied
+    trained generator checkpoint resolved by `resolve_sscor_checkpoint`
+    (SSCOR_WEIGHTS). The upstream self-training stage (proximity sampling +
+    adversarial training, which needs image-specific stripe-orientation
+    parameters) is NOT run here -- per the upstream README, train a
+    checkpoint offline and point SSCOR_WEIGHTS at its `latest_net_G.pth`.
+
+    SSCOR's generator only supports 8-bit RGB I/O (PIL-loaded input,
+    `tensor2im`-produced uint8 output), so each frame is rescaled to uint8
+    [0, 255] via per-frame min/max before being handed to `restore.py`, and
+    the 8-bit result is rescaled back to the frame's original [min, max]
+    range afterward. This round trip is LOSSY (8-bit quantization) and is
+    inherent to SSCOR's design, not an artifact of this integration.
+
+    stack: (N, Y, X) array -- every frame of one channel's collection.
+    opts: dict with 'sscor_patch_size', 'sscor_offset_size', 'sscor_repeat',
+          'sscor_dark_threshold' (all int), plus 'sscor_weights' (path to a
+          `latest_net_G.pth` generator checkpoint) and 'sscor_gpu_ids'
+          ('-1' for CPU, '0' for GPU), injected by `compute()`.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    from PIL import Image
+
+    stack = np.asarray(stack, dtype=np.float64)
+
+    weights_path = opts['sscor_weights']
+    gpu_ids = opts.get('sscor_gpu_ids', '-1')
+    patch_size = int(opts.get('sscor_patch_size', 256))
+    offset_size = int(opts.get('sscor_offset_size', 100))
+    repeat = int(opts.get('sscor_repeat', 1))
+    dark_threshold = int(opts.get('sscor_dark_threshold', 10))
+
+    repo_path = os.environ.get('SSCOR_REPO_PATH', '/sscor')
+    restore_script = os.path.join(repo_path, 'restore.py')
+
+    corrected = np.empty_like(stack)
+
+    with tempfile.TemporaryDirectory() as tmpckpt, tempfile.TemporaryDirectory() as tmpdata:
+        # restore.py loads <checkpoints_dir>/<name>/<epoch>_net_G.pth (epoch defaults
+        # to 'latest'); we use name='sscor' and copy the user-supplied checkpoint in.
+        ckpt_dir = os.path.join(tmpckpt, 'sscor')
+        os.makedirs(ckpt_dir, exist_ok=True)
+        shutil.copy(weights_path, os.path.join(ckpt_dir, 'latest_net_G.pth'))
+
+        for i in range(stack.shape[0]):
+            frame = stack[i]
+            frame_min = float(np.min(frame))
+            frame_max = float(np.max(frame))
+            span = frame_max - frame_min
+            if span <= 0:
+                span = 1.0
+            frame_uint8 = np.clip(
+                (frame - frame_min) / span * 255.0, 0, 255).astype(np.uint8)
+
+            image_name = f'frame_{i:04d}.png'
+            input_path = os.path.join(tmpdata, image_name)
+            Image.fromarray(frame_uint8).convert('RGB').save(input_path)
+
+            cmd = [
+                sys.executable, restore_script,
+                '--dataroot', tmpdata,
+                '--name', 'sscor',
+                '--model', 'sscor',
+                '--image_name', image_name,
+                '--offset_size', str(offset_size),
+                '--patch_size', str(patch_size),
+                '--repeat', str(repeat),
+                '--dark_threshold', str(dark_threshold),
+                '--checkpoints_dir', tmpckpt,
+                '--gpu_ids', gpu_ids,
+                '--eval',
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_path)
+            if result.returncode != 0:
+                raise RuntimeError(f"SSCOR restore.py failed on frame {i}: {result.stderr}")
+
+            output_path = os.path.join(tmpdata, 'result', f'restore-{image_name}')
+            if not os.path.exists(output_path):
+                raise RuntimeError(
+                    f"SSCOR restore.py did not produce the expected output '{output_path}' "
+                    f"for frame {i}. stdout: {result.stdout}")
+
+            restored_rgb = np.asarray(Image.open(output_path).convert('RGB'), dtype=np.float64)
+            restored_gray = np.mean(restored_rgb, axis=-1)
+
+            corrected[i] = restored_gray / 255.0 * span + frame_min
+
+    diagnostics = {
+        'patch_size': patch_size,
+        'offset_size': offset_size,
+        'repeat': repeat,
+        'dark_threshold': dark_threshold,
+        'gpu_ids': gpu_ids,
+        'checkpoint': 'SSCOR_WEIGHTS',
+    }
+    return corrected, diagnostics
+
+
 def compute_qc_metrics(corrected_stack, opts=None):
     """Lightweight EVEN-style QC stand-in (NOT the full EVEN ML evaluation and
     optimization framework, Nat. Commun. 2026, which is not vendored here).
@@ -439,6 +615,13 @@ def _method_params_for_metadata(method, opts, flat_xy, dark_xy):
             'destripe_wavelet': opts['destripe_wavelet'],
             'destripe_level': opts['destripe_level'],
         }
+    if method == 'sscor':
+        return {
+            'sscor_patch_size': opts['sscor_patch_size'],
+            'sscor_offset_size': opts['sscor_offset_size'],
+            'sscor_repeat': opts['sscor_repeat'],
+            'sscor_dark_threshold': opts['sscor_dark_threshold'],
+        }
     return {}
 
 
@@ -448,6 +631,7 @@ _CORRECTION_FUNCTIONS = {
     'cellprofiler': 'correct_cellprofiler',
     'flatfield': 'correct_flatfield',
     'destripe': 'correct_destripe',
+    'sscor': 'correct_sscor',
 }
 
 
@@ -505,6 +689,10 @@ def compute(datasetId, apiUrl, token, params):
         'destripe_sigma': float(workerInterface.get('Destripe sigma', 128)),
         'destripe_wavelet': workerInterface.get('Destripe wavelet', 'db3'),
         'destripe_level': int(workerInterface.get('Destripe level', 0)),
+        'sscor_patch_size': int(workerInterface.get('SSCOR patch size', 256)),
+        'sscor_offset_size': int(workerInterface.get('SSCOR offset size', 100)),
+        'sscor_repeat': int(workerInterface.get('SSCOR repeat', 1)),
+        'sscor_dark_threshold': int(workerInterface.get('SSCOR dark threshold', 10)),
     }
 
     qc_enabled = bool(workerInterface.get('Report correction quality (QC)', False))
@@ -521,6 +709,27 @@ def compute(datasetId, apiUrl, token, params):
 
     flat_xy = int(flat_xy_str) - 1 if flat_xy_str != '' else None
     dark_xy = int(dark_xy_str) - 1 if dark_xy_str != '' else None
+
+    sscor_weights_path = None
+    sscor_gpu_ids = '-1'
+    if method == 'sscor':
+        sscor_weights_path = resolve_sscor_checkpoint()
+        if sscor_weights_path is None:
+            return  # resolve_sscor_checkpoint() already called sendError
+
+        try:
+            import torch
+            cuda_available = torch.cuda.is_available()
+        except Exception:
+            cuda_available = False
+
+        if cuda_available:
+            sscor_gpu_ids = '0'
+        else:
+            sscor_gpu_ids = '-1'
+            sendWarning('Running SSCOR on CPU',
+                        info='No CUDA GPU detected; SSCOR deep-learning stripe correction on '
+                             'CPU is very slow. A GPU is strongly recommended.')
 
     # Group frame indices by channel
     channel_frame_indices = {c: [] for c in channels}
@@ -569,6 +778,10 @@ def compute(datasetId, apiUrl, token, params):
                 dark = np.full_like(flat, method_opts['dark_constant'], dtype=np.float64)
             method_opts['flat'] = flat
             method_opts['dark'] = dark
+
+        if method == 'sscor':
+            method_opts['sscor_weights'] = sscor_weights_path
+            method_opts['sscor_gpu_ids'] = sscor_gpu_ids
 
         correction_fn = globals()[correction_fn_name]
         corrected, diag = correction_fn(stack, method_opts)

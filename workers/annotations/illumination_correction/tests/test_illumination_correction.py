@@ -84,6 +84,7 @@ def mock_corrections(mocker):
         'cellprofiler': mocker.patch('entrypoint.correct_cellprofiler', side_effect=identity),
         'flatfield': mocker.patch('entrypoint.correct_flatfield', side_effect=identity),
         'destripe': mocker.patch('entrypoint.correct_destripe', side_effect=identity),
+        'sscor': mocker.patch('entrypoint.correct_sscor', side_effect=identity),
     }
 
 
@@ -104,6 +105,10 @@ def base_worker_interface(**overrides):
         'Destripe sigma': 128,
         'Destripe wavelet': 'db3',
         'Destripe level': 0,
+        'SSCOR patch size': 256,
+        'SSCOR offset size': 100,
+        'SSCOR repeat': 1,
+        'SSCOR dark threshold': 10,
         'Report correction quality (QC)': False,
     }
     interface_dict.update(overrides)
@@ -129,7 +134,8 @@ def test_interface(mock_worker_preview_client):
     assert 'Method' in interface_data
     method_iface = interface_data['Method']
     assert method_iface['type'] == 'select'
-    assert method_iface['items'] == ['basic', 'cidre', 'cellprofiler', 'flatfield', 'destripe']
+    assert method_iface['items'] == [
+        'basic', 'cidre', 'cellprofiler', 'flatfield', 'destripe', 'sscor']
     assert method_iface['default'] == 'basic'
 
     # Channel field
@@ -141,6 +147,7 @@ def test_interface(mock_worker_preview_client):
         'Correct timelapse baseline drift', 'Smoothing sigma', 'Dark quantile',
         'CellProfiler mode', 'Flat-field XY coordinate', 'Dark-field XY coordinate',
         'Dark-field constant', 'Destripe sigma', 'Destripe wavelet', 'Destripe level',
+        'SSCOR patch size', 'SSCOR offset size', 'SSCOR repeat', 'SSCOR dark threshold',
         'Report correction quality (QC)',
     ]:
         assert key in interface_data, f'{key} missing from interface'
@@ -279,6 +286,43 @@ def test_flatfield_without_flat_reference_error(
     assert '"error": "Flat-field reference required"' in captured.out
     mock_corrections['flatfield'].assert_not_called()
     mock_large_image.write.assert_not_called()
+
+
+def test_sscor_dispatch_with_weights(
+        mock_tile_client, mock_large_image, mock_corrections, mocker):
+    """With SSCOR_WEIGHTS resolvable, sscor dispatches to correct_sscor and writes output."""
+    mocker.patch('entrypoint.resolve_sscor_checkpoint',
+                  return_value='/fake/weights/latest_net_G.pth')
+
+    params = base_worker_interface(Method='sscor')
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_corrections['sscor'].assert_called_once()
+    call_opts = mock_corrections['sscor'].call_args[0][1]
+    assert call_opts['sscor_weights'] == '/fake/weights/latest_net_G.pth'
+    assert call_opts['sscor_gpu_ids'] in ('0', '-1')
+    assert call_opts['sscor_patch_size'] == 256
+    assert call_opts['sscor_offset_size'] == 100
+    assert call_opts['sscor_repeat'] == 1
+    assert call_opts['sscor_dark_threshold'] == 10
+
+    mock_large_image.write.assert_called_once_with('/tmp/illumination_corrected.tiff')
+    mock_tile_client.client.uploadFileToFolder.assert_called_once()
+
+
+def test_sscor_without_weights_error(
+        mock_tile_client, mock_large_image, mock_corrections, mocker, capsys):
+    """With no SSCOR_WEIGHTS (simulated via resolve_sscor_checkpoint -> None, which already
+    sent the actionable sendError), compute() must bail out before the channel loop: no
+    correct_sscor call, no write, no upload."""
+    mocker.patch('entrypoint.resolve_sscor_checkpoint', return_value=None)
+
+    params = base_worker_interface(Method='sscor')
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_corrections['sscor'].assert_not_called()
+    mock_large_image.write.assert_not_called()
+    mock_tile_client.client.uploadFileToFolder.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
