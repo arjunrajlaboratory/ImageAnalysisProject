@@ -174,7 +174,8 @@ def tracks_df_to_connections(tracks_df, label_centroid, label_to_id, datasetId, 
         if track_id not in parent_of:
             raw_parent = r.get('parent_track_id', -1)
             # Founder tracks may encode "no parent" as -1, 0, or NaN depending
-            # on the Ultrack version; normalize all of these to -1.
+            # on the Ultrack version. NaN/invalid becomes -1 here; the 0 vs -1
+            # distinction is handled by the "<= 0" guard on the division loop.
             try:
                 parent_of[track_id] = int(raw_parent)
             except (ValueError, TypeError):
@@ -213,8 +214,10 @@ def tracks_df_to_connections(tracks_df, label_centroid, label_to_id, datasetId, 
             add_connection(nodes[i][1], nodes[i + 1][1])
 
     # Division links: parent track's last node -> child track's first node.
+    # Ultrack track ids are positive, and founder tracks encode "no parent" as
+    # -1 or 0 depending on version, so anything <= 0 means no parent.
     for track_id, parent_track_id in parent_of.items():
-        if parent_track_id is None or parent_track_id < 0:
+        if parent_track_id is None or parent_track_id <= 0:
             continue
         parent_nodes = node_ids.get(parent_track_id)
         child_nodes = node_ids.get(track_id)

@@ -118,6 +118,27 @@ def test_tracks_df_to_connections_division():
     assert pairs == {('p0', 'p1'), ('p1', 'dA'), ('p1', 'dB')}
 
 
+def test_tracks_df_zero_parent_id_is_not_a_real_parent():
+    """A founder track with parent_track_id == 0 must not be linked to track 0."""
+    label_centroid = {
+        (0, 1): (4.0, 4.0),   # track 0 node at t0
+        (1, 1): (6.0, 6.0),   # track 0 node at t1
+        (0, 2): (50.0, 50.0),  # founder track 5 node at t0
+    }
+    label_to_id = {(0, 1): 'z0', (1, 1): 'z1', (0, 2): 'founder'}
+    # Track 0 is a real track; track 5 is a founder whose parent_track_id is 0.
+    tracks_df = pd.DataFrame([
+        {'track_id': 0, 't': 0, 'y': 4.0, 'x': 4.0, 'parent_track_id': -1},
+        {'track_id': 0, 't': 1, 'y': 6.0, 'x': 6.0, 'parent_track_id': -1},
+        {'track_id': 5, 't': 0, 'y': 50.0, 'x': 50.0, 'parent_track_id': 0},
+    ])
+    conns = tracks_df_to_connections(tracks_df, label_centroid, label_to_id, 'ds', [])
+    pairs = {(c['parentId'], c['childId']) for c in conns}
+    # Only the motion link within track 0; the founder must NOT be wired to track 0.
+    assert pairs == {('z0', 'z1')}
+    assert ('z1', 'founder') not in pairs
+
+
 def test_tracks_df_nearest_match_assigns_correct_annotation():
     """Each row is mapped to the annotation whose mask centroid is nearest."""
     # Two objects per frame: 'A' near the origin, 'B' near (100,100).
