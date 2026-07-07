@@ -217,7 +217,14 @@ def compute(datasetId, apiUrl, token, params):
         sendError("No training annotations found.",
                   info="No annotations with the training tag were found.")
         raise ValueError("No training annotations found.")
-    if len(regionAnnotationList) == 0 and len(training_regions) > 0:
+
+    # Decide whether to crop to regions based on whether region annotations were
+    # actually found, not merely on whether a region tag was supplied. If a tag
+    # was given but matched nothing, fall back to full-image training (as the
+    # warning promises) instead of silently producing zero crops and handing
+    # train_seg an empty training set.
+    use_regions = len(regionAnnotationList) > 0
+    if not use_regions and training_regions and len(training_regions) > 0:
         sendWarning("No region annotations found.",
                     info="No annotations with the training region tag were found.")
         print("No region annotations found. Training will be performed on entire image that the annotations are in.")
@@ -267,7 +274,7 @@ def compute(datasetId, apiUrl, token, params):
             mask = draw.polygon2mask(primary_image.shape, polygon)
             label_image[mask] = i + 1
 
-        if training_regions is None or len(training_regions) == 0:
+        if not use_regions:
             training_image = np.stack(
                 [primary_image, secondary_image, np.zeros_like(primary_image)], axis=-1)
             training_images.append(training_image)
@@ -306,11 +313,15 @@ def compute(datasetId, apiUrl, token, params):
     sendProgress(0.4, "Training model",
                  f"Training with {len(training_images)} images, be patient...")
 
+    # min_train_masks defaults to 5, which would silently drop any crop/image
+    # with fewer than five labeled objects; user-corrected crops commonly have
+    # only a handful of objects, so lower it to 1 to keep every non-empty sample.
     model_path, train_losses, test_losses = train.train_seg(model.net,
                                                             train_data=training_images, train_labels=label_images,
                                                             channels=channels, normalize=True,
                                                             weight_decay=weight_decay, SGD=True, learning_rate=learning_rate,
-                                                            n_epochs=epochs, model_name=MODELS_DIR / output_model_name)
+                                                            n_epochs=epochs, min_train_masks=1,
+                                                            model_name=MODELS_DIR / output_model_name)
 
     # Upload the trained model to Girder
     sendProgress(0.95, "Saving model", f"Uploading model {output_model_name}")
