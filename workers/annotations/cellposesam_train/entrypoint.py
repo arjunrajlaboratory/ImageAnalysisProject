@@ -247,7 +247,14 @@ def compute(datasetId, apiUrl, token, params):
         sendError("No training annotations found.",
                   info="No annotations with the training tag were found.")
         raise ValueError("No training annotations found.")
-    if len(regionAnnotationList) == 0 and training_regions and len(training_regions) > 0:
+
+    # Decide whether to crop to regions based on whether region annotations were
+    # actually found, not merely on whether a region tag was supplied. If a tag
+    # was given but matched nothing, fall back to full-image training (as the
+    # warning promises) instead of silently producing zero crops and handing
+    # train_seg an empty training set.
+    use_regions = len(regionAnnotationList) > 0
+    if not use_regions and training_regions and len(training_regions) > 0:
         sendWarning("No region annotations found.",
                     info="No annotations with the training region tag were found.")
         print("No region annotations found. Training will be performed on entire image that the annotations are in.")
@@ -293,7 +300,7 @@ def compute(datasetId, apiUrl, token, params):
             mask = draw.polygon2mask(label_image.shape, polygon)
             label_image[mask] = i + 1
 
-        if training_regions is None or len(training_regions) == 0:
+        if not use_regions:
             training_images.append(stacked_image)
             label_images.append(label_image)
         else:
@@ -341,6 +348,10 @@ def compute(datasetId, apiUrl, token, params):
     #  - AdamW is always used (the old SGD flag is deprecated), so we do not pass SGD.
     #  - bsize must be 256 for cpsam.
     #  - training uses native resolution (rescale=False), so no diameter is needed.
+    #  - min_train_masks defaults to 5, which would silently drop any crop/image
+    #    with fewer than five labeled objects; user-corrected crops commonly have
+    #    only a handful of objects, so lower it to 1 to keep every non-empty
+    #    sample (samples with zero labels are still excluded by cellpose).
     model_path, train_losses, test_losses = train.train_seg(
         model.net,
         train_data=training_images,
@@ -351,6 +362,7 @@ def compute(datasetId, apiUrl, token, params):
         learning_rate=learning_rate,
         n_epochs=epochs,
         bsize=256,
+        min_train_masks=1,
         save_path=str(CELLPOSE_DIR),
         model_name=output_model_name)
 
