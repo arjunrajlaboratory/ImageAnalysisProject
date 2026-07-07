@@ -22,11 +22,15 @@ generated after correction.
    (`correct_basic`, `correct_cidre`, `correct_cellprofiler`, `correct_flatfield`,
    `correct_destripe`, `correct_sscor`), each with the signature
    `f(stack, opts) -> (corrected_stack, diagnostics)`. `sscor` is the one exception to the
-   "no upfront validation" rule below the fold: since it requires an externally-supplied
-   checkpoint, `compute()` resolves `SSCOR_WEIGHTS` (via `resolve_sscor_checkpoint`) and
-   GPU availability *before* the channel loop, `sendError`-and-returns if no checkpoint is
-   available, and injects the resolved path/GPU choice into `method_opts` -- mirroring how
-   the `flatfield` method's flat-reference check works.
+   "no upfront validation" rule below the fold, and its upfront check is conditional on
+   **SSCOR mode**: in `pretrained` mode (the default) it requires an externally-supplied
+   checkpoint, so `compute()` resolves `SSCOR_WEIGHTS` (via `resolve_sscor_checkpoint`)
+   *before* the channel loop and `sendError`-and-returns if no checkpoint is available; in
+   `self-train` mode no checkpoint is required at all (a `sendWarning` fires once instead,
+   noting that self-training is slow). GPU availability is always resolved before the
+   channel loop for `sscor`, in either mode. The resolved checkpoint path (or `None` for
+   `self-train`) and GPU choice are injected into `method_opts` -- mirroring how the
+   `flatfield` method's flat-reference check works.
 4. **QC (optional)**: If "Report correction quality (QC)" is enabled, `compute_qc_metrics`
    computes a few simple flat-field-quality numbers on the corrected collection for each
    selected channel.
@@ -53,7 +57,7 @@ unused parameters for the currently-selected method are simply ignored.
 | `cellprofiler` | CellProfiler-style illumination function | retrospective or per-image | in-house numpy/scipy | no |
 | `flatfield` | Flat/Dark-field (reference-based) | reference | in-house numpy | **yes** |
 | `destripe` | Stripe / tiling-seam correction | classical destriping | `pystripe` (wavelet-FFT) | no |
-| `sscor` | Deep-learning stripe self-correction | pix2pix-style GAN inference | vendored `SSCOR` repo + `SSCOR_WEIGHTS` checkpoint | no (needs a trained checkpoint instead) |
+| `sscor` | Deep-learning stripe self-correction | pix2pix-style GAN, inference or per-frame self-training | vendored `SSCOR` repo; `pretrained` mode needs `SSCOR_WEIGHTS`, `self-train` mode needs none | no (`pretrained`: needs a trained checkpoint instead; `self-train`: samples/trains from the image itself) |
 
 Default `Method` is `basic`.
 
@@ -76,6 +80,12 @@ Default `Method` is `basic`.
 | **Destripe sigma** | number (1-2000) | `128` | destripe | Band-pass sigma for pystripe's wavelet-FFT stripe removal. |
 | **Destripe wavelet** | select | `db3` | destripe | Wavelet family: `db3`, `db5`, `haar`, `sym4`. |
 | **Destripe level** | number (0-12) | `0` | destripe | DWT decomposition level (`0` = auto). |
+| **SSCOR mode** | select | `pretrained` | sscor | `pretrained` = use a checkpoint trained offline, supplied via `SSCOR_WEIGHTS`; `self-train` = no checkpoint needed -- sample stripe/clean patches from the image itself and train a fresh CycleGAN per frame before restoring. |
+| **SSCOR stripe direction** | select | `horizontal` | sscor (self-train) | Stripe orientation to sample training patches for: `horizontal`, `vertical`, or `grid` (both, via `sample_stripe_2.py`). |
+| **SSCOR horizontal stripe count** | number (1-4096) | `1` | sscor (self-train) | Number of horizontal stripe bands (`--h_n`) used when sampling training patches. |
+| **SSCOR vertical stripe count** | number (1-4096) | `1` | sscor (self-train) | Number of vertical stripe bands (`--v_n`) used when sampling training patches. |
+| **SSCOR grid direction** | number (0-3) | `0` | sscor (self-train, direction=grid) | Junction direction (0=Upper Left, 1=Upper Right, 2=Lower Left, 3=Lower Right) passed as `sample_stripe_2.py`'s `--direction`. |
+| **SSCOR training epochs** | number (1-300) | `30` | sscor (self-train) | Number of training epochs for the per-frame CycleGAN self-training pass. |
 | **SSCOR patch size** | number (1-4096) | `256` | sscor | Sliding-window patch size (px) fed to the generator. |
 | **SSCOR offset size** | number (1-4096) | `100` | sscor | Sliding-window step/offset size (px) between patches. |
 | **SSCOR repeat** | number (1-5) | `1` | sscor | Number of repeated passes (with shifted offsets) combined via max-projection, per upstream `restore.py`. |
@@ -143,23 +153,28 @@ unreliable with very few images.
 SSCOR ([`lxxcontinue/SSCOR`](https://github.com/lxxcontinue/SSCOR), pinned commit
 `985479cd79bcf1359e3d9ba44bacd5f372eb2e60`) is a pytorch-CycleGAN-and-pix2pix-style
 codebase with no clean importable inference API, so it is integrated exactly like
-`deconwolf` shells out to the `dw` binary: via `subprocess`, driving the repo's CLI script
-`restore.py` directly (see `correct_sscor` in `entrypoint.py`).
+`deconwolf` shells out to the `dw` binary: via `subprocess`, driving the repo's CLI scripts
+directly (see `correct_sscor` in `entrypoint.py`). Two modes are available via **SSCOR
+mode**, both dispatched from the same `correct_sscor` function:
+
+#### `pretrained` mode
+
+Runs ONLY the repo's inference stage, using a checkpoint trained offline.
 
 - **Env-gated weights (`SSCOR_WEIGHTS`)**: SSCOR's trained generator checkpoints are not
   baked into the Docker image -- the upstream repo distributes them via Google Drive, not
   a stable direct-download URL, and producing one requires an image-specific **offline
   self-training stage** (proximity sampling + adversarial training with stripe-orientation
-  parameters tuned to the dataset) that this worker does not run. `resolve_sscor_checkpoint`
-  reads the `SSCOR_WEIGHTS` environment variable; if unset or not a file, `compute()`
-  `sendError`s with actionable instructions (download a checkpoint per the upstream
-  README, mount it into the container, set `SSCOR_WEIGHTS` to its path -- a
-  `latest_net_G.pth` file -- or choose a different Method) **before the channel loop
-  runs**, mirroring the `flatfield` method's upfront flat-reference check. This worker
-  therefore only exercises SSCOR's **inference** stage.
+  parameters tuned to the dataset) -- see `self-train` mode below for a version of that
+  stage this worker runs itself. `resolve_sscor_checkpoint` reads the `SSCOR_WEIGHTS`
+  environment variable; if unset or not a file, `compute()` `sendError`s with actionable
+  instructions (download a checkpoint per the upstream README, mount it into the
+  container, set `SSCOR_WEIGHTS` to its path, use `self-train` mode instead, or choose a
+  different Method) **before the channel loop runs**, mirroring the `flatfield` method's
+  upfront flat-reference check.
 - **Subprocess-to-`restore.py` integration**: For each frame, `correct_sscor` writes an
   8-bit RGB PNG to a temp "dataroot" directory, copies the resolved checkpoint to
-  `<tmp_checkpoints_dir>/sscor/latest_net_G.pth`, and invokes
+  `<tmp_checkpoints_dir>/sscor/latest_net_G_A.pth`, and invokes
   `restore.py --dataroot <dir> --name sscor --model sscor --image_name <file> --offset_size
   <SSCOR offset size> --patch_size <SSCOR patch size> --repeat <SSCOR repeat>
   --dark_threshold <SSCOR dark threshold> --checkpoints_dir <tmp_checkpoints_dir> --gpu_ids
@@ -168,16 +183,61 @@ codebase with no clean importable inference API, so it is integrated exactly lik
   converted from RGB back to a single intensity channel (mean over channels). A non-zero
   return code raises `RuntimeError` with the captured `stderr`, matching how `deconwolf`
   surfaces `dw` failures.
+- **Checkpoint filename (`latest_net_G_A.pth`)**: at inference time
+  `SSCORModel.model_names == ['G_A']` (only the A->B generator is needed for restoration),
+  and `BaseModel.load_networks` loads `'%s_net_%s.pth' % (epoch, name)` with `epoch='latest'`
+  -- i.e. it looks for `latest_net_G_A.pth`, never `latest_net_G.pth`. `correct_sscor`
+  therefore stages the user-supplied `SSCOR_WEIGHTS` file under the corrected name
+  `latest_net_G_A.pth` regardless of its original filename. (An earlier version of this
+  integration staged it as `latest_net_G.pth`, which `restore.py` would silently fail to
+  find/load correctly -- this has been fixed.)
+
+#### `self-train` mode
+
+Runs the **faithful upstream self-training pipeline** end-to-end, per frame, with no
+pre-supplied checkpoint at all -- SSCOR's real design point is per-image self-training,
+not a globally pretrained model. For each frame, `correct_sscor`:
+
+1. **Samples** stripe-free "clean" patches (`trainB`) and striped patches (`trainA`) out
+   of the frame itself, via the upstream `sample/sample_stripe.py` (`--h`/`--v` for a pure
+   horizontal or vertical stripe pattern) or `sample/sample_stripe_2.py` (`--h_n`/`--v_n`/
+   `--direction` for a grid of both, used when **SSCOR stripe direction**=`grid`),
+   controlled by **SSCOR stripe direction**, **SSCOR horizontal stripe count**, **SSCOR
+   vertical stripe count**, **SSCOR grid direction**, and **SSCOR patch size**. If no
+   patches are produced (frame too small for the requested patch size, or the stripe
+   direction/count doesn't fit the image), `correct_sscor` raises a `RuntimeError` naming
+   the frame and suggesting a smaller patch size or a different stripe direction/count.
+2. **Trains** a fresh CycleGAN from scratch on those self-sampled patches via `train.py
+   --dataroot <sample dir> --name sscor_selftrain --model sscor --checkpoints_dir <tmp>
+   --gpu_ids <0 or -1> --display_id 0 --no_html --load_size <patch_size+30> --crop_size
+   <patch_size> --n_epochs <SSCOR training epochs> --n_epochs_decay 0 --save_epoch_freq
+   <SSCOR training epochs>`. Setting `--save_epoch_freq` equal to the epoch count
+   guarantees `model.save_networks('latest')` (-> `latest_net_G_A.pth`) is written exactly
+   once, at the final epoch. `--display_id 0` avoids a visdom dependency; `--no_html`
+   avoids writing intermediate HTML previews.
+3. **Restores** the frame with the just-trained generator via the same `restore.py`
+   invocation as `pretrained` mode, pointed at the freshly trained
+   `--name sscor_selftrain --checkpoints_dir <tmp>`.
+
+Each frame gets its own fresh temporary directories for sampling output, checkpoints, and
+data, so nothing leaks between frames' independent self-training runs. Because a full
+CycleGAN is trained from scratch per frame, this mode is **much slower** than `pretrained`
+mode and a GPU is strongly recommended; `compute()` sends a one-time `sendWarning` when
+`self-train` is selected.
+
+#### Shared across both modes
+
 - **8-bit operation (lossy)**: SSCOR's generator only supports 8-bit RGB I/O (PIL-loaded
   input, `tensor2im`-produced `uint8` output). Each frame is therefore rescaled to `uint8`
-  `[0, 255]` via per-frame min/max before being handed to `restore.py`, and the 8-bit
+  `[0, 255]` via per-frame min/max before being handed to the SSCOR scripts, and the 8-bit
   result is rescaled back to the frame's original `[min, max]` range afterward. **This
   round trip is inherently lossy** (8-bit quantization) -- it is a limitation of SSCOR's
   design, not an artifact of this integration.
 - **GPU strongly recommended**: `compute()` resolves GPU availability once per run (a
   lazy, best-effort `torch.cuda.is_available()` check; if `torch` isn't importable, it
-  falls back to CPU) and passes `--gpu_ids 0` or `--gpu_ids -1` accordingly. If falling
-  back to CPU, `sendWarning` fires once: SSCOR on CPU is very slow.
+  falls back to CPU) and passes `--gpu_ids 0` or `--gpu_ids -1` accordingly, for both
+  modes. If falling back to CPU, `sendWarning` fires once: SSCOR on CPU is very slow (and
+  for `self-train`, which also trains a model per frame, doubly so).
 
 ### Numerical stability safeguard
 
@@ -226,13 +286,16 @@ patched directly in tests rather than exercising the real `SSCOR_WEIGHTS` env-va
 - **`flatfield` requires calibration frames** in the dataset itself (identified by XY
   coordinate); if you don't have dedicated flat/dark calibration images, use `basic`,
   `cidre`, or `cellprofiler` instead.
-- **`sscor` requires a trained checkpoint and a GPU is strongly recommended.** Unlike the
-  other five methods, `sscor` needs a user-supplied generator checkpoint (`SSCOR_WEIGHTS`,
-  see "SSCOR integration details" above) that must be produced offline via SSCOR's
-  self-training procedure -- there is no bundled/default checkpoint. If you don't have one,
-  use `destripe` (`pystripe`) instead: it needs no weights and is much faster, at the cost
-  of being a classical (non-deep-learning) method. Inference also works on CPU but is very
-  slow; a GPU is strongly recommended.
+- **`sscor` has two modes, and a GPU is strongly recommended for both.** `pretrained` mode
+  (the default) needs a user-supplied generator checkpoint (`SSCOR_WEIGHTS`, see "SSCOR
+  integration details" above) produced offline via SSCOR's self-training procedure --
+  there is no bundled/default checkpoint. `self-train` mode needs no checkpoint at all --
+  it runs that same self-training procedure itself, from scratch, per frame -- but is
+  correspondingly much slower (a full CycleGAN trained from zero for every frame). If
+  you don't have a checkpoint and don't want to wait for `self-train`, use `destripe`
+  (`pystripe`) instead: it needs no weights and is much faster, at the cost of being a
+  classical (non-deep-learning) method. Inference-only (`pretrained`) also works on CPU
+  but is very slow; `self-train` on CPU is slower still.
 - Related workers: `histogram_matching` (post-hoc intensity histogram matching across
   frames), `deconwolf` (deconvolution, a different kind of optical correction),
   `rolling_ball` (simple background subtraction).

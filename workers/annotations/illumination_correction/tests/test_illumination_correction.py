@@ -105,6 +105,12 @@ def base_worker_interface(**overrides):
         'Destripe sigma': 128,
         'Destripe wavelet': 'db3',
         'Destripe level': 0,
+        'SSCOR mode': 'pretrained',
+        'SSCOR stripe direction': 'horizontal',
+        'SSCOR horizontal stripe count': 1,
+        'SSCOR vertical stripe count': 1,
+        'SSCOR grid direction': 0,
+        'SSCOR training epochs': 30,
         'SSCOR patch size': 256,
         'SSCOR offset size': 100,
         'SSCOR repeat': 1,
@@ -147,6 +153,8 @@ def test_interface(mock_worker_preview_client):
         'Correct timelapse baseline drift', 'Smoothing sigma', 'Dark quantile',
         'CellProfiler mode', 'Flat-field XY coordinate', 'Dark-field XY coordinate',
         'Dark-field constant', 'Destripe sigma', 'Destripe wavelet', 'Destripe level',
+        'SSCOR mode', 'SSCOR stripe direction', 'SSCOR horizontal stripe count',
+        'SSCOR vertical stripe count', 'SSCOR grid direction', 'SSCOR training epochs',
         'SSCOR patch size', 'SSCOR offset size', 'SSCOR repeat', 'SSCOR dark threshold',
         'Report correction quality (QC)',
     ]:
@@ -156,6 +164,16 @@ def test_interface(mock_worker_preview_client):
     assert interface_data['Destripe wavelet']['items'] == ['db3', 'db5', 'haar', 'sym4']
     assert interface_data['Estimate darkfield']['default'] is True
     assert interface_data['Report correction quality (QC)']['default'] is False
+
+    assert interface_data['SSCOR mode']['type'] == 'select'
+    assert interface_data['SSCOR mode']['items'] == ['pretrained', 'self-train']
+    assert interface_data['SSCOR mode']['default'] == 'pretrained'
+    assert interface_data['SSCOR stripe direction']['items'] == ['horizontal', 'vertical', 'grid']
+    assert interface_data['SSCOR stripe direction']['default'] == 'horizontal'
+    assert interface_data['SSCOR horizontal stripe count']['default'] == 1
+    assert interface_data['SSCOR vertical stripe count']['default'] == 1
+    assert interface_data['SSCOR grid direction']['default'] == 0
+    assert interface_data['SSCOR training epochs']['default'] == 30
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +341,37 @@ def test_sscor_without_weights_error(
     mock_corrections['sscor'].assert_not_called()
     mock_large_image.write.assert_not_called()
     mock_tile_client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_sscor_selftrain_no_weights_needed(
+        mock_tile_client, mock_large_image, mock_corrections, mocker, capsys):
+    """'SSCOR mode'='self-train' must dispatch to correct_sscor with no SSCOR_WEIGHTS at all
+    and WITHOUT resolve_sscor_checkpoint being patched -- self-train trains its own model per
+    frame instead of requiring a pre-supplied checkpoint."""
+    mocker.patch.dict('os.environ', {'SSCOR_WEIGHTS': ''})
+
+    resolve_spy = mocker.patch('entrypoint.resolve_sscor_checkpoint')
+
+    params = base_worker_interface(Method='sscor', **{'SSCOR mode': 'self-train'})
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    captured = capsys.readouterr()
+    assert '"error"' not in captured.out
+    resolve_spy.assert_not_called()
+
+    mock_corrections['sscor'].assert_called_once()
+    call_opts = mock_corrections['sscor'].call_args[0][1]
+    assert call_opts['sscor_mode'] == 'self-train'
+    assert call_opts['sscor_weights'] is None
+    assert call_opts['sscor_gpu_ids'] in ('0', '-1')
+    assert call_opts['sscor_stripe_direction'] == 'horizontal'
+    assert call_opts['sscor_h_n'] == 1
+    assert call_opts['sscor_v_n'] == 1
+    assert call_opts['sscor_grid_direction'] == 0
+    assert call_opts['sscor_epochs'] == 30
+
+    mock_large_image.write.assert_called_once_with('/tmp/illumination_corrected.tiff')
+    mock_tile_client.client.uploadFileToFolder.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

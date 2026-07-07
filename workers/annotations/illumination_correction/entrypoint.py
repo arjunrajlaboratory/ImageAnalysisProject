@@ -160,13 +160,77 @@ def interface(image, apiUrl, token):
             'displayOrder': 14,
         },
         # --- SSCOR ---
+        'SSCOR mode': {
+            'type': 'select',
+            'items': ['pretrained', 'self-train'],
+            'default': 'pretrained',
+            'tooltip': 'sscor: how the generator checkpoint is obtained. pretrained = use a '
+                       'checkpoint trained offline and supplied via the SSCOR_WEIGHTS '
+                       'environment variable (fast, but you must already have a trained '
+                       'checkpoint). self-train = no checkpoint needed -- SSCOR samples '
+                       'stripe-free "clean" patches and striped patches from the image itself '
+                       'and trains a small CycleGAN on them before restoring, faithfully '
+                       'reproducing the upstream per-image self-training method. self-train '
+                       'trains a fresh model PER FRAME on a GPU and is slow.',
+            'displayOrder': 15,
+        },
+        'SSCOR stripe direction': {
+            'type': 'select',
+            'items': ['horizontal', 'vertical', 'grid'],
+            'default': 'horizontal',
+            'tooltip': 'sscor (self-train): stripe orientation to sample training patches for -- '
+                       'horizontal, vertical, or grid (both directions, using the upstream '
+                       'sample_stripe_2.py corner/junction sampling). Trains a fresh model PER '
+                       'FRAME on a GPU and is slow.',
+            'displayOrder': 16,
+        },
+        'SSCOR horizontal stripe count': {
+            'type': 'number',
+            'min': 1,
+            'max': 4096,
+            'default': 1,
+            'tooltip': 'sscor (self-train): number of horizontal stripe bands (--h_n) used when '
+                       'sampling training patches (horizontal or grid stripe direction). Trains '
+                       'a fresh model PER FRAME on a GPU and is slow.',
+            'displayOrder': 17,
+        },
+        'SSCOR vertical stripe count': {
+            'type': 'number',
+            'min': 1,
+            'max': 4096,
+            'default': 1,
+            'tooltip': 'sscor (self-train): number of vertical stripe bands (--v_n) used when '
+                       'sampling training patches (vertical or grid stripe direction). Trains a '
+                       'fresh model PER FRAME on a GPU and is slow.',
+            'displayOrder': 18,
+        },
+        'SSCOR grid direction': {
+            'type': 'number',
+            'min': 0,
+            'max': 3,
+            'default': 0,
+            'tooltip': 'sscor (self-train): junction direction (0=Upper Left, 1=Upper Right, '
+                       '2=Lower Left, 3=Lower Right) passed as sample_stripe_2.py\'s --direction; '
+                       'only used when SSCOR stripe direction=grid. Trains a fresh model PER '
+                       'FRAME on a GPU and is slow.',
+            'displayOrder': 19,
+        },
+        'SSCOR training epochs': {
+            'type': 'number',
+            'min': 1,
+            'max': 300,
+            'default': 30,
+            'tooltip': 'sscor (self-train): number of training epochs for the per-frame CycleGAN '
+                       'self-training pass. Trains a fresh model PER FRAME on a GPU and is slow.',
+            'displayOrder': 20,
+        },
         'SSCOR patch size': {
             'type': 'number',
             'min': 1,
             'max': 4096,
             'default': 256,
             'tooltip': 'sscor: sliding-window patch size (px) fed to the generator.',
-            'displayOrder': 15,
+            'displayOrder': 21,
         },
         'SSCOR offset size': {
             'type': 'number',
@@ -174,7 +238,7 @@ def interface(image, apiUrl, token):
             'max': 4096,
             'default': 100,
             'tooltip': 'sscor: sliding-window step/offset size (px) between patches.',
-            'displayOrder': 16,
+            'displayOrder': 22,
         },
         'SSCOR repeat': {
             'type': 'number',
@@ -183,7 +247,7 @@ def interface(image, apiUrl, token):
             'default': 1,
             'tooltip': 'sscor: number of repeated passes (with shifted offsets) to combine via '
                        'max-projection, per the upstream restore.py.',
-            'displayOrder': 17,
+            'displayOrder': 23,
         },
         'SSCOR dark threshold': {
             'type': 'number',
@@ -192,7 +256,7 @@ def interface(image, apiUrl, token):
             'default': 10,
             'tooltip': 'sscor: 8-bit intensity threshold below which the original (uncorrected) '
                        'pixel is kept instead of the restored value.',
-            'displayOrder': 18,
+            'displayOrder': 24,
         },
         # --- QC ---
         'Report correction quality (QC)': {
@@ -201,7 +265,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'Compute lightweight EVEN-style flat-field-quality metrics per corrected '
                        'channel and store them in the output item metadata. Not the full EVEN '
                        'framework -- a quick quantitative stand-in for comparing methods.',
-            'displayOrder': 19,
+            'displayOrder': 25,
         },
     }
     # Send the interface object to the server
@@ -401,16 +465,19 @@ def correct_destripe(stack, opts):
 
 
 def resolve_sscor_checkpoint():
-    """Resolve the path to the SSCOR generator checkpoint.
+    """Resolve the path to the SSCOR generator checkpoint (pretrained mode only).
 
     SSCOR weights are not bundled in the Docker image -- the upstream repo
     (https://github.com/lxxcontinue/SSCOR) distributes trained models via
-    Google Drive, not a stable direct-download URL, and producing a
-    checkpoint requires an image-specific self-training stage (proximity
-    sampling + adversarial training) that must be run offline per the
-    upstream README. The runtime source of truth is therefore the
+    Google Drive, not a stable direct-download URL, and producing one requires
+    an image-specific self-training stage (proximity sampling + adversarial
+    training) that must either be run offline per the upstream README, or via
+    this worker's own `SSCOR mode=self-train` (see `correct_sscor`). The
+    runtime source of truth for the *pretrained* mode is therefore the
     SSCOR_WEIGHTS environment variable, which should point to a mounted
-    generator checkpoint (a `latest_net_G.pth` file). Returns the resolved
+    generator checkpoint (the CycleGAN's `G_A` weights; at inference time
+    SSCOR loads it as `latest_net_G_A.pth`, regardless of the file's original
+    name -- `correct_sscor` stages it under that name). Returns the resolved
     path, or None (after sending an actionable sendError) if unavailable.
     """
     weights_path = os.environ.get('SSCOR_WEIGHTS', '').strip()
@@ -419,14 +486,30 @@ def resolve_sscor_checkpoint():
             'SSCOR weights are not available.',
             info=(
                 'SSCOR weights are not bundled in this image -- they are distributed via '
-                'Google Drive from https://github.com/lxxcontinue/SSCOR. Download a trained '
-                'generator checkpoint, mount it into the container, and set the SSCOR_WEIGHTS '
-                'environment variable to its path (a `latest_net_G.pth` file), or choose a '
-                'different Method (e.g. destripe, which needs no weights).'
+                'Google Drive from https://github.com/lxxcontinue/SSCOR. Either download a '
+                'trained generator checkpoint, mount it into the container, and set the '
+                'SSCOR_WEIGHTS environment variable to its path (the CycleGAN G_A generator '
+                'weights, staged internally as `latest_net_G_A.pth`), or set "SSCOR mode" to '
+                '"self-train" to train a model from the image itself with no checkpoint, or '
+                'choose a different Method (e.g. destripe, which needs no weights).'
             ),
         )
         return None
     return weights_path
+
+
+def _sscor_frame_to_uint8(frame):
+    """Rescale one (Y, X) float frame to uint8 [0, 255] via per-frame min/max.
+    Returns (frame_min, span, frame_uint8); `span` is guaranteed > 0, so the
+    inverse rescale `restored_gray / 255.0 * span + frame_min` always applies.
+    """
+    frame_min = float(np.min(frame))
+    frame_max = float(np.max(frame))
+    span = frame_max - frame_min
+    if span <= 0:
+        span = 1.0
+    frame_uint8 = np.clip((frame - frame_min) / span * 255.0, 0, 255).astype(np.uint8)
+    return frame_min, span, frame_uint8
 
 
 def correct_sscor(stack, opts):
@@ -436,26 +519,39 @@ def correct_sscor(stack, opts):
 
     SSCOR is a pytorch-CycleGAN-and-pix2pix-style codebase with no clean
     importable inference API, so this integration shells out to its CLI
-    script `restore.py` exactly like `deconwolf` shells out to the `dw`
-    binary. It runs ONLY the repo's inference stage, using a user-supplied
-    trained generator checkpoint resolved by `resolve_sscor_checkpoint`
-    (SSCOR_WEIGHTS). The upstream self-training stage (proximity sampling +
-    adversarial training, which needs image-specific stripe-orientation
-    parameters) is NOT run here -- per the upstream README, train a
-    checkpoint offline and point SSCOR_WEIGHTS at its `latest_net_G.pth`.
+    scripts exactly like `deconwolf` shells out to the `dw` binary. Two modes
+    are supported, selected by `opts['sscor_mode']`:
+
+    - 'pretrained': runs ONLY the repo's inference stage (`restore.py`),
+      using a user-supplied trained generator checkpoint resolved by
+      `resolve_sscor_checkpoint` (SSCOR_WEIGHTS). No training happens here.
+    - 'self-train': the faithful upstream SSCOR pipeline, run once PER FRAME
+      with no pre-supplied checkpoint. For each frame: (1) `sample/sample_stripe.py`
+      or `sample/sample_stripe_2.py` samples stripe-free "clean" patches
+      (trainB) and striped patches (trainA) from the image itself, using the
+      chosen stripe direction/count; (2) `train.py` trains a small CycleGAN
+      on those self-sampled patches for `sscor_epochs` epochs, saving
+      `latest_net_G_A.pth` once at the end (`--save_epoch_freq` == epoch
+      count); (3) `restore.py` restores the frame with that just-trained
+      generator. This is slow (a fresh model is trained from scratch per
+      frame) and a GPU is strongly recommended.
 
     SSCOR's generator only supports 8-bit RGB I/O (PIL-loaded input,
     `tensor2im`-produced uint8 output), so each frame is rescaled to uint8
-    [0, 255] via per-frame min/max before being handed to `restore.py`, and
-    the 8-bit result is rescaled back to the frame's original [min, max]
+    [0, 255] via per-frame min/max before being handed to the SSCOR scripts,
+    and the 8-bit result is rescaled back to the frame's original [min, max]
     range afterward. This round trip is LOSSY (8-bit quantization) and is
     inherent to SSCOR's design, not an artifact of this integration.
 
     stack: (N, Y, X) array -- every frame of one channel's collection.
-    opts: dict with 'sscor_patch_size', 'sscor_offset_size', 'sscor_repeat',
-          'sscor_dark_threshold' (all int), plus 'sscor_weights' (path to a
-          `latest_net_G.pth` generator checkpoint) and 'sscor_gpu_ids'
-          ('-1' for CPU, '0' for GPU), injected by `compute()`.
+    opts: dict with 'sscor_mode' ('pretrained' or 'self-train'),
+          'sscor_patch_size', 'sscor_offset_size', 'sscor_repeat',
+          'sscor_dark_threshold' (all int), 'sscor_gpu_ids' ('-1' for CPU,
+          '0' for GPU); for 'pretrained': 'sscor_weights' (path to a
+          generator checkpoint, staged as `latest_net_G_A.pth`); for
+          'self-train': 'sscor_stripe_direction' ('horizontal'/'vertical'/
+          'grid'), 'sscor_h_n', 'sscor_v_n', 'sscor_grid_direction',
+          'sscor_epochs' (all int). All injected by `compute()`.
     """
     import shutil
     import subprocess
@@ -465,7 +561,7 @@ def correct_sscor(stack, opts):
 
     stack = np.asarray(stack, dtype=np.float64)
 
-    weights_path = opts['sscor_weights']
+    mode = opts.get('sscor_mode', 'pretrained')
     gpu_ids = opts.get('sscor_gpu_ids', '-1')
     patch_size = int(opts.get('sscor_patch_size', 256))
     offset_size = int(opts.get('sscor_offset_size', 100))
@@ -477,22 +573,164 @@ def correct_sscor(stack, opts):
 
     corrected = np.empty_like(stack)
 
-    with tempfile.TemporaryDirectory() as tmpckpt, tempfile.TemporaryDirectory() as tmpdata:
-        # restore.py loads <checkpoints_dir>/<name>/<epoch>_net_G.pth (epoch defaults
-        # to 'latest'); we use name='sscor' and copy the user-supplied checkpoint in.
-        ckpt_dir = os.path.join(tmpckpt, 'sscor')
-        os.makedirs(ckpt_dir, exist_ok=True)
-        shutil.copy(weights_path, os.path.join(ckpt_dir, 'latest_net_G.pth'))
+    if mode == 'self-train':
+        stripe_direction = opts.get('sscor_stripe_direction', 'horizontal')
+        h_n = int(opts.get('sscor_h_n', 1))
+        v_n = int(opts.get('sscor_v_n', 1))
+        grid_direction = int(opts.get('sscor_grid_direction', 0))
+        epochs = int(opts.get('sscor_epochs', 30))
+        exp_name = 'sscor_selftrain'
+
+        sample_stripe_script = os.path.join(repo_path, 'sample', 'sample_stripe.py')
+        sample_stripe_2_script = os.path.join(repo_path, 'sample', 'sample_stripe_2.py')
+        train_script = os.path.join(repo_path, 'train.py')
 
         for i in range(stack.shape[0]):
             frame = stack[i]
-            frame_min = float(np.min(frame))
-            frame_max = float(np.max(frame))
-            span = frame_max - frame_min
-            if span <= 0:
-                span = 1.0
-            frame_uint8 = np.clip(
-                (frame - frame_min) / span * 255.0, 0, 255).astype(np.uint8)
+            frame_min, span, frame_uint8 = _sscor_frame_to_uint8(frame)
+
+            # Fresh temp dirs per frame so self-trained checkpoints/samples never
+            # leak into the next frame's (independent) self-training run.
+            with tempfile.TemporaryDirectory() as tmpin, \
+                    tempfile.TemporaryDirectory() as tmpout, \
+                    tempfile.TemporaryDirectory() as tmpckpt:
+
+                image_name = f'frame_{i:04d}.png'
+                input_path = os.path.join(tmpin, image_name)
+                Image.fromarray(frame_uint8).convert('RGB').save(input_path)
+                stem = os.path.splitext(image_name)[0]
+
+                # 1. Sample stripe (trainA) / stripe-free (trainB) patches from the
+                # frame itself, per the upstream self-training method.
+                if stripe_direction == 'grid':
+                    sample_cmd = [
+                        sys.executable, sample_stripe_2_script,
+                        '--h_n', str(h_n),
+                        '--v_n', str(v_n),
+                        '--direction', str(grid_direction),
+                        '--in_dir', tmpin,
+                        '--img_name', image_name,
+                        '--out_dir', tmpout,
+                        '--patch_size', str(patch_size),
+                    ]
+                elif stripe_direction == 'vertical':
+                    sample_cmd = [
+                        sys.executable, sample_stripe_script,
+                        '--v',
+                        '--v_n', str(v_n),
+                        '--in_dir', tmpin,
+                        '--img_name', image_name,
+                        '--out_dir', tmpout,
+                        '--patch_size', str(patch_size),
+                    ]
+                else:  # 'horizontal' (default)
+                    sample_cmd = [
+                        sys.executable, sample_stripe_script,
+                        '--h',
+                        '--h_n', str(h_n),
+                        '--in_dir', tmpin,
+                        '--img_name', image_name,
+                        '--out_dir', tmpout,
+                        '--patch_size', str(patch_size),
+                    ]
+
+                result = subprocess.run(sample_cmd, capture_output=True, text=True, cwd=repo_path)
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"SSCOR self-train sampling failed on frame {i}: {result.stderr}")
+
+                sample_dir = os.path.join(tmpout, f'sample_{stem}')
+                train_a_dir = os.path.join(sample_dir, 'trainA')
+                if not os.path.isdir(train_a_dir) or len(os.listdir(train_a_dir)) == 0:
+                    raise RuntimeError(
+                        f"SSCOR self-train sampling produced no training patches for frame {i} "
+                        f"(patch_size={patch_size}, stripe_direction={stripe_direction}). The "
+                        f"frame may be too small for this patch size, or the stripe direction/"
+                        f"count doesn't fit the image -- try a smaller 'SSCOR patch size' or a "
+                        f"different 'SSCOR stripe direction'/count.")
+
+                # 2. Train a fresh per-frame CycleGAN on the self-sampled patches.
+                # save_epoch_freq == n_epochs guarantees model.save_networks('latest')
+                # (-> latest_net_G_A.pth) is written exactly once, at the final epoch.
+                train_cmd = [
+                    sys.executable, train_script,
+                    '--dataroot', sample_dir,
+                    '--name', exp_name,
+                    '--model', 'sscor',
+                    '--checkpoints_dir', tmpckpt,
+                    '--gpu_ids', gpu_ids,
+                    '--display_id', '0',
+                    '--no_html',
+                    '--load_size', str(patch_size + 30),
+                    '--crop_size', str(patch_size),
+                    '--n_epochs', str(epochs),
+                    '--n_epochs_decay', '0',
+                    '--save_epoch_freq', str(epochs),
+                ]
+                result = subprocess.run(train_cmd, capture_output=True, text=True, cwd=repo_path)
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"SSCOR self-train train.py failed on frame {i}: {result.stderr}")
+
+                # 3. Restore the frame with the just-trained generator.
+                restore_cmd = [
+                    sys.executable, restore_script,
+                    '--dataroot', tmpin,
+                    '--name', exp_name,
+                    '--model', 'sscor',
+                    '--image_name', image_name,
+                    '--offset_size', str(offset_size),
+                    '--patch_size', str(patch_size),
+                    '--repeat', str(repeat),
+                    '--dark_threshold', str(dark_threshold),
+                    '--checkpoints_dir', tmpckpt,
+                    '--gpu_ids', gpu_ids,
+                    '--eval',
+                ]
+                result = subprocess.run(restore_cmd, capture_output=True, text=True, cwd=repo_path)
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"SSCOR self-train restore.py failed on frame {i}: {result.stderr}")
+
+                output_path = os.path.join(tmpin, 'result', f'restore-{image_name}')
+                if not os.path.exists(output_path):
+                    raise RuntimeError(
+                        f"SSCOR restore.py did not produce the expected output '{output_path}' "
+                        f"for frame {i}. stdout: {result.stdout}")
+
+                restored_rgb = np.asarray(Image.open(output_path).convert('RGB'), dtype=np.float64)
+                restored_gray = np.mean(restored_rgb, axis=-1)
+                corrected[i] = restored_gray / 255.0 * span + frame_min
+
+        diagnostics = {
+            'mode': 'self-train',
+            'patch_size': patch_size,
+            'offset_size': offset_size,
+            'repeat': repeat,
+            'dark_threshold': dark_threshold,
+            'gpu_ids': gpu_ids,
+            'stripe_direction': stripe_direction,
+            'h_n': h_n,
+            'v_n': v_n,
+            'grid_direction': grid_direction,
+            'epochs': epochs,
+        }
+        return corrected, diagnostics
+
+    # mode == 'pretrained'
+    weights_path = opts['sscor_weights']
+
+    with tempfile.TemporaryDirectory() as tmpckpt, tempfile.TemporaryDirectory() as tmpdata:
+        # restore.py loads <checkpoints_dir>/<name>/<epoch>_net_<model_name>.pth (epoch
+        # defaults to 'latest'); at test time SSCORModel.model_names == ['G_A'], so the
+        # file MUST be named `latest_net_G_A.pth`, not `latest_net_G.pth`.
+        ckpt_dir = os.path.join(tmpckpt, 'sscor')
+        os.makedirs(ckpt_dir, exist_ok=True)
+        shutil.copy(weights_path, os.path.join(ckpt_dir, 'latest_net_G_A.pth'))
+
+        for i in range(stack.shape[0]):
+            frame = stack[i]
+            frame_min, span, frame_uint8 = _sscor_frame_to_uint8(frame)
 
             image_name = f'frame_{i:04d}.png'
             input_path = os.path.join(tmpdata, image_name)
@@ -528,6 +766,7 @@ def correct_sscor(stack, opts):
             corrected[i] = restored_gray / 255.0 * span + frame_min
 
     diagnostics = {
+        'mode': 'pretrained',
         'patch_size': patch_size,
         'offset_size': offset_size,
         'repeat': repeat,
@@ -616,12 +855,22 @@ def _method_params_for_metadata(method, opts, flat_xy, dark_xy):
             'destripe_level': opts['destripe_level'],
         }
     if method == 'sscor':
-        return {
+        params = {
+            'sscor_mode': opts['sscor_mode'],
             'sscor_patch_size': opts['sscor_patch_size'],
             'sscor_offset_size': opts['sscor_offset_size'],
             'sscor_repeat': opts['sscor_repeat'],
             'sscor_dark_threshold': opts['sscor_dark_threshold'],
         }
+        if opts['sscor_mode'] == 'self-train':
+            params.update({
+                'sscor_stripe_direction': opts['sscor_stripe_direction'],
+                'sscor_h_n': opts['sscor_h_n'],
+                'sscor_v_n': opts['sscor_v_n'],
+                'sscor_grid_direction': opts['sscor_grid_direction'],
+                'sscor_epochs': opts['sscor_epochs'],
+            })
+        return params
     return {}
 
 
@@ -693,6 +942,12 @@ def compute(datasetId, apiUrl, token, params):
         'sscor_offset_size': int(workerInterface.get('SSCOR offset size', 100)),
         'sscor_repeat': int(workerInterface.get('SSCOR repeat', 1)),
         'sscor_dark_threshold': int(workerInterface.get('SSCOR dark threshold', 10)),
+        'sscor_mode': workerInterface.get('SSCOR mode', 'pretrained'),
+        'sscor_stripe_direction': workerInterface.get('SSCOR stripe direction', 'horizontal'),
+        'sscor_h_n': int(workerInterface.get('SSCOR horizontal stripe count', 1)),
+        'sscor_v_n': int(workerInterface.get('SSCOR vertical stripe count', 1)),
+        'sscor_grid_direction': int(workerInterface.get('SSCOR grid direction', 0)),
+        'sscor_epochs': int(workerInterface.get('SSCOR training epochs', 30)),
     }
 
     qc_enabled = bool(workerInterface.get('Report correction quality (QC)', False))
@@ -713,9 +968,19 @@ def compute(datasetId, apiUrl, token, params):
     sscor_weights_path = None
     sscor_gpu_ids = '-1'
     if method == 'sscor':
-        sscor_weights_path = resolve_sscor_checkpoint()
-        if sscor_weights_path is None:
-            return  # resolve_sscor_checkpoint() already called sendError
+        if opts['sscor_mode'] == 'pretrained':
+            sscor_weights_path = resolve_sscor_checkpoint()
+            if sscor_weights_path is None:
+                return  # resolve_sscor_checkpoint() already called sendError
+        else:
+            # self-train needs no pre-supplied checkpoint -- it trains its own,
+            # per frame, from patches sampled out of the image itself.
+            sendWarning(
+                'SSCOR self-training enabled',
+                info='SSCOR "self-train" mode needs no pre-supplied checkpoint, but it trains a '
+                     'fresh CycleGAN model PER FRAME (sampling stripe/clean patches from the '
+                     'image itself, then training, then restoring); this can be slow, '
+                     'especially without a GPU.')
 
         try:
             import torch

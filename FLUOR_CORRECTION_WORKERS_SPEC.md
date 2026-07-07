@@ -469,11 +469,17 @@ Correction = blank), Tests = Yes, Docs link. Do NOT run
 
 - **SSCOR** (DL stripe correction): now implemented as the `sscor` method,
   vendored from `github.com/lxxcontinue/SSCOR` (pinned commit) and driven via
-  subprocess to its `restore.py` CLI. It exposes SSCOR's inference stage with a
-  user-supplied trained generator checkpoint (env `SSCOR_WEIGHTS`); the upstream
-  per-image self-training stage is run offline per the repo README. Operates in
-  8-bit (lossy round-trip for >8-bit sources). The classical `pystripe`
-  `destripe` method is retained as the fast, no-weights alternative.
+  subprocess to its CLI scripts. Two modes via `SSCOR mode`:
+  - `pretrained`: runs SSCOR's `restore.py` inference stage with a user-supplied
+    trained generator checkpoint (env `SSCOR_WEIGHTS`, staged internally as the
+    `latest_net_G_A.pth` the CycleGAN loader expects).
+  - `self-train`: the faithful upstream per-image method, needs no checkpoint —
+    for each frame it samples striped/stripe-free patches from the image itself
+    (`sample_stripe.py`/`sample_stripe_2.py`, controlled by stripe
+    direction/counts), trains a fresh CycleGAN (`train.py`), then restores.
+    Trains per frame → slow, GPU strongly recommended.
+  Operates in 8-bit (lossy round-trip for >8-bit sources). The classical
+  `pystripe` `destripe` method is retained as the fast, no-weights alternative.
 - **EVEN** (ML evaluation/optimization framework): not vendored → optional
   lightweight QC metrics report instead.
 - **CIDRE**: no maintained pip package → faithful in-house gain/offset
