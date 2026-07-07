@@ -211,6 +211,15 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(
         apiUrl=apiUrl, token=token, datasetId=datasetId)
 
+    # Ensure the local models directory exists up front. It is used both as the
+    # download destination for a custom base model (below) and as the training
+    # save location: train_seg saves to `save_path / "models" / model_name` and
+    # only does `(save_path / "models").mkdir(exist_ok=True)` (no parents), so the
+    # parent `.cellposesam` dir must already exist. Unlike the older cellpose_train
+    # worker (which saved into cellpose's own ~/.cellpose/models), our custom
+    # .cellposesam dir is never created during the build or on the base-model path.
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
     # Resolve the base checkpoint / model path to fine-tune from.
     if base_model in BASE_MODELS:
         # Pass the checkpoint name explicitly so the starting point is pinned to
@@ -320,15 +329,6 @@ def compute(datasetId, apiUrl, token, params):
 
                 training_images.append(stacked_image_crop)
                 label_images.append(label_image_crop)
-
-    # Ensure the local models directory exists before training. train_seg saves
-    # to `save_path / "models" / model_name` and only does
-    # `(save_path / "models").mkdir(exist_ok=True)` (no parents), so the parent
-    # `.cellposesam` dir must already exist. Unlike the older cellpose_train
-    # worker (which saved into cellpose's own ~/.cellpose/models), our custom
-    # .cellposesam dir is never created during the build or on the base-model
-    # path, so create it here.
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     using_gpu = core.use_gpu()
     print(f"Using GPU: {using_gpu}")
