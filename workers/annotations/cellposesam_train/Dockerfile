@@ -1,0 +1,75 @@
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 as base
+LABEL isUPennContrastWorker=True
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
+  apt-get install -qy software-properties-common python3-software-properties && \
+  apt-get update && apt-get install -qy \
+  build-essential \
+  wget \
+  python3 \
+  r-base \
+  libffi-dev \
+  libssl-dev \
+  libjpeg-dev \
+  zlib1g-dev \
+  r-base \
+  git \
+  libpython3-dev && \
+  apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/miniforge3/bin:$PATH"
+ARG PATH="/root/miniforge3/bin:$PATH"
+
+RUN wget \
+    https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+    && mkdir /root/.conda \
+    && bash Miniforge3-Linux-x86_64.sh -b \
+    && rm -f Miniforge3-Linux-x86_64.sh
+
+FROM base as build
+
+COPY ./workers/annotations/cellposesam_train/environment.yml /
+RUN conda env create --file /environment.yml
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+
+RUN pip install rtree shapely
+
+RUN git clone https://github.com/Kitware/UPennContrast/
+
+RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
+RUN pip install -e /UPennContrast/devops/girder/annotation_client/
+
+# models_config.py is the single source of truth for the built-in checkpoints,
+# so it must be present before download_models.py runs.
+COPY ./workers/annotations/cellposesam_train/models_config.py /
+COPY ./workers/annotations/cellposesam_train/download_models.py /
+RUN python /download_models.py
+
+COPY ./workers/annotations/cellposesam_train/utils.py /
+COPY ./workers/annotations/cellposesam_train/girder_utils.py /
+COPY ./workers/annotations/cellposesam_train/entrypoint.py /
+
+COPY ./annotation_utilities /annotation_utilities
+RUN pip install /annotation_utilities
+
+COPY ./worker_client /worker_client
+RUN pip install /worker_client
+
+LABEL isUPennContrastWorker="" \
+      isAnnotationWorker="" \
+      interfaceName="Cellpose-SAM retrain" \
+      interfaceCategory="Cellpose" \
+      description="Fine-tunes Cellpose-SAM models based on user-selected images" \
+      advancedOptionsPanel="False" \
+      annotationConfigurationPanel="False" \
+      defaultToolName="Cellpose-SAM retrain" \
+      annotationShape="polygon"
+
+# Fast env activation in place of `conda run` (see todo/worker-startup-latency.md)
+COPY ./workers/base_docker_images/run_worker.sh /usr/local/bin/run_worker.sh
+RUN chmod +x /usr/local/bin/run_worker.sh
+ENTRYPOINT ["/usr/local/bin/run_worker.sh", "/entrypoint.py"]
