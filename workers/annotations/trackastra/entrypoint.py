@@ -50,11 +50,10 @@ def interface(image, apiUrl, token):
         },
         'Tracking mode': {
             'type': 'select',
-            'items': ['greedy', 'greedy_nodiv', 'ilp'],
+            'items': ['greedy', 'greedy_nodiv'],
             'default': 'greedy',
             'tooltip': 'Linking strategy. "greedy" allows divisions, '
-                       '"greedy_nodiv" forbids them, "ilp" solves a global '
-                       'integer program (slower, requires an ILP solver).',
+                       '"greedy_nodiv" forbids them.',
             'displayOrder': 4,
         },
         'Batch XY': {
@@ -213,13 +212,16 @@ def compute(datasetId, apiUrl, token, params):
     model_name = workerInterface.get('Model', 'general_2d')
     mode = workerInterface.get('Tracking mode', 'greedy')
 
-    if not track_tags or len(track_tags) == 0:
+    if not track_tags:
         sendError("No tag specified",
                   info="Please select at least one tag of objects to track.")
         raise ValueError("No tag specified")
 
     tile = params['tile']
-    output_tags = params.get('tags', [])
+    # Always stamp a descriptive tag so tracking connections are identifiable
+    # (and filterable / bulk-selectable) in the UI even when the user set no
+    # output tags -- matching the convention of the other connection workers.
+    output_tags = list(dict.fromkeys((params.get('tags') or []) + ["Trackastra"]))
 
     batch_xy = batch_argument_parser.process_range_list(
         workerInterface.get('Batch XY', None), convert_one_to_zero_index=True)

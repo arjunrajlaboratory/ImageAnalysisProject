@@ -62,7 +62,6 @@ LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Trackastra tracking" \
       interfaceCategory="Trackastra" \
-      annotationShape="polygon" \
       description="Links objects across time into tracks using the Trackastra transformer model" \
       defaultToolName="Trackastra tracking"
 

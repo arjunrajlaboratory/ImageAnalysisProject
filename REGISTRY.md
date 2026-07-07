@@ -25,7 +25,7 @@ Create new annotations by segmenting images or connecting existing annotations.
 | Cellori Segmentation |  | Yes |  | [docs](workers/annotations/cellori_segmentation/CELLORI_SEGMENTATION.md) |
 | Cellpose | This tool runs the Cellpose model to segment the image into cells. Learn more | Yes |  | [docs](workers/annotations/cellpose/CELLPOSE.md) |
 | Cellpose retrain | This tool trains a Cellpose model using user-corrected annotations. Learn more | Yes |  | [docs](workers/annotations/cellpose_train/CELLPOSE_TRAIN.md) |
-| Cellpose-SAM | This tool runs the Cellpose-SAM model to segment the image into cells. Learn more | Yes | Yes | [docs](workers/annotations/cellposesam/CELLPOSESAM.md) |
+| Cellpose-SAM | This tool runs the Cellpose-SAM model to segment the image into cells. Learn more | Yes |  | [docs](workers/annotations/cellposesam/CELLPOSESAM.md) |
 | CondensateNet segmentation | Segments biomolecular condensates using CondensateNet deep learning model | Yes |  | [docs](workers/annotations/condensatenet/CONDENSATENET.md) |
 | Connect Sequential | This tool connects objects sequentially across time or z-slices.It is useful for connec... |  | Yes | [docs](workers/annotations/connect_sequential/CONNECT_SEQUENTIAL.md) |
 | Connect Time Lapse | This tool connects objects across time slices. It allows you to connect objects even if... |  | Yes | [docs](workers/annotations/connect_timelapse/CONNECT_TIMELAPSE.md) |

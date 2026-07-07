@@ -220,6 +220,43 @@ def test_compute_end_to_end(mock_ann_client_cls, mock_tile_cls, mock_run,
 @patch('entrypoint.run_trackastra')
 @patch('annotation_client.tiles.UPennContrastDataset')
 @patch('annotation_client.annotations.UPennContrastAnnotationClient')
+def test_compute_stamps_descriptive_tag_when_no_output_tags(
+        mock_ann_client_cls, mock_tile_cls, mock_run, square_annotations):
+    """Connections carry a 'Trackastra' tag even when no output tags are set."""
+    ann_client = mock_ann_client_cls.return_value
+    ann_client.getAnnotationsByDatasetId.return_value = square_annotations
+    tile_client = mock_tile_cls.return_value
+    tile_client.tiles = {'sizeX': 20, 'sizeY': 20}
+    tile_client.coordinatesToFrameIndex.return_value = 0
+    tile_client.getRegion.return_value = np.zeros((20, 20), dtype=np.float32)
+
+    g = nx.DiGraph()
+    g.add_node(0, time=0, label=1)
+    g.add_node(1, time=1, label=1)
+    g.add_edge(0, 1)
+    mock_run.return_value = g
+
+    params = {
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'tags': [],  # no output tags configured
+        'channel': 0,
+        'workerInterface': {
+            'Tag of objects to track': ['cell'],
+            'Channel': 0,
+            'Batch XY': '',
+            'Batch Z': '',
+        },
+    }
+    compute('ds', 'http://api', 'token', params)
+
+    conns = ann_client.createMultipleConnections.call_args[0][0]
+    assert conns, "expected at least one connection"
+    assert all('Trackastra' in c['tags'] for c in conns)
+
+
+@patch('entrypoint.run_trackastra')
+@patch('annotation_client.tiles.UPennContrastDataset')
+@patch('annotation_client.annotations.UPennContrastAnnotationClient')
 def test_compute_no_annotations(mock_ann_client_cls, mock_tile_cls, mock_run):
     ann_client = mock_ann_client_cls.return_value
     ann_client.getAnnotationsByDatasetId.return_value = []

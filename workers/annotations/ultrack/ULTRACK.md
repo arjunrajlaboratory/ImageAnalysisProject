@@ -28,18 +28,23 @@ Polygon coordinates are converted from Girder's top-left-origin convention to sc
 
 ### Mapping Tracks Back to Annotations
 
-Ultrack relabels objects internally, so track nodes are matched back to the original annotations by nearest mask centroid at the same time point (both are expressed in `(row, col)` = `(y, x)` image space, so the match is exact for undivided objects). This keeps the worker independent of Ultrack's internal id scheme.
+Ultrack relabels objects internally, so track nodes are matched back to the original annotations by nearest mask centroid at the same time point (both are expressed in `(row, col)` = `(y, x)` image space). This keeps the worker independent of Ultrack's internal id scheme. The match is nearest-neighbour with no distance cutoff, so it assumes objects within a frame have distinct centroids; two annotations sharing a centroid can be mapped ambiguously.
 
 ### Divisions
 
-Ultrack encodes lineage via `parent_track_id`. When a track has a parent, a connection is created from the parent track's final node to that child track's first node — so a division yields two such connections. Unchecking **Allow divisions** applies a strong penalty to division events in the solver.
+Ultrack encodes lineage via `parent_track_id`. When a track has a parent, a connection is created from the parent track's final node to that child track's first node — so a division yields two such connections. Unchecking **Allow divisions** applies a strong penalty to division events in the solver (a heavy discouragement in the objective, not a hard prohibition).
+
+### Output Tags
+
+Created connections always carry an `Ultrack` tag (in addition to any output tags configured on the tool) so the tracking result can be filtered, selected, or bulk-deleted as a group in the UI.
 
 ### Working Directory
 
-Ultrack persists intermediate results to a SQLite database; each XY/Z stack is tracked inside its own temporary directory that is cleaned up afterwards.
+Ultrack persists intermediate results to a SQLite database; each XY/Z stack is tracked inside its own temporary directory that is cleaned up afterwards. The tracks table is fully read into memory before the directory is removed.
 
 ## Notes
 
 - **CPU**: Ultrack's tracking is CPU-based and uses the open-source COIN-OR CBC solver by default (Gurobi is optional and not required).
+- Each frame is rasterized into a single label image, so objects are expected to be **non-overlapping** instance segmentations. Where two tagged polygons overlap at the same XY/Z/Time, the later-drawn one wins and a fully occluded object is dropped; polygons entirely outside the image bounds are skipped.
 - Only polygon annotations are tracked. Objects at a single time point (no second frame in their XY/Z stack) cannot form a track and are skipped.
 - Related workers: **Trackastra** (transformer-based tracking of the same segmentations), **Connect Time Lapse** and **Connect Sequential** (simpler nearest-neighbor linking), **SAM2 video** (segment-and-track in one step).

@@ -197,6 +197,43 @@ def test_compute_end_to_end(mock_ann_client_cls, mock_tile_cls, mock_run,
 @patch('entrypoint.run_ultrack')
 @patch('annotation_client.tiles.UPennContrastDataset')
 @patch('annotation_client.annotations.UPennContrastAnnotationClient')
+def test_compute_stamps_descriptive_tag_when_no_output_tags(
+        mock_ann_client_cls, mock_tile_cls, mock_run, square_annotations):
+    """Connections carry an 'Ultrack' tag even when no output tags are set."""
+    ann_client = mock_ann_client_cls.return_value
+    ann_client.getAnnotationsByDatasetId.return_value = square_annotations
+    tile_client = mock_tile_cls.return_value
+    tile_client.tiles = {'sizeX': 20, 'sizeY': 20}
+
+    def fake_run(masks, max_distance, allow_division, working_dir):
+        return pd.DataFrame([
+            {'track_id': 1, 't': 0, 'y': 3.5, 'x': 3.5, 'parent_track_id': -1},
+            {'track_id': 1, 't': 1, 'y': 5.5, 'x': 5.5, 'parent_track_id': -1},
+            {'track_id': 1, 't': 2, 'y': 7.5, 'x': 7.5, 'parent_track_id': -1},
+        ])
+    mock_run.side_effect = fake_run
+
+    params = {
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'tags': [],  # no output tags configured
+        'workerInterface': {
+            'Tag of objects to track': ['cell'],
+            'Max distance': 50,
+            'Allow divisions': True,
+            'Batch XY': '',
+            'Batch Z': '',
+        },
+    }
+    compute('ds', 'http://api', 'token', params)
+
+    conns = ann_client.createMultipleConnections.call_args[0][0]
+    assert conns, "expected at least one connection"
+    assert all('Ultrack' in c['tags'] for c in conns)
+
+
+@patch('entrypoint.run_ultrack')
+@patch('annotation_client.tiles.UPennContrastDataset')
+@patch('annotation_client.annotations.UPennContrastAnnotationClient')
 def test_compute_no_annotations(mock_ann_client_cls, mock_tile_cls, mock_run):
     ann_client = mock_ann_client_cls.return_value
     ann_client.getAnnotationsByDatasetId.return_value = []

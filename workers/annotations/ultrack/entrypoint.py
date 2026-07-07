@@ -165,12 +165,20 @@ def tracks_df_to_connections(tracks_df, label_centroid, label_to_id, datasetId, 
             continue
         centroids_by_time.setdefault(t_idx, []).append((ann_id, row, col))
 
-    # Assign every track node to an annotation id.
-    # node_ids[track_id] -> list of (t, annotation_id), sorted by t.
+    # Assign every track node to an annotation id, and record each track's
+    # parent in the same pass. node_ids[track_id] -> list of (t, annotation_id).
     node_ids = {}
-    has_z = 'z' in tracks_df.columns
+    parent_of = {}
     for _, r in tracks_df.iterrows():
         track_id = int(r['track_id'])
+        if track_id not in parent_of:
+            raw_parent = r.get('parent_track_id', -1)
+            # Founder tracks may encode "no parent" as -1, 0, or NaN depending
+            # on the Ultrack version; normalize all of these to -1.
+            try:
+                parent_of[track_id] = int(raw_parent)
+            except (ValueError, TypeError):
+                parent_of[track_id] = -1
         t_idx = int(r['t'])
         y = float(r['y'])
         x = float(r['x'])
@@ -205,19 +213,6 @@ def tracks_df_to_connections(tracks_df, label_centroid, label_to_id, datasetId, 
             add_connection(nodes[i][1], nodes[i + 1][1])
 
     # Division links: parent track's last node -> child track's first node.
-    # parent_track_id is constant within a track; read it once per track_id.
-    parent_of = {}
-    for _, r in tracks_df.iterrows():
-        track_id = int(r['track_id'])
-        raw_parent = r.get('parent_track_id', -1)
-        # Founder tracks may encode "no parent" as -1, 0, or NaN depending on
-        # the Ultrack version; normalize all of these to -1.
-        try:
-            parent_track_id = int(raw_parent)
-        except (ValueError, TypeError):
-            parent_track_id = -1
-        parent_of[track_id] = parent_track_id
-
     for track_id, parent_track_id in parent_of.items():
         if parent_track_id is None or parent_track_id < 0:
             continue
@@ -241,16 +236,11 @@ def run_ultrack(masks, max_distance, allow_division, working_dir):
     config = MainConfig()
     # Ultrack persists intermediate results to a SQLite database in this dir.
     config.data_config.working_dir = working_dir
-    try:
-        config.linking_config.max_distance = float(max_distance)
-    except Exception:
-        pass
+    config.linking_config.max_distance = float(max_distance)
     if not allow_division:
         # A strongly negative division weight makes the solver avoid splits.
-        try:
-            config.tracking_config.division_weight = -1e6
-        except Exception:
-            pass
+        # This is a strong penalty in the ILP objective, not a hard constraint.
+        config.tracking_config.division_weight = -1e6
 
     tracker = Tracker(config)
     tracker.track(labels=masks, overwrite=True)
@@ -270,13 +260,16 @@ def compute(datasetId, apiUrl, token, params):
     max_distance = float(workerInterface.get('Max distance', 50))
     allow_division = bool(workerInterface.get('Allow divisions', True))
 
-    if not track_tags or len(track_tags) == 0:
+    if not track_tags:
         sendError("No tag specified",
                   info="Please select at least one tag of objects to track.")
         raise ValueError("No tag specified")
 
     tile = params['tile']
-    output_tags = params.get('tags', [])
+    # Always stamp a descriptive tag so tracking connections are identifiable
+    # (and filterable / bulk-selectable) in the UI even when the user set no
+    # output tags -- matching the convention of the other connection workers.
+    output_tags = list(dict.fromkeys((params.get('tags') or []) + ["Ultrack"]))
 
     batch_xy = batch_argument_parser.process_range_list(
         workerInterface.get('Batch XY', None), convert_one_to_zero_index=True)

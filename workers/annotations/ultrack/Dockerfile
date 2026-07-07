@@ -49,7 +49,6 @@ LABEL isUPennContrastWorker="" \
       isAnnotationWorker="" \
       interfaceName="Ultrack tracking" \
       interfaceCategory="Ultrack" \
-      annotationShape="polygon" \
       description="Links objects across time into tracks using Ultrack global optimization" \
       defaultToolName="Ultrack tracking"
 
