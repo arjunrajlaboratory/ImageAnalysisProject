@@ -13,6 +13,7 @@ from entrypoint import (
     interface,
     resolve_device,
     resolve_fluoresfm_weights,
+    resolve_fluoresfm_embedder,
     _build_method_opts,
     _clip_to_dtype,
 )
@@ -163,6 +164,11 @@ def test_interface(mock_worker_preview_client):
     assert interface_data['Pixel Size XY (nm)']['type'] == 'number'
 
     # fluoresfm params
+    backbone_field = interface_data['FluoResFM backbone']
+    assert backbone_field['type'] == 'select'
+    assert backbone_field['items'] == ['unet_sd_c', 'care', 'dfcan', 'unifmir']
+    assert backbone_field['default'] == 'unet_sd_c'
+
     task_field = interface_data['FluoResFM task']
     assert task_field['type'] == 'select'
     assert task_field['items'] == ['denoise', 'deconvolution', 'super-resolution']
@@ -408,6 +414,30 @@ def test_resolve_fluoresfm_weights_present(monkeypatch, tmp_path):
     assert result == str(weights_file)
 
 
+def test_resolve_fluoresfm_embedder_missing_sends_error(monkeypatch, capsys):
+    monkeypatch.delenv('FLUORESFM_EMBEDDER_DIR', raising=False)
+
+    result = resolve_fluoresfm_embedder()
+
+    assert result is None
+    captured = capsys.readouterr()
+    assert '"type": "error"' in captured.out
+    assert 'BiomedCLIP text embedder is not available' in captured.out
+
+
+def test_resolve_fluoresfm_embedder_present(monkeypatch, tmp_path):
+    (tmp_path / 'open_clip_config.json').write_text('{}')
+    (tmp_path / 'open_clip_pytorch_model.bin').write_bytes(b'fake')
+    monkeypatch.setenv('FLUORESFM_EMBEDDER_DIR', str(tmp_path))
+
+    result = resolve_fluoresfm_embedder()
+
+    assert result == (
+        str(tmp_path / 'open_clip_config.json'),
+        str(tmp_path / 'open_clip_pytorch_model.bin'),
+    )
+
+
 def test_fluoresfm_missing_weights_aborts_compute_cleanly(mock_tile_client, mock_large_image, monkeypatch):
     """Simulates restore_fluoresfm() detecting missing weights (via
     resolve_fluoresfm_weights) and returning None; compute() must abort
@@ -455,6 +485,8 @@ def test_build_method_opts_fluoresfm_default_prompt():
     opts = _build_method_opts('fluoresfm', {'FluoResFM task': 'deconvolution', 'FluoResFM text prompt': ''})
     assert opts['task'] == 'deconvolution'
     assert 'deconvolution' in opts['prompt']
+    # Backbone defaults to the real text-conditioned foundation model.
+    assert opts['backbone'] == 'unet_sd_c'
 
 
 def test_build_method_opts_fluoresfm_custom_prompt():
@@ -463,6 +495,15 @@ def test_build_method_opts_fluoresfm_custom_prompt():
         'FluoResFM text prompt': 'a custom prompt',
     })
     assert opts['prompt'] == 'a custom prompt'
+
+
+def test_build_method_opts_fluoresfm_backbone_selection():
+    opts = _build_method_opts('fluoresfm', {
+        'FluoResFM task': 'super-resolution',
+        'FluoResFM backbone': 'dfcan',
+    })
+    assert opts['backbone'] == 'dfcan'
+    assert opts['task'] == 'super-resolution'
 
 
 def test_clip_to_dtype_uint16_clips_and_casts():

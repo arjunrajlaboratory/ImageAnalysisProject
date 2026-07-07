@@ -15,5 +15,5 @@ dependencies:
 - tifffile
 - pip:
   - careamics
-  - cellpose>=3
+  - cellpose>=3,<4
   - triton

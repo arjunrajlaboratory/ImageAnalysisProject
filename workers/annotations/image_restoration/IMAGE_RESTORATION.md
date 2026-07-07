@@ -72,8 +72,9 @@ additions** but are out of scope for this first pass.
 | **Numerical Aperture (NA)** | number | 0.75 | zs_deconvnet | Used with wavelength/pixel size to build an approximate Gaussian PSF. |
 | **Emission Wavelength (nm)** | number | 520 | zs_deconvnet | Used to build the approximate PSF. |
 | **Pixel Size XY (nm)** | number | 325 | zs_deconvnet | Used to convert the PSF from physical units to pixels. |
-| **FluoResFM task** | select | `denoise` | fluoresfm | `denoise`, `deconvolution`, `super-resolution` -- passed to the text-conditioned model. |
-| **FluoResFM text prompt** | text | (derived from task) | fluoresfm | Free-text prompt describing the structure/task. Left blank, defaults to `"fluorescence microscopy image, <task>"`. |
+| **FluoResFM backbone** | select | `unet_sd_c` | fluoresfm | Model architecture; **must match the `FLUORESFM_WEIGHTS` checkpoint**. `unet_sd_c` = the real text-conditioned FluoResFM foundation model (uses the prompt + BiomedCLIP embedder). `care`/`dfcan`/`unifmir` = the repo's non-text baseline backbones (prompt ignored). |
+| **FluoResFM task** | select | `denoise` | fluoresfm | `denoise`, `deconvolution`, `super-resolution` -- builds the default prompt and selects the `unifmir` task index. |
+| **FluoResFM text prompt** | text | (derived from task) | fluoresfm | Free-text prompt (used by `unet_sd_c` only). Left blank, defaults to `"fluorescence microscopy image, <task>"`. |
 
 ## Implementation Details
 
@@ -136,35 +137,77 @@ step for annotations and is out of scope here.
 
 Vendored from [qiqi-lu/fluoresfm](https://github.com/qiqi-lu/fluoresfm) (pinned tag `v1.0.1`),
 the canonical repo for FluoResFM (Lu et al., *Nat. Commun.* 2026), a text-conditioned U-Net
-trained across 20+ biological structures for denoising/deconvolution/super-resolution. See
-also the `napari-fluoresfm` plugin
-([qiqi-lu/napari-fluoresfm](https://github.com/qiqi-lu/napari-fluoresfm)) and the related
-[cxm12/UNiFMIR](https://github.com/cxm12/UNiFMIR) foundation-model work by a related group.
+trained across 20+ biological structures for denoising/deconvolution/super-resolution.
 
-**Weights are not baked into the Docker image.** FluoResFM's pretrained checkpoint is
-distributed via Google Drive / Baidu Yun, not a stable scriptable URL, so
-`download_models.py` only *attempts* a best-effort download (via an optional
-`FLUORESFM_WEIGHTS_URL` build arg pointing at a mirror you control) and never fails the build
-if that's unset or fails. At runtime, `resolve_fluoresfm_weights()` reads the
-`FLUORESFM_WEIGHTS` environment variable; if it's unset or the file doesn't exist,
-`restore_fluoresfm()` returns `None` after a `sendError` with setup instructions instead of
-crashing.
+**This integration is wired against the repo's *real* inference API** (transcribed from the
+repo's own test scripts), replacing an earlier stub that imported non-existent modules
+(`methods.fluoresfm`, `packages.text_embedding`) and therefore always failed. The real call
+sequence (per `3_0_test_it2i.py`, which the README identifies as "test the FluoResFM model"):
 
-**To enable FluoResFM**: download the checkpoint from the links in the
-[fluoresfm README](https://github.com/qiqi-lu/fluoresfm) (Google Drive or Baidu Yun) and
-either (a) rebuild the image with `--build-arg FLUORESFM_WEIGHTS_URL=<your mirror>`, or (b)
-mount/copy the `.pt` file into the running container and set `FLUORESFM_WEIGHTS=<path>`.
+1. **Text embedder** — `models.biomedclip_embedder.BiomedCLIPTextEmbedder(path_json,
+   path_bin, context_length=160, device)`; `embedder(prompt)` → conditioning tensor of shape
+   `[1, 160, 768]`.
+2. **Model** — `models.unet_sd_c.UNetModel(in_channels=1, out_channels=1, channels=320,
+   n_res_blocks=1, attention_levels=[0,1,2,3], channel_multipliers=[1,2,4,4], n_heads=8,
+   tf_layers=1, d_cond=768, pixel_shuffle=False, scale_factor=4, structural_prompt=False,
+   n_tokens=0)` (the exact `params` block from `3_0_test_it2i.py`).
+3. **Checkpoint** — `torch.load(path, weights_only=True)["model_state_dict"]`, then
+   `utils.optim.on_load_checkpoint(...)` to strip the `_orig_mod.` prefix that `torch.compile`
+   adds, then `model.load_state_dict(...)`; `.to(device).eval()`.
+4. **Per frame** — clip negatives, percentile-normalize (0.03 / 0.995, identical math to
+   `utils.data.NormalizePercentile` but inlined to avoid that module's heavy `pydicom`/`scipy`/
+   `PSFmodels` import chain), reflect-pad H/W up to a multiple of 8, run
+   `model(x, None, text_embed)` (forward signature is `(x, time_steps, cond)`; `time_steps` is
+   unused), crop the padding off, then `_rescale_to_reference()` back to the source frame's
+   range.
 
-The vendored-import step in `restore_fluoresfm()` (`from methods.fluoresfm import
-build_model, load_checkpoint`, `from packages.text_embedding import embed_text`) reflects our
-best-documented understanding of the repo's module layout at the time of writing; because this
-is fast-moving research code, `restore_fluoresfm()` wraps that import in a `try/except` and
-`sendError`s with an actionable message (rather than crashing) if the upstream API has since
-changed.
+**Backbones (`FluoResFM backbone`).** The repo also ships three *non-text* baseline backbones
+(`models.care.CARE`, `models.dfcan.DFCAN`, `models.unifmir.UniModel`, per `3_1_test_i2i.py` —
+the README's "test the model **without inputing the text**"). These are exposed for
+completeness and are built/loaded/run faithfully (dfcan/unifmir use `scale_factor=1`/`srscale=1`
+so the output grid matches the input; `unifmir` takes the task index sr=1/dn=2/iso=3/dcv=4;
+`care` is reflect-padded to a multiple of 4). **They ignore the text prompt.** The default and
+recommended backbone is `unet_sd_c` — the genuine text-conditioned FluoResFM. **The selected
+backbone must match the architecture the `FLUORESFM_WEIGHTS` checkpoint was trained with**
+(the repo ships a separate checkpoint per backbone); a mismatch surfaces as a structured
+`load_state_dict` error rather than a crash.
 
-**Mark this method as experimental.** Restored intensities from a text-conditioned foundation
-model may be partially hallucinated. Follow the general guidance below before trusting
-quantitative results from `fluoresfm` or `zs_deconvnet`.
+**Simplifications vs. the upstream script (honest scope):**
+- **No sliding-window patch-stitcher.** The repo tiles large images via
+  `utils.data.Patch_stitcher` with a linear-ramp blend; this worker instead runs each frame
+  through the model whole (mirroring the repo's own non-patched branch, which triggers when the
+  image is smaller than the patch size). Large frames therefore need enough GPU memory to
+  process at full size.
+- **Free-text prompt is out-of-distribution.** FluoResFM was trained on highly *structured*
+  prompts (`"Task: …; sample: …; structure: …; input microscope: …; input pixel size: …;
+  target microscope: …; target pixel size: …."`). A short free-text prompt still embeds and
+  runs, but for best results supply a prompt in that structured form.
+- **No super-resolution grid change.** As with the other methods, output pixel dimensions are
+  kept identical to the input so NimbusImage annotations/scale stay aligned.
+
+**Weights are not baked into the Docker image** (they are large and distributed via Google
+Drive / Baidu Yun, not a stable scriptable URL). Two runtime artifacts are needed for the
+text-conditioned backbone:
+
+| Env var | Contents | Source |
+|---------|----------|--------|
+| `FLUORESFM_WEIGHTS` | the FluoResFM `.pt` checkpoint (per chosen backbone) | fluoresfm README's Google Drive / Baidu Yun links |
+| `FLUORESFM_EMBEDDER_DIR` | dir with `open_clip_config.json` + `open_clip_pytorch_model.bin` (~0.4 GB) | HuggingFace `microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224` (repo's `1_1_download_embedder.py`) |
+
+`resolve_fluoresfm_weights()` and `resolve_fluoresfm_embedder()` read these; if either is
+missing, `restore_fluoresfm()` returns `None` after an actionable `sendError` (naming the real
+modules/paths) instead of crashing. `download_models.py` still *attempts* a best-effort
+checkpoint download via the optional `FLUORESFM_WEIGHTS_URL` build arg (a mirror you control)
+and never fails the build if unset. Python deps for this path (`open_clip_torch`,
+`transformers`, `huggingface_hub`, `torchinfo`, `timm`) are installed in both Dockerfiles;
+`flash-attn` is **not** required (the vendored attention falls back to plain attention and only
+uses flash for self-attention, never the text cross-attention).
+
+**Experimental / untested in CI.** This path requires a GPU plus large runtime weights, so it
+is **not exercised by the test suite** (the tests mock `restore_fluoresfm` and only verify the
+interface, dispatch, weight/embedder resolvers, and the honest error paths). Restored
+intensities from a foundation model may be partially hallucinated — follow the general
+guidance below before trusting quantitative results from `fluoresfm` or `zs_deconvnet`.
 
 ### dtype and NaN handling
 

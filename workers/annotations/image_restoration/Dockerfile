@@ -51,7 +51,17 @@ RUN pip install large-image-source-zarr large-image-source-tiff large-image-conv
 # intentionally installed via pip (not conda) to match the CUDA base image's
 # runtime exactly.
 RUN pip install torch --index-url https://download.pytorch.org/whl/cu121
-RUN pip install careamics "cellpose>=3" triton tifffile
+RUN pip install careamics "cellpose>=3,<4" triton tifffile
+# FluoResFM inference deps (see entrypoint.py restore_fluoresfm + the vendored
+# repo's 3_0_test_it2i.py / 3_1_test_i2i.py imports):
+#   open_clip_torch + transformers -> BiomedCLIP text embedder (unet_sd_c backbone)
+#   huggingface_hub                -> optional embedder download (1_1_download_embedder.py)
+#   torchinfo                      -> imported by models.care / models.dfcan / models.unifmir
+#   timm                           -> imported by models.unifmir
+# flash-attn is intentionally NOT installed: the vendored CrossAttention falls
+# back to plain attention when flash_attn is absent, and only uses it for
+# self-attention (never for the text cross-attention this worker relies on).
+RUN pip install open_clip_torch transformers huggingface_hub torchinfo timm
 
 # --- ZS-DeconvNet (zero-shot denoise + deconvolution) ---
 # Vendored for provenance/reference and potential future use of its PSF/data
@@ -70,6 +80,17 @@ RUN git clone https://github.com/TristaZeng/ZS-DeconvNet.git /zs_deconvnet && \
 # tag v1.0.1. Weights are NOT bundled here (see download_models.py) -- they
 # are distributed via Google Drive/Baidu Yun and must be supplied at runtime
 # via the FLUORESFM_WEIGHTS environment variable / volume mount.
+#
+# Real inference API (see entrypoint.py restore_fluoresfm):
+#   * text-conditioned FluoResFM = models.unet_sd_c.UNetModel conditioned on a
+#     BiomedCLIP text embedding (models.biomedclip_embedder.BiomedCLIPTextEmbedder),
+#     per 3_0_test_it2i.py. The checkpoint + a small example model come from the
+#     repo README's download links (Google Drive / Baidu Yun).
+#   * The BiomedCLIP embedder weights (open_clip_config.json +
+#     open_clip_pytorch_model.bin) come from HuggingFace
+#     'microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224'
+#     (repo's 1_1_download_embedder.py) and are supplied at runtime via
+#     FLUORESFM_EMBEDDER_DIR (not baked in -- the .bin is ~0.4 GB).
 RUN git clone https://github.com/qiqi-lu/fluoresfm.git /fluoresfm && \
     cd /fluoresfm && git checkout v1.0.1
 ENV FLUORESFM_REPO_PATH=/fluoresfm
@@ -77,6 +98,10 @@ ENV FLUORESFM_REPO_PATH=/fluoresfm
 # by overriding FLUORESFM_WEIGHTS entirely. Left unset/missing by default --
 # restore_fluoresfm() sendError()s with instructions if no file exists here.
 ENV FLUORESFM_WEIGHTS=/opt/fluoresfm_weights/fluoresfm.pt
+# Directory holding the BiomedCLIP text-embedder files (open_clip_config.json +
+# open_clip_pytorch_model.bin) for the text-conditioned 'unet_sd_c' backbone.
+# Not populated at build time; mount/download the two files here at runtime.
+ENV FLUORESFM_EMBEDDER_DIR=/opt/fluoresfm_weights/biomedclip
 
 # models_config.py is the single source of truth for the built-in Cellpose3
 # restoration checkpoints, so it must be present before download_models.py runs.

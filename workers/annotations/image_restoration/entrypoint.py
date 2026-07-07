@@ -141,12 +141,32 @@ def interface(image, apiUrl, token):
             'displayOrder': 11,
         },
         # --- fluoresfm (foundation model) ---
+        'FluoResFM backbone': {
+            'type': 'select',
+            'items': ['unet_sd_c', 'care', 'dfcan', 'unifmir'],
+            'default': 'unet_sd_c',
+            'tooltip': (
+                'fluoresfm: model architecture. This MUST match the checkpoint '
+                'supplied via the FLUORESFM_WEIGHTS environment variable. '
+                '"unet_sd_c" is the real text-conditioned FluoResFM foundation '
+                'model (uses the text prompt via a BiomedCLIP text embedder) -- '
+                'the default and recommended choice. "care"/"dfcan"/"unifmir" '
+                'are the repo\'s non-text baseline backbones (from '
+                '3_1_test_i2i.py); the text prompt is IGNORED for those. See '
+                'IMAGE_RESTORATION.md.'
+            ),
+            'displayOrder': 12,
+        },
         'FluoResFM task': {
             'type': 'select',
             'items': ['denoise', 'deconvolution', 'super-resolution'],
             'default': 'denoise',
-            'tooltip': 'fluoresfm: restoration task passed to the text-conditioned foundation model. Experimental.',
-            'displayOrder': 12,
+            'tooltip': (
+                'fluoresfm: restoration task. Used to build the default text '
+                'prompt and, for the "unifmir" backbone, to select the task '
+                'index. Experimental.'
+            ),
+            'displayOrder': 13,
         },
         'FluoResFM text prompt': {
             'type': 'text',
@@ -158,10 +178,11 @@ def interface(image, apiUrl, token):
             },
             'tooltip': (
                 'fluoresfm: free-text prompt describing the structure/task '
-                '(the model is text-conditioned). Leave blank to use a default '
-                'prompt derived from the selected task.'
+                '(the "unet_sd_c" backbone is text-conditioned). Leave blank to '
+                'use a default prompt derived from the selected task. Ignored by '
+                'the non-text "care"/"dfcan"/"unifmir" backbones.'
             ),
-            'displayOrder': 13,
+            'displayOrder': 14,
         },
     }
     client.setWorkerImageInterface(image, interface)
@@ -219,6 +240,45 @@ def resolve_fluoresfm_weights():
         )
         return None
     return weights_path
+
+
+def resolve_fluoresfm_embedder():
+    """Resolve the local BiomedCLIP text-embedder files for FluoResFM.
+
+    The real text-conditioned FluoResFM (``unet_sd_c`` backbone) conditions on
+    a BiomedCLIP text embedding. Upstream (``models/biomedclip_embedder.py`` +
+    ``1_1_download_embedder.py``) loads this embedder from two local files
+    downloaded from HuggingFace
+    (``microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224``):
+
+      * ``open_clip_config.json``
+      * ``open_clip_pytorch_model.bin`` (~0.4 GB)
+
+    Like the main checkpoint, these are supplied at runtime rather than baked
+    into the image. ``FLUORESFM_EMBEDDER_DIR`` points at the directory that
+    holds both files. Returns ``(json_path, bin_path)`` or ``None`` (after an
+    actionable ``sendError``) if either is missing.
+    """
+    embedder_dir = os.environ.get('FLUORESFM_EMBEDDER_DIR', '').strip()
+    json_path = os.path.join(embedder_dir, 'open_clip_config.json') if embedder_dir else ''
+    bin_path = os.path.join(embedder_dir, 'open_clip_pytorch_model.bin') if embedder_dir else ''
+    if not embedder_dir or not os.path.isfile(json_path) or not os.path.isfile(bin_path):
+        sendError(
+            "FluoResFM BiomedCLIP text embedder is not available.",
+            info=(
+                "The text-conditioned FluoResFM backbone ('unet_sd_c') needs a "
+                "BiomedCLIP text embedder. Set FLUORESFM_EMBEDDER_DIR to a "
+                "directory containing 'open_clip_config.json' and "
+                "'open_clip_pytorch_model.bin' (download from HuggingFace "
+                "'microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', "
+                "as in the fluoresfm repo's 1_1_download_embedder.py). "
+                "Alternatively pick a non-text backbone (care/dfcan/unifmir) "
+                "which does not require the embedder, or a different Method. "
+                "See IMAGE_RESTORATION.md."
+            ),
+        )
+        return None
+    return json_path, bin_path
 
 
 def _rescale_to_reference(output, reference):
@@ -287,10 +347,12 @@ def _build_method_opts(method, workerInterface):
         }
     if method == 'fluoresfm':
         task = workerInterface.get('FluoResFM task', 'denoise')
+        backbone = workerInterface.get('FluoResFM backbone', 'unet_sd_c')
         default_prompt = f"fluorescence microscopy image, {task}"
         prompt = workerInterface.get('FluoResFM text prompt', '') or default_prompt
         return {
             'task': task,
+            'backbone': backbone,
             'prompt': prompt,
         }
     return {}
@@ -555,19 +617,110 @@ def restore_zs_deconvnet(stack, opts, device):
     return np.stack(results, axis=0)
 
 
+# FluoResFM model construction constants, transcribed verbatim from the
+# vendored repo's own inference scripts (the source of truth):
+#
+#   * unet_sd_c  -> 3_0_test_it2i.py `params` block (the real text-conditioned
+#                   FluoResFM foundation model; README: "test_it2i.py ... test
+#                   the FluoResFM model").
+#   * care/dfcan/unifmir -> 3_1_test_i2i.py `model = ...(...)` (the repo's
+#                   non-text baseline backbones; README: "test_i2i.py ... test
+#                   the model without inputing the text").
+#
+# The chosen backbone MUST match the architecture the checkpoint was trained
+# with (FLUORESFM_WEIGHTS); load_state_dict will otherwise raise, which
+# compute() surfaces as a structured error.
+_FLUORESFM_CONTEXT_LENGTH = 160  # BiomedCLIP context length for the "ALL" text type
+_FLUORESFM_UNET_DIVISOR = 8      # unet_sd_c has 3 downsampling levels -> /8
+# 3_1_test_i2i.py: task ids sr=1, dn=2, iso=3, dcv=4. Our task select maps to:
+_FLUORESFM_UNIFMIR_TASK = {'denoise': 2, 'deconvolution': 4, 'super-resolution': 1}
+
+
+def _fluoresfm_load_state_dict(torch, on_load_checkpoint, weights_path, torch_device):
+    """Load a FluoResFM ``.pt`` checkpoint into a plain state_dict.
+
+    Mirrors 3_0_test_it2i.py / 3_1_test_i2i.py: the checkpoints store a dict
+    with the weights under ``"model_state_dict"``; ``on_load_checkpoint`` then
+    strips the ``_orig_mod.`` prefix that ``torch.compile`` adds. We also
+    tolerate a bare state_dict or the ``"model"``/``"state_dict"`` wrappers so
+    a slightly different checkpoint layout still loads.
+    """
+    try:
+        ckpt = torch.load(weights_path, map_location=torch_device, weights_only=True)
+    except Exception:
+        # weights_only=True can reject checkpoints pickled with extra objects
+        # on older/newer torch; fall back to a full load of the local file.
+        ckpt = torch.load(weights_path, map_location=torch_device)
+
+    state_dict = ckpt
+    if isinstance(ckpt, dict):
+        for key in ('model_state_dict', 'model', 'state_dict'):
+            if key in ckpt and isinstance(ckpt[key], dict):
+                state_dict = ckpt[key]
+                break
+    return on_load_checkpoint(state_dict)
+
+
+def _fluoresfm_normalize_percentile(image, p_low=0.03, p_high=0.995):
+    """Percentile normalization, identical to utils.data.NormalizePercentile.
+
+    Inlined (not imported) because the repo's ``utils/data.py`` pulls a heavy,
+    fragile import chain (pydicom, scipy, models.PSFmodels, methods.convolution,
+    skimage.io) at module load; the normalization math itself is a two-line
+    percentile min-max, so reproducing it exactly is both faithful and robust.
+    """
+    image = np.asarray(image, dtype=np.float32)
+    vmin = np.percentile(image, p_low * 100)
+    vmax = np.percentile(image, p_high * 100)
+    if vmax == 0:
+        vmax = np.max(image)
+    amp = vmax - vmin
+    if amp == 0:
+        amp = 1
+    return (image - vmin) / amp
+
+
+def _fluoresfm_pad_reflect(torch, x, divisor):
+    """Reflect-pad the last two dims of ``x`` up to a multiple of ``divisor``.
+
+    Mirrors the repo's reflect-padding before the (non-patched) forward pass so
+    the U-Net's down/up-sampling produces a same-size output. Returns the
+    padded tensor and the original (H, W) so the caller can crop back.
+    """
+    h, w = x.shape[-2], x.shape[-1]
+    pad_h = (divisor - h % divisor) % divisor
+    pad_w = (divisor - w % divisor) % divisor
+    if pad_h or pad_w:
+        # F.pad pad order is (left, right, top, bottom)
+        x = torch.nn.functional.pad(x, (0, pad_w, 0, pad_h), mode='reflect')
+    return x, h, w
+
+
 def restore_fluoresfm(stack, opts, device):
-    """Pretrained, text-prompted foundation-model restoration (experimental).
+    """Pretrained FluoResFM restoration (experimental), faithful to the repo.
 
-    Vendored from https://github.com/qiqi-lu/fluoresfm (pinned tag v1.0.1,
-    cloned into /fluoresfm at build time). Weights are resolved at runtime
-    from the FLUORESFM_WEIGHTS environment variable (see
-    `resolve_fluoresfm_weights`) since they are distributed via Google
-    Drive/Baidu Yun rather than a stable build-time-downloadable URL.
+    Vendored from https://github.com/qiqi-lu/fluoresfm (cloned into /fluoresfm
+    at build time). This mirrors the repo's own inference scripts:
 
-    Mark experimental in all user-facing docs: restored intensities may be
-    hallucinated by the foundation model and should be validated before
-    quantitative use (segment on the restored image, measure on the
-    illumination-corrected raw image).
+      * backbone ``unet_sd_c`` -> the real text-conditioned FluoResFM foundation
+        model (``models.unet_sd_c.UNetModel``), conditioned on a BiomedCLIP text
+        embedding of the prompt. This is "FluoResFM" per the README
+        (``test_it2i.py``). Call sequence follows 3_0_test_it2i.py:
+        build embedder -> embed prompt -> build UNetModel with the exact
+        `params` args -> load ``["model_state_dict"]`` (strip ``_orig_mod.``) ->
+        normalize input (percentile 0.03/0.995) -> ``model(x, None, cond)`` ->
+        rescale output back to the source frame's range.
+      * backbones ``care``/``dfcan``/``unifmir`` -> the repo's non-text baseline
+        models (3_1_test_i2i.py). The prompt is ignored; ``unifmir`` uses the
+        task index. Provided because the interface exposes them, but they are
+        NOT the text-conditioned foundation model.
+
+    Weights (FLUORESFM_WEIGHTS) and, for ``unet_sd_c``, the BiomedCLIP embedder
+    (FLUORESFM_EMBEDDER_DIR) are supplied at runtime (see the resolver helpers).
+
+    Experimental: restored intensities may be hallucinated by the model and
+    should be validated before quantitative use (segment on the restored image,
+    measure on the illumination-corrected raw image).
     """
     weights_path = resolve_fluoresfm_weights()
     if weights_path is None:
@@ -582,59 +735,184 @@ def restore_fluoresfm(stack, opts, device):
         )
         return None
 
+    backbone = opts.get('backbone', 'unet_sd_c')
+    task = opts.get('task', 'denoise')
+    prompt = opts.get('prompt') or f"fluorescence microscopy image, {task}"
+
     fluoresfm_repo = os.environ.get('FLUORESFM_REPO_PATH', '/fluoresfm')
     if fluoresfm_repo not in sys.path:
         sys.path.insert(0, fluoresfm_repo)
 
+    # Import the REAL vendored modules for the chosen backbone. utils.optim only
+    # depends on numpy, so on_load_checkpoint is safe to import directly.
     try:
-        # These import paths are our best-documented understanding of the
-        # vendored repo's layout (methods/ for model + checkpoint loading,
-        # packages/ for the BiomedCLIP text-embedding utility used to
-        # condition the model on the text prompt); the research-code API may
-        # shift between versions, hence the defensive try/except with an
-        # actionable error rather than a hard dependency.
-        from methods.fluoresfm import build_model, load_checkpoint
-        from packages.text_embedding import embed_text
+        from utils.optim import on_load_checkpoint
+        if backbone == 'unet_sd_c':
+            from models.unet_sd_c import UNetModel
+            from models.biomedclip_embedder import BiomedCLIPTextEmbedder
+        elif backbone == 'care':
+            from models.care import CARE
+        elif backbone == 'dfcan':
+            from models.dfcan import DFCAN
+        elif backbone == 'unifmir':
+            from models.unifmir import UniModel
+        else:
+            sendError(
+                f"Unknown FluoResFM backbone: {backbone}",
+                info="Choose one of: unet_sd_c, care, dfcan, unifmir.",
+            )
+            return None
     except ImportError as e:
         sendError(
-            "Could not load the vendored FluoResFM inference code.",
+            "Could not import the vendored FluoResFM model code.",
             info=(
                 f"Import failed: {e}. Verify the FluoResFM repo is vendored at "
                 f"'{fluoresfm_repo}' (see Dockerfile, cloned from "
-                "https://github.com/qiqi-lu/fluoresfm) and that its module layout "
-                "still matches this worker's integration "
-                "(methods.fluoresfm.build_model/load_checkpoint, "
-                "packages.text_embedding.embed_text). Update entrypoint.py's "
-                "restore_fluoresfm() if the upstream API has changed."
+                "https://github.com/qiqi-lu/fluoresfm) and that its module "
+                "layout still matches this worker's integration "
+                "(models.unet_sd_c.UNetModel + models.biomedclip_embedder."
+                "BiomedCLIPTextEmbedder for the text-conditioned backbone; "
+                "models.care.CARE / models.dfcan.DFCAN / models.unifmir.UniModel "
+                "for the non-text baselines; utils.optim.on_load_checkpoint). "
+                "Required Python deps: torch, and (for unet_sd_c) open_clip_torch"
+                " + transformers; (for care/dfcan) torchinfo; (for unifmir) "
+                "torchinfo + timm. Update entrypoint.py's restore_fluoresfm() if "
+                "the upstream API has changed."
             ),
         )
         return None
 
-    task = opts.get('task', 'denoise')
-    prompt = opts.get('prompt') or f"fluorescence microscopy image, {task}"
-
     torch_device = torch.device(device)
-    model = build_model()
-    load_checkpoint(model, weights_path, map_location=torch_device)
-    model.to(torch_device)
+
+    # --- Build the model for the chosen backbone (args from the repo scripts) -
+    text_embed = None
+    if backbone == 'unet_sd_c':
+        # BiomedCLIP text embedder is only needed for the text-conditioned model.
+        embedder_paths = resolve_fluoresfm_embedder()
+        if embedder_paths is None:
+            return None  # resolve_fluoresfm_embedder() already called sendError
+        json_path, bin_path = embedder_paths
+        embedder = BiomedCLIPTextEmbedder(
+            path_json=json_path,
+            path_bin=bin_path,
+            context_length=_FLUORESFM_CONTEXT_LENGTH,
+            device=torch_device,
+        )
+        embedder.eval()
+        with torch.no_grad():
+            # embedder(prompt) -> conditioning of shape [1, context_length, 768]
+            text_embed = embedder(prompt).to(torch_device)
+
+        # 3_0_test_it2i.py `params` block (default ALL-v2 checkpoint).
+        model = UNetModel(
+            in_channels=1,
+            out_channels=1,
+            channels=320,
+            n_res_blocks=1,
+            attention_levels=[0, 1, 2, 3],
+            channel_multipliers=[1, 2, 4, 4],
+            n_heads=8,
+            tf_layers=1,
+            d_cond=768,
+            pixel_shuffle=False,
+            scale_factor=4,
+            structural_prompt=False,
+            n_tokens=0,
+        )
+    elif backbone == 'care':
+        # 3_1_test_i2i.py CARE(...) args.
+        model = CARE(
+            in_channels=1,
+            out_channels=1,
+            n_filter_base=16,
+            kernel_size=5,
+            batch_norm=False,
+            dropout=0.0,
+            residual=True,
+            expansion=2,
+            pos_out=False,
+        )
+    elif backbone == 'dfcan':
+        # 3_1_test_i2i.py DFCAN(...) args; scale_factor=1 keeps output HxW == input.
+        model = DFCAN(in_channels=1, scale_factor=1, num_features=64, num_groups=4)
+    else:  # unifmir
+        # 3_1_test_i2i.py UniModel(...) args (srscale=1 keeps output HxW == input).
+        model = UniModel(
+            in_channels=1,
+            out_channels=1,
+            tsk=0,
+            img_size=(64, 64),
+            patch_size=1,
+            embed_dim=180 // 2,
+            depths=[6, 6, 6],
+            num_heads=[6, 6, 6],
+            window_size=8,
+            mlp_ratio=2,
+            qkv_bias=True,
+            qk_scale=None,
+            drop_rate=0,
+            attn_drop_rate=0,
+            drop_path_rate=0.1,
+            norm_layer=torch.nn.LayerNorm,
+            patch_norm=True,
+            use_checkpoint=False,
+            num_feat=32,
+            srscale=1,
+        )
+
+    model = model.to(torch_device)
+
+    # --- Load checkpoint (matching architecture required) --------------------
+    try:
+        state_dict = _fluoresfm_load_state_dict(
+            torch, on_load_checkpoint, weights_path, torch_device)
+        model.load_state_dict(state_dict)
+    except Exception as e:
+        sendError(
+            "Failed to load the FluoResFM checkpoint into the selected backbone.",
+            info=(
+                f"{e}. The FLUORESFM_WEIGHTS checkpoint must match the chosen "
+                f"'FluoResFM backbone' ('{backbone}'). Verify you selected the "
+                "architecture the checkpoint was trained with (the vendored "
+                "repo ships separate checkpoints per backbone)."
+            ),
+        )
+        return None
     model.eval()
 
-    text_embedding = embed_text(prompt, device=torch_device)
+    # unifmir needs a task index tensor; other backbones ignore it.
+    unifmir_task = torch.tensor(
+        _FLUORESFM_UNIFMIR_TASK.get(task, 2), device=torch_device)
+
+    # Divisor for reflect-padding so down/up-sampling yields a same-size output.
+    if backbone == 'unet_sd_c' or backbone == 'unifmir':
+        divisor = _FLUORESFM_UNET_DIVISOR
+    elif backbone == 'care':
+        divisor = 4  # 3_1_test_i2i.py pads care inputs to a multiple of 4
+    else:  # dfcan (scale_factor=1) accepts any size
+        divisor = 1
 
     stack = np.asarray(stack, dtype=np.float32)
     results = []
     with torch.no_grad():
         for frame in stack:
-            # Explicit >0 guard, not `float(frame.max()) or 1.0`: the latter
-            # leaves a negative max unchanged (it's truthy), which would flip
-            # the sign of the whole normalized frame.
-            frame_max = float(frame.max())
-            scale = frame_max if frame_max > 0 else 1.0
-            x = torch.from_numpy(frame / scale).unsqueeze(0).unsqueeze(0).to(torch_device)
-            restored = model(x, text_embedding)
-            restored = restored.squeeze().detach().cpu().numpy() * scale
-            # Map the model's output range back onto the source frame's, so a
-            # normalized foundation-model output isn't clipped to near-black.
+            # Repo input normalization: clip negatives, then percentile min-max.
+            norm = _fluoresfm_normalize_percentile(np.clip(frame, 0, None))
+            x = torch.from_numpy(norm).unsqueeze(0).unsqueeze(0).to(torch_device)
+            x, h, w = _fluoresfm_pad_reflect(torch, x, divisor)
+
+            if backbone == 'unet_sd_c':
+                # forward(x, time_steps, cond); time_steps unused (None).
+                restored = model(x, None, text_embed)
+            elif backbone == 'unifmir':
+                restored = model(x, unifmir_task)
+            else:  # care / dfcan
+                restored = model(x)
+
+            restored = restored[..., :h, :w]  # crop reflect-padding back off
+            restored = restored.squeeze().float().detach().cpu().numpy()
+            # Map the model's (roughly normalized) output range back onto the
+            # source frame's, so it isn't clipped to near-black downstream.
             restored = _rescale_to_reference(restored, frame)
             results.append(restored)
 

@@ -11,12 +11,16 @@ SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
 # CPU-only torch, then the restoration-method dependencies.
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install careamics "cellpose>=3" tifffile
+RUN pip install careamics "cellpose>=3,<4" tifffile
 # triton (only needed for fluoresfm) is CUDA-oriented and may not have wheels
 # for all CPU/arm64 build hosts; don't fail the build if it's unavailable --
 # fluoresfm will simply be unusable on such a build until weights + a
 # compatible torch/triton are supplied.
 RUN pip install triton || echo "triton unavailable on this platform; FluoResFM inference will be disabled in this build"
+# FluoResFM inference deps (BiomedCLIP text embedder + baseline-backbone imports;
+# see entrypoint.py restore_fluoresfm). flash-attn is intentionally omitted --
+# the vendored attention falls back to plain attention without it.
+RUN pip install open_clip_torch transformers huggingface_hub torchinfo timm
 
 # --- ZS-DeconvNet (vendored for provenance; see main Dockerfile and
 # IMAGE_RESTORATION.md for why entrypoint.py implements its own zero-shot
@@ -30,6 +34,10 @@ RUN git clone https://github.com/qiqi-lu/fluoresfm.git /fluoresfm && \
     cd /fluoresfm && git checkout v1.0.1
 ENV FLUORESFM_REPO_PATH=/fluoresfm
 ENV FLUORESFM_WEIGHTS=/opt/fluoresfm_weights/fluoresfm.pt
+# BiomedCLIP text-embedder files (open_clip_config.json + open_clip_pytorch_model.bin)
+# for the text-conditioned 'unet_sd_c' backbone; supplied at runtime (see
+# entrypoint.py resolve_fluoresfm_embedder + the repo's 1_1_download_embedder.py).
+ENV FLUORESFM_EMBEDDER_DIR=/opt/fluoresfm_weights/biomedclip
 
 COPY ./workers/annotations/image_restoration/models_config.py /
 COPY ./workers/annotations/image_restoration/download_models.py /
