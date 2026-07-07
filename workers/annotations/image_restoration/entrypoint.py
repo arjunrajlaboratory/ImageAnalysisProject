@@ -221,6 +221,28 @@ def resolve_fluoresfm_weights():
     return weights_path
 
 
+def _rescale_to_reference(output, reference):
+    """Linearly rescale `output`'s dynamic range to match `reference`'s.
+
+    Pretrained restorers (Cellpose3, FluoResFM) often emit intensities in a
+    normalized range (e.g. ~0-1) rather than the source sensor range. Casting
+    such output straight into an integer source dtype via `_clip_to_dtype`
+    would clip almost everything to 0/1 and produce a near-black TIFF. Mapping
+    the output's [min, max] onto the reference frame's [min, max] preserves the
+    original intensity scale for downstream quantitative use.
+    """
+    output = np.asarray(output, dtype=np.float32)
+    out_min = float(output.min())
+    out_max = float(output.max())
+    out_span = out_max - out_min
+    if out_span <= 0:
+        return np.full_like(output, float(np.asarray(reference).min()))
+    ref = np.asarray(reference, dtype=np.float32)
+    ref_min = float(ref.min())
+    ref_span = float(ref.max()) - ref_min
+    return (output - out_min) / out_span * ref_span + ref_min
+
+
 def _clip_to_dtype(image, dtype):
     """Clip and cast a restored image back to the source dtype.
 
@@ -317,8 +339,11 @@ def restore_n2v(stack, opts, device):
 
     n_frames = stack.shape[0]
     patch = int(opts.get('patch_size', 64))
-    # CAREamics requires the patch to fit inside the image; clip defensively.
-    patch = max(16, min(patch, stack.shape[-1], stack.shape[-2]))
+    # CAREamics requires the patch to fit inside the image, so clamp to the
+    # smaller image dimension. Do NOT re-raise a 16px floor above that: for an
+    # image smaller than 16px on a side, max(16, ...) would force the patch
+    # back above the image size and CAREamics would reject it.
+    patch = min(patch, stack.shape[-1], stack.shape[-2])
 
     config = create_n2v_configuration(
         experiment_name='image_restoration_n2v',
@@ -368,7 +393,12 @@ def restore_cellpose3(stack, opts, device):
         # depending on cellpose version; normalize to a single 2D array.
         if isinstance(restored, (list, tuple)):
             restored = restored[0]
-        results.append(np.asarray(restored, dtype=np.float32))
+        restored = np.asarray(restored, dtype=np.float32).squeeze()
+        # Cellpose restoration output is percentile-normalized (~0-1), not in the
+        # source sensor range; rescale back so it isn't clipped to near-black by
+        # the later _clip_to_dtype cast.
+        restored = _rescale_to_reference(restored, frame)
+        results.append(restored)
 
     return np.stack(results, axis=0)
 
@@ -452,7 +482,10 @@ def _zs_self_supervised_denoise(frame, iterations, torch_device):
 
     x = torch.from_numpy(np.asarray(frame, dtype=np.float32))
     x = x.unsqueeze(0).unsqueeze(0)
-    scale = float(x.max().item()) or 1.0
+    # Explicit >0 guard (a negative max is truthy, so `... or 1.0` would not
+    # catch it and would invert the frame's sign).
+    x_max = float(x.max().item())
+    scale = x_max if x_max > 0 else 1.0
     x = (x / scale).to(torch_device)
 
     model = _TinyDenoiser().to(torch_device)
@@ -592,10 +625,17 @@ def restore_fluoresfm(stack, opts, device):
     results = []
     with torch.no_grad():
         for frame in stack:
-            scale = float(frame.max()) or 1.0
+            # Explicit >0 guard, not `float(frame.max()) or 1.0`: the latter
+            # leaves a negative max unchanged (it's truthy), which would flip
+            # the sign of the whole normalized frame.
+            frame_max = float(frame.max())
+            scale = frame_max if frame_max > 0 else 1.0
             x = torch.from_numpy(frame / scale).unsqueeze(0).unsqueeze(0).to(torch_device)
             restored = model(x, text_embedding)
             restored = restored.squeeze().detach().cpu().numpy() * scale
+            # Map the model's output range back onto the source frame's, so a
+            # normalized foundation-model output isn't clipped to near-black.
+            restored = _rescale_to_reference(restored, frame)
             results.append(restored)
 
     return np.stack(results, axis=0)
@@ -692,10 +732,12 @@ def compute(datasetId, apiUrl, token, params):
         sendProgress(idx / max(total_channels, 1), 'Restoring',
                     f"Channel {c} ({method}), {len(frame_indices)} frame(s)")
 
-        images = [tileClient.getRegion(datasetId, frame=i).squeeze() for i in frame_indices]
-        stack = np.stack(images, axis=0)
-
         try:
+            images = [tileClient.getRegion(datasetId, frame=i).squeeze() for i in frame_indices]
+            # np.stack is inside the try so heterogeneous per-frame shapes
+            # (which raise ValueError) surface as a structured error, not a
+            # raw traceback -- like every other failure path in this worker.
+            stack = np.stack(images, axis=0)
             result_stack = restore_fn(stack, method_opts, device)
         except Exception as e:
             sendError(f"Restoration failed for channel {c} using method '{method}'",
@@ -709,6 +751,16 @@ def compute(datasetId, apiUrl, token, params):
             return
 
         result_stack = _clip_to_dtype(np.asarray(result_stack), source_dtype)
+
+        # A restorer must return exactly one output frame per input frame;
+        # otherwise zip() below would silently drop/misalign frames (e.g. if
+        # CAREamics predict() ever returns a different sample count), leaving
+        # some frames un-restored in the output with no error.
+        if len(result_stack) != len(frame_indices):
+            sendError(f"Restoration returned {len(result_stack)} frame(s) but "
+                      f"{len(frame_indices)} were submitted for channel {c} (method '{method}')",
+                      info="This is an internal mismatch; please report it.")
+            return
 
         for frame_idx, restored_image in zip(frame_indices, result_stack):
             restored_images[frame_idx] = restored_image

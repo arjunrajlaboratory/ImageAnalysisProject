@@ -681,6 +681,14 @@ def correct_sscor(stack, opts):
                     '--image_name', image_name,
                     '--offset_size', str(offset_size),
                     '--patch_size', str(patch_size),
+                    # load_size/crop_size must equal patch_size: restore.py's
+                    # get_transform resizes each cropped patch to load_size and
+                    # crops to crop_size (both default 256), and restore() writes
+                    # the network output back into a patch_size-sized slice -- so
+                    # leaving the defaults crashes with a shape mismatch whenever
+                    # patch_size != 256.
+                    '--load_size', str(patch_size),
+                    '--crop_size', str(patch_size),
                     '--repeat', str(repeat),
                     '--dark_threshold', str(dark_threshold),
                     '--checkpoints_dir', tmpckpt,
@@ -744,6 +752,10 @@ def correct_sscor(stack, opts):
                 '--image_name', image_name,
                 '--offset_size', str(offset_size),
                 '--patch_size', str(patch_size),
+                # See note in the self-train branch: load_size/crop_size must
+                # equal patch_size or restore.py crashes for patch_size != 256.
+                '--load_size', str(patch_size),
+                '--crop_size', str(patch_size),
                 '--repeat', str(repeat),
                 '--dark_threshold', str(dark_threshold),
                 '--checkpoints_dir', tmpckpt,
@@ -1049,7 +1061,16 @@ def compute(datasetId, apiUrl, token, params):
             method_opts['sscor_gpu_ids'] = sscor_gpu_ids
 
         correction_fn = globals()[correction_fn_name]
-        corrected, diag = correction_fn(stack, method_opts)
+        try:
+            corrected, diag = correction_fn(stack, method_opts)
+        except Exception as e:
+            # Surface library/subprocess failures (e.g. BaSiC.fit on a
+            # degenerate stack, or a SSCOR sample/train/restore subprocess
+            # error) as a structured error rather than a raw traceback --
+            # see FLUOR_CORRECTION_WORKERS_SPEC.md design principle 5.
+            sendError(f"Illumination correction failed for channel {channel} using method '{method}'",
+                      info=str(e))
+            return
         corrected = np.nan_to_num(np.asarray(corrected, dtype=np.float64))
 
         diagnostics_by_channel[channel] = diag
