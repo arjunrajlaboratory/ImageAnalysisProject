@@ -60,6 +60,7 @@ COPY ./annotation_utilities /annotation_utilities
 RUN pip install /annotation_utilities
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       interfaceName="SAM2 few-shot segmentation" \
       interfaceCategory="SAM2" \

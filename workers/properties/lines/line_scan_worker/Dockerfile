@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/properties/lines/line_scan_worker/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="line" \
       interfaceName="Line scan CSV" \

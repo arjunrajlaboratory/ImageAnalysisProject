@@ -62,6 +62,7 @@ COPY ./workers/annotations/piscis/utils.py /
 COPY ./workers/annotations/piscis/predict/entrypoint.py /
 
 LABEL isUPennContrastWorker=True \
+      isGPUWorker="true" \
       isAnnotationWorker=True \
       interfaceName="Piscis spot detection" \
       interfaceCategory="Piscis" \

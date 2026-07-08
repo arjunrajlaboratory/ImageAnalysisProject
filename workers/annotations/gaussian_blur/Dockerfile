@@ -3,6 +3,7 @@ FROM nimbusimage/image-processing-base:latest
 COPY ./workers/annotations/gaussian_blur/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Gaussian Blur" \
       interfaceCategory="Image Processing" \

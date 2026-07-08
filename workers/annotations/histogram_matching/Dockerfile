@@ -3,6 +3,7 @@ FROM nimbusimage/image-processing-base:latest
 COPY ./workers/annotations/histogram_matching/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Histogram Matching" \
       interfaceCategory="Image Processing" \

@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/properties/connections/children_count_worker/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Count connected objects" \

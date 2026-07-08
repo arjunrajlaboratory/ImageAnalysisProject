@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/annotations/connect_timelapse/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Connect Time Lapse" \
       interfaceCategory="Connections" \

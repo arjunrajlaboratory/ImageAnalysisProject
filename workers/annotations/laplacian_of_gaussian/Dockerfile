@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/annotations/laplacian_of_gaussian/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Laplacian of Gaussian" \
       interfaceCategory="Object Detection" \
