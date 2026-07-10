@@ -76,7 +76,7 @@ COPY ./workers/annotations/deconwolf/entrypoint.py /
 WORKDIR /
 
 LABEL isUPennContrastWorker="" \
-      isGPUWorker="false" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       interfaceName="Deconwolf Deconvolution" \
       interfaceCategory="Image Processing" \
