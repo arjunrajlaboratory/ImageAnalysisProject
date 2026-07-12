@@ -41,4 +41,6 @@ RUN pip install -e devops/girder/annotation_client/
 COPY ./utils.py /
 COPY ./entrypoint.py /
 
+LABEL isGPUWorker="false"
+
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]

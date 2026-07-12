@@ -11,6 +11,7 @@ SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 COPY ./entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="point" \
       interfaceName="Distance from point to nearest other point" \

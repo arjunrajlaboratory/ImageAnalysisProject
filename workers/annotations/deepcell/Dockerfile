@@ -47,6 +47,8 @@ RUN python /download_models.py
 
 COPY ./entrypoint.py /
 
+LABEL isGPUWorker="true"
+
 # Fast env activation in place of `conda run` (see todo/worker-startup-latency.md)
 COPY ./workers/base_docker_images/run_worker.sh /usr/local/bin/run_worker.sh
 RUN chmod +x /usr/local/bin/run_worker.sh

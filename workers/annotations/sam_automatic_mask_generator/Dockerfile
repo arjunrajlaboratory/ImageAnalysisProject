@@ -52,6 +52,7 @@ RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
 RUN pip install /ImageAnalysisProject/annotation_utilities
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       interfaceName="SAM automatic mask generator" \
       interfaceCategory="SAM" \
