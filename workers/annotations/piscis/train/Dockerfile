@@ -67,6 +67,7 @@ COPY ./workers/annotations/piscis/utils.py /
 COPY ./workers/annotations/piscis/train/entrypoint.py /
 
 LABEL isUPennContrastWorker=True \
+      isGPUWorker="true" \
       isAnnotationWorker=True \
       interfaceName="Piscis spot training" \
       interfaceCategory="Piscis" \

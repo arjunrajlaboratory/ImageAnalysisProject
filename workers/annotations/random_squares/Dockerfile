@@ -4,6 +4,7 @@ FROM nimbusimage/test-worker-base:latest
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./workers/annotations/random_squares/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Random squares" \
       interfaceCategory="Testing" \

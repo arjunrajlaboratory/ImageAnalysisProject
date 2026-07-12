@@ -59,6 +59,7 @@ COPY ./worker_client /worker_client
 RUN pip install /worker_client
 
 LABEL isUPennContrastWorker=True \
+      isGPUWorker="true" \
       isAnnotationWorker=True \
       interfaceName="Cellpose" \
       interfaceCategory="Cellpose" \

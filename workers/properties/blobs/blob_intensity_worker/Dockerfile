@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/properties/blobs/blob_intensity_worker/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Blob intensity measurements" \

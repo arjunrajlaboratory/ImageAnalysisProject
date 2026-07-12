@@ -3,6 +3,7 @@ FROM nimbusimage/image-processing-base:latest
 COPY ./workers/annotations/rolling_ball/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Rolling Ball" \
       interfaceCategory="Image Processing" \

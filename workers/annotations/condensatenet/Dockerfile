@@ -65,6 +65,7 @@ COPY ./workers/annotations/condensatenet/entrypoint.py /
 WORKDIR /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       interfaceName="CondensateNet segmentation" \
       interfaceCategory="CondensateNet" \

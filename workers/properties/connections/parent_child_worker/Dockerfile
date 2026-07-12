@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/properties/connections/parent_child_worker/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="any" \
       interfaceName="Connection IDs" \

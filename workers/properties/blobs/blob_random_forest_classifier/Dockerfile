@@ -52,6 +52,7 @@ RUN pip install -e devops/girder/annotation_client/
 COPY ./workers/properties/blobs/blob_random_forest_classifier/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="polygon" \
       interfaceName="Random Forest Classifier" \

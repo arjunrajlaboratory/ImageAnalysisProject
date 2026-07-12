@@ -56,6 +56,7 @@ COPY ./workers/annotations/ai_analysis/property_handling.py /
 ENV ANTHROPIC_API_KEY=""
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Claude natural language analyzer" \
       interfaceCategory="AI analysis" \

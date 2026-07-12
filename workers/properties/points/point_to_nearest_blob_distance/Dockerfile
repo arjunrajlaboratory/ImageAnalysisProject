@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/properties/points/point_to_nearest_blob_distance/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="point" \
       interfaceName="Distance to nearest blob" \

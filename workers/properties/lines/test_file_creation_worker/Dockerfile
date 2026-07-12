@@ -41,6 +41,7 @@ RUN pip install -e devops/girder/annotation_client/
 COPY ./entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isPropertyWorker="" \
       annotationShape="line" \
       interfaceName="Test File Creation" \

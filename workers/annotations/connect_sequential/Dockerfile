@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/annotations/connect_sequential/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Connect Sequential" \
       interfaceCategory="Connections" \

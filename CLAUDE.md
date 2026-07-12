@@ -383,6 +383,7 @@ pixelSize = params['scales']['pixelSize']  # {'unit': 'mm', 'value': 0.000219}
 - Workers inherit from `nimbusimage/worker-base:latest` or `nimbusimage/image-processing-base:latest`
 - Test workers (random_squares, sample_interface) use `nimbusimage/test-worker-base:latest`, a micromamba-based image using only conda-forge (avoids Anaconda ToS issues)
 - Docker labels identify worker type: `isPropertyWorker`, `isAnnotationWorker`, `annotationShape`, `interfaceName`, `interfaceCategory`
+- Every worker's Dockerfile (production `Dockerfile` and any `Dockerfile_M1` variant, in the **final** stage for multi-stage builds) must set an explicit `isGPUWorker="true"` or `isGPUWorker="false"` label — the NimbusImage dispatcher reads it to route the job to the `gpu` or `cpu` Celery queue. An unlabeled image falls back to the `gpu` queue and logs a warning in prod, so never leave it unset on a new worker.
 - Architecture-aware builds: `Dockerfile` (x86_64/production) and `Dockerfile_M1` (arm64/Mac development)
 - GPU workers (deconwolf, condensatenet, etc.) use NVIDIA CUDA base images by default
   - Set `MAC_DEVELOPMENT_MODE=true` to build CPU-only versions on Mac

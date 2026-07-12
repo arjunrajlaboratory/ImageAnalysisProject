@@ -4,6 +4,7 @@ FROM nimbusimage/worker-base:latest
 COPY ./workers/annotations/connect_to_nearest/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
+      isGPUWorker="false" \
       isAnnotationWorker="" \
       interfaceName="Connect to Nearest" \
       interfaceCategory="Connections" \

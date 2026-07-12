@@ -51,4 +51,6 @@ RUN pip install nvidia-cudnn-cu11==8.6.0.163
 COPY ./utils.py /
 COPY ./entrypoint.py /
 
+LABEL isGPUWorker="true"
+
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]
