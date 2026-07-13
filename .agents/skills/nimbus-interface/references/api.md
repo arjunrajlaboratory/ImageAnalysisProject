@@ -19,7 +19,7 @@ tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=da
 
 ### Metadata
 ```python
-idx = tileClient.tiles['IndexRange']
+idx = tileClient.tiles.get('IndexRange', {})
 num_channels = idx.get('IndexC', 1)
 num_z = idx.get('IndexZ', 1)
 num_time = idx.get('IndexT', 1)

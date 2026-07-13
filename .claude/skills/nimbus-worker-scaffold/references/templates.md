@@ -200,7 +200,13 @@ FROM base as build
 COPY ./workers/annotations/my_worker/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
-# ... pip installs, model downloads at build time ...
+
+# Install the NimbusImage annotation client required by every worker entrypoint.
+RUN git clone --depth 1 https://github.com/arjunrajlaboratory/NimbusImage /NimbusImage
+RUN pip install -r /NimbusImage/devops/girder/annotation_client/requirements.txt && \
+    pip install -e /NimbusImage/devops/girder/annotation_client/
+
+# ... model-specific pip installs and downloads at build time ...
 COPY ./workers/annotations/my_worker/entrypoint.py /
 COPY ./annotation_utilities /annotation_utilities
 RUN pip install /annotation_utilities

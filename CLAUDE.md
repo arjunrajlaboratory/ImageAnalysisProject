@@ -8,7 +8,7 @@ This repository contains Docker-based workers for NimbusImage, a cloud platform 
 
 ## Worker Documentation
 
-Every worker has a `{worker_name}.md` file in its directory documenting its type, interface parameters, outputs, and build/test commands. A top-level `registry.md` indexes all workers in one place.
+Every worker has an uppercase `WORKERNAME.md` file in its directory documenting its type, interface parameters, outputs, and build/test commands. The top-level `REGISTRY.md` indexes all workers in one place.
 
 ### Generating / Updating Documentation
 
@@ -40,16 +40,16 @@ The script reads each `entrypoint.py` via AST parsing to extract the interface d
 > labels actually change.
 
 When it was active, the `PostToolUse` hook (`.claude/hooks/update-worker-docs.sh`) fired automatically after any `gh pr create` or `gh pr edit` Bash command and:
-1. Ran `generate_worker_docs.py` to regenerate all worker docs and `registry.md`
+1. Ran `generate_worker_docs.py` to regenerate all worker docs and `REGISTRY.md`
 2. Committed any changes
 3. Pushed the commit to the current branch so the PR always contained up-to-date docs
 
 ### Documentation Conventions
 
-- Each worker's doc file is named `{worker_name}.md` and lives in the worker's directory.
+- Each worker's doc file is named `WORKERNAME.md` (uppercase, matching the worker name) and lives in the worker's directory.
 - These docs are **hand-maintained**. `generate_worker_docs.py` only creates a
   stub for a worker that has **no** doc file yet (existing docs are preserved, per
-  above), and the auto-doc hook is disabled — so edit the `{worker_name}.md`
+  above), and the auto-doc hook is disabled — so edit the `WORKERNAME.md`
   directly when a worker's interface or behavior changes. Avoid
   `generate_worker_docs.py --force`: it overwrites hand-written docs with
   auto-generated stubs.
@@ -241,11 +241,12 @@ image = tileClient.getRegion(datasetId, frame=frame,
                               left=x_min, top=y_min, right=x_max, bottom=y_max,
                               units="base_pixels").squeeze()
 
-# Access tile metadata
-num_channels = tileClient.tiles['IndexRange'].get('IndexC', 1)
-num_z = tileClient.tiles['IndexRange'].get('IndexZ', 1)
-num_time = tileClient.tiles['IndexRange'].get('IndexT', 1)
-num_xy = tileClient.tiles['IndexRange'].get('IndexXY', 1)
+# Access tile metadata. Single-frame datasets can omit IndexRange entirely.
+index_range = tileClient.tiles.get('IndexRange', {})
+num_channels = index_range.get('IndexC', 1)
+num_z = index_range.get('IndexZ', 1)
+num_time = index_range.get('IndexT', 1)
+num_xy = index_range.get('IndexXY', 1)
 ```
 
 ### Image Processing Workflow (Writing New Images to Girder)

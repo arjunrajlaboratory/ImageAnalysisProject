@@ -1,6 +1,6 @@
 ---
 name: "nimbus-interface"
-description: "Runtime API reference for the NimbusImage/Girder backend used by workers in this repository \u2014 the how-to for talking to the server from worker code. Use when you need image loading, annotation CRUD, property-value computation and submission, multi-channel merging, coordinate conversions (the x/y swap and 0.5-pixel offset), local test-environment setup, or infrastructure troubleshooting (e.g. HTTP 500 from a missing MongoDB). Also use when writing test scripts that interact with the Nimbus API. Scope boundary: this is API/runtime reference only. To scaffold a brand-new worker (files, Dockerfile, labels, registration) use nimbus-worker-scaffold; to fix a crashing worker or sweep a bug across sibling workers use nimbus-worker-hardening."
+description: "Runtime NimbusImage/Girder API reference for worker code. Use for image loading, annotation CRUD, property values, channel merging, coordinate conversions, local API tests, or infrastructure errors such as HTTP 500. Use nimbus-worker-scaffold to create a new worker and nimbus-worker-hardening to diagnose or sweep failures in existing workers."
 ---
 
 # NimbusImage Worker Development
@@ -22,7 +22,8 @@ curl -s http://localhost:8080/api/v1/system/version  # Works without MongoDB
 ```
 
 Full stack: `girder`, `worker` (celery), `rabbitmq`, `memcached`, `mongodb`.
-Compose file: `/home/arjun/UPennContrast/docker-compose.yaml`.
+The compose file lives in the separate NimbusImage checkout. Set
+`NIMBUSIMAGE_REPO` to that checkout's root instead of assuming a personal path.
 
 ## Critical Pitfalls
 
@@ -69,10 +70,12 @@ Worker entrypoints import heavy ML libraries (torch, sam2) at module level. Copy
 
 ### Local venv dependencies
 ```bash
+# Run from the ImageAnalysisProject repository root.
+export NIMBUSIMAGE_REPO="${NIMBUSIMAGE_REPO:-../NimbusImage}"
 pip install girder-client tifffile
-pip install -e /home/arjun/UPennContrast/devops/girder/annotation_client
-pip install -e /home/arjun/ImageAnalysisProject/annotation_utilities
-pip install -e /home/arjun/ImageAnalysisProject/worker_client
+pip install -e "$NIMBUSIMAGE_REPO/devops/girder/annotation_client"
+pip install -e ./annotation_utilities
+pip install -e ./worker_client
 pip install numpy scipy scikit-image shapely matplotlib pillow numba
 # ML deps (torch, sam2, etc.) only needed for inference, not API testing
 ```
@@ -93,10 +96,10 @@ Dataset `69988c84b48d8121b565aba4`: 2 channels (Brightfield, YFP), 7Z, 4T, 6XY, 
 
 | Package | Location |
 |---------|----------|
-| annotation_client | `/home/arjun/UPennContrast/devops/girder/annotation_client/` |
-| annotation_utilities | `/home/arjun/ImageAnalysisProject/annotation_utilities/` |
-| worker_client | `/home/arjun/ImageAnalysisProject/worker_client/` |
-| Workers | `/home/arjun/ImageAnalysisProject/workers/` |
+| annotation_client | `$NIMBUSIMAGE_REPO/devops/girder/annotation_client/` |
+| annotation_utilities | `./annotation_utilities/` |
+| worker_client | `./worker_client/` |
+| Workers | `./workers/` |
 
 Key source files: `annotation_client/{annotations,tiles,workers}.py`, `annotation_utilities/{annotation_tools,batch_argument_parser}.py`
 

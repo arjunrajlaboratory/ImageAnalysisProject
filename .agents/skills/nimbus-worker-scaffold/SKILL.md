@@ -1,6 +1,6 @@
 ---
 name: "nimbus-worker-scaffold"
-description: "Scaffold a brand-new NimbusImage Docker worker end-to-end in this repository. Use whenever the user wants to add, create, or port a NEW worker \u2014 a segmentation/annotation worker, a property-computation worker, an image-processing worker, or a test worker \u2014 or says things like \"add a worker for X\", \"wrap this model/tool as a NimbusImage worker\", \"create a new annotation/property worker\", or \"scaffold a worker\". Covers the full set of files a new worker needs (entrypoint.py, Dockerfile plus an optional Dockerfile_M1, tests, WORKERNAME.md, docker-compose registration, REGISTRY.md) and the Docker label set \u2014 including the mandatory isGPUWorker label that governs GPU/CPU queue routing. Scope boundary: this is the create-from-scratch workflow only. For FIXING, debugging, or hardening an EXISTING worker (crashes, deploy errors, applying a fix across sibling workers) use nimbus-worker-hardening; for the runtime Girder/large_image API details (image access, annotation CRUD, coordinate conventions) it defers to the nimbus-interface skill."
+description: "Scaffold a new NimbusImage Docker worker end to end, including entrypoint, Dockerfiles and GPU labels, tests, Compose registration, WORKERNAME.md, and REGISTRY.md. Use when adding, creating, or porting a new annotation, property, image-processing, ML, or test worker. Use nimbus-worker-hardening for existing-worker fixes and nimbus-interface for runtime API details."
 ---
 
 # Scaffolding a NimbusImage Worker
@@ -83,17 +83,22 @@ Pick the base image from Step 1:
 
 **The label block is not optional and not cosmetic — the dispatcher reads it.**
 Every production `Dockerfile` (and any `Dockerfile_M1`, in the *final* stage of a
-multi-stage build) must set:
+multi-stage build) must set. This valid annotation-worker example is CPU-only:
 
 ```dockerfile
 LABEL isUPennContrastWorker="" \
-      isGPUWorker="true"  # or "false" — MANDATORY, no default \
-      isAnnotationWorker="" \        # OR isPropertyWorker="" for property workers
-      annotationShape="polygon" \    # polygon | point | line (property + shaped annotation workers)
+      isGPUWorker="false" \
+      isAnnotationWorker="" \
+      annotationShape="polygon" \
       interfaceName="Human-readable name" \
       interfaceCategory="Grouping shown in the UI" \
       description="One line describing what it does"
 ```
+
+Use `isGPUWorker="true"` for a GPU worker. For a property worker, replace
+`isAnnotationWorker` with `isPropertyWorker`. Set `annotationShape` to
+`polygon`, `point`, or `line` for property and shaped annotation workers; omit
+it for image-processing workers that do not emit annotations.
 
 `isGPUWorker` decides whether the job goes to the `gpu` or `cpu` Celery queue.
 **An unlabeled image silently falls back to the `gpu` queue in production** and
@@ -140,7 +145,7 @@ drifts. Do all of these:
      my_worker:
        build:
          context: .
-         dockerfile: ./workers/annotations/my_worker/Dockerfile
+         dockerfile: ./workers/annotations/my_worker/${DOCKERFILE:-Dockerfile}
        image: annotations/my_worker:latest
        depends_on: [worker-base]
        profiles: ["worker", "annotations"]
