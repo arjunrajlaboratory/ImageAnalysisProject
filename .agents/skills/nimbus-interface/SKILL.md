@@ -1,5 +1,5 @@
 ---
-name: nimbus-interface
+name: "nimbus-interface"
 description: "Runtime NimbusImage/Girder API reference for worker code. Use for image loading, annotation CRUD, property values, channel merging, coordinate conversions, local API tests, or infrastructure errors such as HTTP 500. Use nimbus-worker-scaffold to create a new worker and nimbus-worker-hardening to diagnose or sweep failures in existing workers."
 ---
 
