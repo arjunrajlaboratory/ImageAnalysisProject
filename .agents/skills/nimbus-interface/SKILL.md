@@ -1,6 +1,6 @@
 ---
-name: nimbus-interface
-description: Runtime API reference for the NimbusImage/Girder backend used by workers in this repository — the how-to for talking to the server from worker code. Use when you need image loading, annotation CRUD, property-value computation and submission, multi-channel merging, coordinate conversions (the x/y swap and 0.5-pixel offset), local test-environment setup, or infrastructure troubleshooting (e.g. HTTP 500 from a missing MongoDB). Also use when writing test scripts that interact with the Nimbus API. Scope boundary: this is API/runtime reference only. To scaffold a brand-new worker (files, Dockerfile, labels, registration) use nimbus-worker-scaffold; to fix a crashing worker or sweep a bug across sibling workers use nimbus-worker-hardening.
+name: "nimbus-interface"
+description: "Runtime API reference for the NimbusImage/Girder backend used by workers in this repository \u2014 the how-to for talking to the server from worker code. Use when you need image loading, annotation CRUD, property-value computation and submission, multi-channel merging, coordinate conversions (the x/y swap and 0.5-pixel offset), local test-environment setup, or infrastructure troubleshooting (e.g. HTTP 500 from a missing MongoDB). Also use when writing test scripts that interact with the Nimbus API. Scope boundary: this is API/runtime reference only. To scaffold a brand-new worker (files, Dockerfile, labels, registration) use nimbus-worker-scaffold; to fix a crashing worker or sweep a bug across sibling workers use nimbus-worker-hardening."
 ---
 
 # NimbusImage Worker Development

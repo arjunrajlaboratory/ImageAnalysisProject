@@ -1,0 +1,525 @@
+# AGENTS.md
+
+This file provides guidance to Codex when working with code in this repository.
+
+## Overview
+
+This repository contains Docker-based workers for NimbusImage, a cloud platform for image analysis. Workers interface with a Girder/large_image backend to pull images and annotations, then return annotations or computed property values to the server.
+
+## Worker Documentation
+
+Every worker has a `{worker_name}.md` file in its directory documenting its type, interface parameters, outputs, and build/test commands. A top-level `registry.md` indexes all workers in one place.
+
+### Generating / Updating Documentation
+
+```bash
+# Create stubs for workers missing docs + regenerate registry
+python generate_worker_docs.py
+
+# Force-overwrite all worker docs (WARNING: replaces hand-written docs with auto-generated stubs)
+python generate_worker_docs.py --force
+
+# Regenerate docs for specific workers only (registry always regenerated)
+python generate_worker_docs.py --workers cellposesam blob_intensity_worker
+
+# Regenerate registry only
+python generate_worker_docs.py --registry-only
+```
+
+The script reads each `entrypoint.py` via AST parsing to extract the interface definition and Docker labels, then writes the markdown files. **By default, it only creates stubs for workers that don't already have a doc file** — existing hand-written documentation is preserved. Use `--force` to overwrite. Workers with dynamically-computed interface values (e.g. model lists fetched from Girder) are handled gracefully — static fields are extracted and dynamic ones are flagged.
+
+### Automatic Documentation Hook (DISABLED)
+
+> **Disabled for Codex and Claude Code.** The legacy script
+> (`.claude/hooks/update-worker-docs.sh`) is kept for reference only. Do not
+> register or run it automatically. It was disabled because it auto-regenerated
+> `REGISTRY.md` on every `gh pr create`/`edit` and committed the result, which
+> repeatedly swept **unrelated description drift** (stale one-line summaries for
+> workers untouched by the PR) into otherwise-focused PRs. Regenerate docs
+> manually with `python generate_worker_docs.py` when a worker's interface or
+> labels actually change.
+
+When it was active, the `PostToolUse` hook fired automatically after any `gh pr create` or `gh pr edit` Bash command and:
+1. Ran `generate_worker_docs.py` to regenerate all worker docs and `registry.md`
+2. Committed any changes
+3. Pushed the commit to the current branch so the PR always contained up-to-date docs
+
+### Documentation Conventions
+
+- Each worker's doc file is named `{worker_name}.md` and lives in the worker's directory.
+- These docs are **hand-maintained**. `generate_worker_docs.py` only creates a
+  stub for a worker that has **no** doc file yet (existing docs are preserved, per
+  above), and the auto-doc hook is disabled — so edit the `{worker_name}.md`
+  directly when a worker's interface or behavior changes. Avoid
+  `generate_worker_docs.py --force`: it overwrites hand-written docs with
+  auto-generated stubs.
+- The `interfaceName`, `interfaceCategory`, `annotationShape`, and `description` Docker labels are reflected in the docs; keep these labels accurate in the Dockerfile.
+
+## Build Commands
+
+```bash
+# Build all workers (auto-detects arm64/x86_64 architecture)
+./build_workers.sh
+
+# Build a specific worker
+./build_workers.sh blob_metrics
+
+# Build without cache
+./build_workers.sh --no-cache
+
+# Build and run all tests
+./build_workers.sh --build-and-run-tests
+
+# Build and run tests for a specific worker
+./build_workers.sh --build-and-run-tests blob_metrics
+
+# Build tests only (no run)
+./build_workers.sh --build-tests-only
+
+# Run tests only (no build)
+./build_workers.sh --run-tests-only
+
+# Build GPU/ML workers (cellpose, SAM2, piscis, stardist, condensatenet)
+./build_machine_learning_workers.sh
+
+# Mac development mode (forces CPU-only Dockerfile_M1 for workers with GPU defaults)
+MAC_DEVELOPMENT_MODE=true ./build_workers.sh deconwolf
+
+# Build test workers (random_squares, sample_interface)
+./build_test_workers.sh
+
+# Build and run test worker tests
+./build_test_workers.sh --build-and-run-tests
+```
+
+## Architecture
+
+### Worker Types
+
+Workers live in `workers/` and are organized into two categories:
+
+- **`workers/annotations/`**: Create annotations via segmentation (cellposesam, histogram_matching, connect_to_nearest, etc.)
+- **`workers/properties/`**: Calculate properties on existing annotations, organized by shape:
+  - `blobs/`: Polygon/blob properties (intensity, metrics, overlap)
+  - `points/`: Point annotation properties (intensity, distance)
+  - `lines/`: Line annotation properties (length, scan)
+  - `connections/`: Relationship properties (children_count, parent_child)
+
+### Worker Entry Point Pattern
+
+Every worker has an `entrypoint.py` with two required functions:
+
+```python
+def interface(image, apiUrl, token):
+    """Define the UI interface shown to users"""
+    client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
+    interface = {
+        'Channel': {'type': 'channel', 'required': True, ...},
+        'Radius': {'type': 'number', 'min': 0, 'max': 10, ...},
+    }
+    client.setWorkerImageInterface(image, interface)
+
+def compute(datasetId, apiUrl, token, params):
+    """Main computation logic"""
+    # params contains: workerInterface, tags, tile, assignment, channel, connectTo
+    ...
+```
+
+Interface types: `number`, `text`, `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`, `notes`
+
+### Interface Parameter Data Types (What `params['workerInterface']` Returns)
+
+Each interface type returns a specific data type in `params['workerInterface']['FieldName']`:
+
+| Interface Type | Returns | Example Value |
+|----------------|---------|---------------|
+| `number` | `int` or `float` | `32`, `0.5` |
+| `text` | `str` | `"1-3, 5-8"`, `""` |
+| `select` | `str` | `"sam2.1_hiera_small.pt"` |
+| `checkbox` | `bool` | `True`, `False` |
+| `channel` | `int` | `0` |
+| `channelCheckboxes` | `dict` of `str` → `bool` | `{"0": True, "1": False, "2": True}` |
+| `tags` | **`list` of `str`** | `["DAPI blob"]`, `["cell", "nucleus"]` |
+| `layer` | `str` | `"layer_id"` |
+
+**Common pitfall with `tags`**: The `tags` type returns a **plain list of strings**, NOT a dict. Do not call `.get('tags')` on the result.
+
+```python
+# CORRECT - tags returns a list directly:
+training_tags = params['workerInterface'].get('Training Tag', [])
+# training_tags = ["DAPI blob"]
+
+# WRONG - will crash with AttributeError: 'list' object has no attribute 'get':
+training_tags = params['workerInterface'].get('Training Tag', {}).get('tags', [])
+```
+
+**Note**: `params['tags']` (the top-level output tags for the worker, NOT a workerInterface field) is also a plain list of strings (e.g., `["DAPI blob"]`). Meanwhile, `params['tags']` used in property workers via `workerClient.get_annotation_list_by_shape()` uses `{'tags': [...], 'exclusive': bool}` — these are two different things.
+
+**Validating tags** (recommended pattern from cellpose_train, piscis):
+```python
+tags = workerInterface.get('My Tag Field', [])
+if not tags or len(tags) == 0:
+    sendError("No tag selected", "Please select at least one tag.")
+    return
+```
+
+**Using tags to filter annotations**:
+```python
+# Pass the list directly to annotation_tools
+filtered = annotation_tools.get_annotations_with_tags(
+    annotation_list, tags, exclusive=False)
+
+# Or with Girder API (must JSON-serialize)
+annotations = annotationClient.getAnnotationsByDatasetId(
+    datasetId, shape='polygon', tags=json.dumps(tags))
+```
+
+### Key APIs
+
+**annotation_client** (installed from NimbusImage repo):
+- `annotation_client.workers`: `UPennContrastWorkerClient`, `UPennContrastWorkerPreviewClient`
+- `annotation_client.tiles`: `UPennContrastDataset` - access images via large_image
+- `annotation_client.annotations`: `UPennContrastAnnotationClient` - CRUD for annotations
+- `annotation_client.utils`: `sendProgress(fraction, title, info)`, `sendWarning(msg, info)`, `sendError(msg, info)`
+
+**annotation_utilities** (local package in `annotation_utilities/`):
+- `annotation_tools`: Filter annotations by tags, convert to/from shapely geometries
+- `batch_argument_parser`: Parse batch ranges like "1-3, 5-8"
+- `progress`: `update_progress()` helper
+
+**worker_client** (local package in `worker_client/`):
+- `WorkerClient`: High-level class for annotation workers that handles batching over XY/Z/Time
+
+### Coordinate Conventions (Critical)
+
+There are important coordinate transformations between scikit-image/numpy and Girder/large_image annotations:
+
+**1. The 0.5 pixel offset**: scikit-image uses pixel centers, while Girder uses top-left corner as origin. When reading annotation coordinates for use with scikit-image functions like `draw.polygon()`:
+
+```python
+# Reading annotation coordinates for scikit-image processing
+polygon = np.array([[coord['y'] - 0.5, coord['x'] - 0.5]
+                    for coord in annotation['coordinates']])
+rr, cc = draw.polygon(polygon[:, 0], polygon[:, 1], shape=image.shape)
+```
+
+**2. The x/y swap**: Numpy arrays are indexed as `[row, col]` which corresponds to `[y, x]`. Annotation coordinates use `{'x': ..., 'y': ...}`. The conversion functions in `annotation_tools.py` handle this:
+
+```python
+# annotation_tools.annotations_to_points(): annotation coords → shapely Point
+y, x = coords['x'], coords['y']  # Note the swap
+point = Point(x, y)
+
+# annotation_tools.polygons_to_annotations(): shapely Polygon → annotation coords
+coordinates = [{'x': float(y), 'y': float(x)} for x, y in polygon.exterior.coords]
+```
+
+**3. Helper functions** in `annotation_utilities.annotation_tools`:
+- `annotations_to_polygons()` / `polygons_to_annotations()` - handle coordinate swaps for polygons
+- `annotations_to_points()` / `points_to_annotations()` - handle coordinate swaps for points
+
+**When creating annotations directly** (like in stardist), if your polygon coordinates come from rasterio/shapely operations that already match image coordinates, you can use them directly:
+```python
+# If coords are already in (x, y) image space from rasterio.features.shapes()
+"coordinates": [{"x": float(x), "y": float(y)} for x, y in polygon.exterior.coords]
+```
+
+### Image Access Pattern
+
+```python
+# Get tile client for image access
+tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
+
+# Convert coordinates to frame index
+frame = tileClient.coordinatesToFrameIndex(xy, z, time, channel)
+
+# Get image region as numpy array
+image = tileClient.getRegion(datasetId, frame=frame).squeeze()
+
+# Get a subregion (useful for cropping to ROI)
+image = tileClient.getRegion(datasetId, frame=frame,
+                              left=x_min, top=y_min, right=x_max, bottom=y_max,
+                              units="base_pixels").squeeze()
+
+# Access tile metadata
+num_channels = tileClient.tiles['IndexRange'].get('IndexC', 1)
+num_z = tileClient.tiles['IndexRange'].get('IndexZ', 1)
+num_time = tileClient.tiles['IndexRange'].get('IndexT', 1)
+num_xy = tileClient.tiles['IndexRange'].get('IndexXY', 1)
+```
+
+### Image Processing Workflow (Writing New Images to Girder)
+
+For workers that process images and upload results back to Girder (like histogram_matching, registration):
+
+```python
+import large_image as li
+
+# Create a new image sink
+sink = li.new()
+
+# Process each frame and add to sink
+for i, frame in enumerate(tileClient.tiles['frames']):
+    # Build large_image params from frame indices
+    large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items()
+                          if k.startswith('Index') and len(k) > 5}
+
+    image = tileClient.getRegion(datasetId, frame=i).squeeze()
+    processed_image = your_processing_function(image)
+
+    sink.addTile(processed_image, 0, 0, **large_image_params)
+    sendProgress(i / len(tileClient.tiles['frames']), 'Processing', f"Frame {i+1}")
+
+# Copy metadata from source
+if 'channels' in tileClient.tiles:
+    sink.channelNames = tileClient.tiles['channels']
+sink.mm_x = tileClient.tiles['mm_x']
+sink.mm_y = tileClient.tiles['mm_y']
+sink.magnification = tileClient.tiles['magnification']
+
+# Write to temp file and upload
+sink.write('/tmp/output.tiff')
+gc = tileClient.client
+item = gc.uploadFileToFolder(datasetId, '/tmp/output.tiff')
+gc.addMetadataToItem(item['itemId'], {'tool': 'YourWorkerName', ...})
+```
+
+### Annotation Creation Workflow
+
+For workers that create annotations (like stardist, cellposesam):
+
+```python
+annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
+
+# Build annotation objects
+out_annotations = []
+for polygon in detected_polygons:
+    annotation = {
+        "tags": params.get('tags', []),
+        "shape": "polygon",  # or "point", "line"
+        "channel": channel,
+        "location": {"XY": tile['XY'], "Z": tile['Z'], "Time": tile['Time']},
+        "datasetId": datasetId,
+        "coordinates": [{"x": float(x), "y": float(y)} for x, y in polygon.exterior.coords],
+    }
+    out_annotations.append(annotation)
+
+# Upload all at once
+annotationClient.createMultipleAnnotations(out_annotations)
+```
+
+**Using WorkerClient for batched annotation creation** (handles XY/Z/Time iteration):
+```python
+from worker_client import WorkerClient
+
+worker = WorkerClient(datasetId, apiUrl, token, params)
+
+def process_image(image):
+    # Return list of polygon coordinates as [(x,y), (x,y), ...]
+    return detected_polygons
+
+# Automatically iterates over Batch XY/Z/Time from interface
+worker.process(process_image, f_annotation='polygon', stack_channels=[channel])
+```
+
+### Property Value Creation Workflow
+
+For workers that compute properties on existing annotations (like blob_metrics, blob_intensity):
+
+```python
+workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
+
+# Get annotations filtered by shape and tags
+annotationList = workerClient.get_annotation_list_by_shape('polygon', limit=0)
+annotationList = annotation_tools.get_annotations_with_tags(
+    annotationList,
+    params.get('tags', {}).get('tags', []),
+    params.get('tags', {}).get('exclusive', False)
+)
+
+# Build property values dictionary: {annotation_id: {prop_name: value, ...}}
+property_value_dict = {}
+for annotation in annotationList:
+    prop = {
+        'Area': float(computed_area),
+        'Perimeter': float(computed_perimeter),
+        'MeanIntensity': float(mean_val),
+        # ... more properties
+    }
+    property_value_dict[annotation['_id']] = prop
+
+# Wrap with datasetId and send to server
+dataset_property_value_dict = {datasetId: property_value_dict}
+workerClient.add_multiple_annotation_property_values(dataset_property_value_dict)
+```
+
+**For nested/multi-dimensional properties** (e.g., intensity across multiple Z planes):
+```python
+# Initialize nested structure for each annotation
+for annotation in annotationList:
+    property_value_dict[annotation['_id']] = {
+        'MeanIntensity': {},  # Will hold {z_key: value, ...}
+        'MaxIntensity': {},
+    }
+
+# Fill in values for each Z plane
+for z in z_planes:
+    z_key = f"z{(z+1):03d}"  # e.g., "z001", "z002"
+    for annotation in annotations_at_location:
+        # ... compute intensities ...
+        property_value_dict[annotation['_id']]['MeanIntensity'][z_key] = float(mean_val)
+        property_value_dict[annotation['_id']]['MaxIntensity'][z_key] = float(max_val)
+```
+
+**Accessing pixel scale from params** (for physical units):
+```python
+pixelSize = params['scales']['pixelSize']  # {'unit': 'mm', 'value': 0.000219}
+# params also has: params['scales']['tStep'], params['scales']['zStep']
+```
+
+### Docker Structure
+
+- Base images defined in `workers/base_docker_images/`
+- Workers inherit from `nimbusimage/worker-base:latest` or `nimbusimage/image-processing-base:latest`
+- Test workers (random_squares, sample_interface) use `nimbusimage/test-worker-base:latest`, a micromamba-based image using only conda-forge (avoids Anaconda ToS issues)
+- Docker labels identify worker type: `isPropertyWorker`, `isAnnotationWorker`, `annotationShape`, `interfaceName`, `interfaceCategory`
+- Every worker's Dockerfile (production `Dockerfile` and any `Dockerfile_M1` variant, in the **final** stage for multi-stage builds) must set an explicit `isGPUWorker="true"` or `isGPUWorker="false"` label — the NimbusImage dispatcher reads it to route the job to the `gpu` or `cpu` Celery queue. An unlabeled image falls back to the `gpu` queue and logs a warning in prod, so never leave it unset on a new worker.
+- Architecture-aware builds: `Dockerfile` (x86_64/production) and `Dockerfile_M1` (arm64/Mac development)
+- GPU workers (deconwolf, condensatenet, etc.) use NVIDIA CUDA base images by default
+  - Set `MAC_DEVELOPMENT_MODE=true` to build CPU-only versions on Mac
+  - GPU workers have automatic CPU fallback at runtime if OpenCL/CUDA unavailable
+
+#### Base Image Types
+
+**`nimbusimage/worker-base`** and **`nimbusimage/image-processing-base`** (conda-based):
+- Built from `ubuntu:jammy` with Miniforge (amd64) or Miniconda (arm64)
+- Uses `conda env create -n worker` with `environment.core.yml` or `environment.image_processing.yml`
+- `ENV CONDA_PLUGINS_AUTO_ACCEPT_TOS=yes` auto-accepts Anaconda channel ToS for CI/Docker builds
+- Workers use `SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]` for build-time commands
+- Entrypoint: `["conda", "run", "--no-capture-output", "-n", "worker", "python", "/entrypoint.py"]`
+
+**`nimbusimage/test-worker-base`** (micromamba-based):
+- Built from `mambaorg/micromamba:latest` (multi-arch natively, no conda installer logic)
+- Uses only `conda-forge` channel (no `defaults` channel, no Anaconda ToS)
+- Includes `worker_client` pre-installed (since it's test-worker-specific)
+- Workers use `ARG MAMBA_DOCKERFILE_ACTIVATE=1` for build-time env activation
+- Entrypoint: `["/usr/local/bin/_entrypoint.sh", "python", "/entrypoint.py"]` (micromamba's built-in activation)
+- Runs as non-root `$MAMBA_USER`; use `USER root` / `USER $MAMBA_USER` for privileged operations (e.g., `mkdir` in `/`)
+- Files must be copied with `COPY --chown=$MAMBA_USER:$MAMBA_USER` to be writable
+
+### Testing
+
+Tests use pytest with mocked `annotation_client`. Test files go in `tests/` subdirectory:
+```
+workers/properties/blobs/blob_intensity_worker/
+├── entrypoint.py
+├── Dockerfile
+└── tests/
+    ├── __init__.py
+    ├── test_blob_intensity.py
+    └── Dockerfile_Test
+```
+
+#### CI (`.github/workflows/test-workers.yml`)
+
+The heavy `test` job — which builds **and** tests every Docker worker on a
+single runner via `./build_workers.sh --build-and-run-tests` — is **commented
+out** because it is too expensive to run on every push/PR. It is preserved
+in-file so it can be re-enabled by uncommenting. **Run the full Docker worker
+tests locally instead** (optionally scoped to one worker):
+
+```bash
+./build_workers.sh --build-and-run-tests            # all workers
+./build_workers.sh --build-and-run-tests blob_metrics  # one worker
+```
+
+The lightweight `package-tests` job still runs in CI: it installs and runs
+`pytest` for the shared Python packages (`annotation_utilities`,
+`worker_client`) natively. These are packages installed *into* worker images
+rather than workers with their own image, so they have no docker-compose
+`*_test` service and are tested directly with pytest.
+
+### Test Workers
+
+Test/sample workers live in `workers/annotations/` and are built with the `testworker` profile:
+
+- **`random_squares`**: Generates random square polygon annotations. Uses `WorkerClient` for batch mode across XY/Z/Time. Useful for quickly testing annotation pipelines.
+- **`sample_interface`**: Demonstrates every available interface type (`notes`, `number`, `text`, `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`), all messaging functions (`sendProgress`, `sendWarning`, `sendError`), and batch mode via `WorkerClient`.
+
+Build test workers:
+```bash
+# Build all test workers
+./build_test_workers.sh
+
+# Build and run their tests
+./build_test_workers.sh --build-and-run-tests
+
+# Build a specific test worker
+./build_test_workers.sh random_squares
+
+# Build and test a specific test worker
+./build_test_workers.sh --build-and-run-tests sample_interface
+
+# Or via the main build script
+./build_workers.sh --build-test-workers
+```
+
+## Example Workers to Reference
+
+When creating new workers, use these as templates:
+
+- **Property worker (blobs)**: `workers/properties/blobs/blob_intensity_worker/entrypoint.py`
+- **Property worker (points)**: `workers/properties/points/point_circle_intensity_worker/entrypoint.py`
+- **Annotation worker (ML)**: `workers/annotations/cellposesam/entrypoint.py`
+- **Image processing worker**: `workers/annotations/histogram_matching/entrypoint.py`
+- **Image processing worker (GPU)**: `workers/annotations/deconwolf/entrypoint.py` - GPU-accelerated with CPU fallback
+- **Annotation worker (test)**: `workers/annotations/random_squares/entrypoint.py` - generates random squares with batch mode
+- **Sample interface (all types)**: `workers/annotations/sample_interface/entrypoint.py` - demonstrates all interface types, messaging, and batch mode
+
+## Worker Documentation
+
+### Documentation Structure
+
+Every worker has a `WORKERNAME.md` file in its directory (uppercase, e.g., `BLOB_INTENSITY.md`, `CELLPOSE.md`, `DECONWOLF.md`). This replaces the old boilerplate `README.md` files.
+
+### REGISTRY.md
+
+The root-level [`REGISTRY.md`](REGISTRY.md) is the master index of all workers, organized by category. It contains a table for each worker group with the worker name, path, one-line description, and link to detailed docs. This is the starting point for understanding what workers exist.
+
+**REGISTRY.md must be updated whenever workers are added, removed, or renamed.**
+
+### Documentation Template
+
+Worker documentation should cover:
+
+1. **Title and description** — what the worker does in 1-2 sentences
+2. **How It Works** — brief algorithm/pipeline description
+3. **Interface Parameters** — table of all user-facing parameters with types, defaults, and descriptions
+4. **Computed Properties** (property workers only) — table of property names and what they measure
+5. **Implementation Details** — notable algorithms, edge cases, coordinate handling
+6. **Notes** — GPU requirements, limitations, related workers
+
+Use existing docs as reference:
+- **Comprehensive template**: `workers/annotations/deconwolf/DECONWOLF.md`
+- **Concise template**: `workers/annotations/condensatenet/CONDENSATENET.md`
+
+### Pre-PR Validation Hook (DISABLED)
+
+> **Disabled for Codex and Claude Code.** The legacy script
+> (`.claude/hooks/validate-worker-docs.sh`) is kept for reference only. Do not
+> register or run it automatically. It was disabled alongside the auto-doc hook
+> above: its `REGISTRY.md`-was-updated check blocked PRs that only changed worker
+> *logic* (no interface change), forcing a noisy registry regeneration into the
+> PR just to pass. Keeping worker docs current is now a manual step.
+
+When it was active, the `PreToolUse` hook ran before `gh pr create` and checked:
+- Every modified annotation worker has a `WORKERNAME.md` doc file
+- Every modified property worker has a `WORKERNAME.md` doc file (not just a boilerplate README.md)
+- `REGISTRY.md` was updated if any worker files changed
+
+## Development TODOs
+
+Deferred work, technical debt, and future improvement plans are tracked in the `todo/` directory. The master index is [`todo/TODO_REGISTRY.md`](todo/TODO_REGISTRY.md).
+
+- When completing work that addresses a TODO item, update its status in `TODO_REGISTRY.md` and add a resolution note to the detailed TODO file.
+- When discovering new technical debt or deferred work, create a new TODO file in `todo/` and register it in `TODO_REGISTRY.md`.
