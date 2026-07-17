@@ -61,6 +61,12 @@ docker build . -f ./workers/annotations/sam2_video/$DOCKERFILE -t annotations/sa
 echo "Building CondensateNet worker"
 docker build . -f ./workers/annotations/condensatenet/$DOCKERFILE -t annotations/condensatenet:latest $NO_CACHE
 
+echo "Building Trackastra worker"
+docker build . -f ./workers/annotations/trackastra/Dockerfile -t annotations/trackastra:latest $NO_CACHE
+
+echo "Building Ultrack worker"
+docker build . -f ./workers/annotations/ultrack/Dockerfile -t annotations/ultrack:latest $NO_CACHE
+
 # These are some legacy workers that are no longer used.
 #docker build ./workers/annotations/cellori_segmentation/ -t annotations/cellori_segmentation_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=Cellori" --label "interfaceCategory=Cellori"
 #docker build ./workers/annotations/deepcell/ -t annotations/deepcell_worker:latest --label isUPennContrastWorker --label isAnnotationWorker --label "interfaceName=DeepCell" --label "interfaceCategory=Deepcell"
