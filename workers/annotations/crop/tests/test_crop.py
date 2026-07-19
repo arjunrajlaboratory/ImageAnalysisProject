@@ -177,7 +177,7 @@ def test_interface(mock_worker_preview_client):
     assert xy_range['type'] == 'text'
     assert xy_range['displayOrder'] == 1
     assert 'placeholder' in xy_range['vueAttrs']
-    assert xy_range['vueAttrs']['placeholder'] == 'ex. 1-3, 5-8'
+    assert xy_range['vueAttrs']['placeholder'] == 'ex. 1-3, 5-8, or all'
 
     # Check Z Range interface
     z_range = interface_data['Z Range']
