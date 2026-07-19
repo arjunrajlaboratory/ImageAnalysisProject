@@ -189,6 +189,10 @@ def test_interface(mock_worker_preview_client):
     assert time_range['type'] == 'text'
     assert time_range['displayOrder'] == 3
 
+    for range_field in ('XY Range', 'Z Range', 'Time Range'):
+        tooltip = interface_data[range_field]['vueAttrs']['tooltip']
+        assert 'all' in tooltip.lower()
+
     # Check Crop Rectangle interface
     crop_rect = interface_data['Crop Rectangle']
     assert crop_rect['type'] == 'tags'

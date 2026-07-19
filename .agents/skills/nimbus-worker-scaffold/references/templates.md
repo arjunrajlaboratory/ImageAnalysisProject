@@ -20,7 +20,9 @@ worker and follow it.
 
 Reference: `workers/annotations/random_squares/entrypoint.py`. `WorkerClient`
 handles Batch XY/Z/Time iteration and annotation upload; your function returns
-polygon coordinate lists (or points/lines) for one image.
+polygon coordinate lists (or points/lines) for one image. Numeric batch inputs
+are 1-indexed, `all` expands to every dataset coordinate, and empty fields use
+the current tile.
 
 ```python
 import argparse
@@ -49,10 +51,10 @@ def interface(image, apiUrl, token):
             'type': 'number', 'min': 1, 'max': 100, 'default': 10,
             'unit': 'pixels', 'displayOrder': 2,
         },
-        # Batch fields let WorkerClient iterate positions; include all three.
-        'Batch XY':   {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8', 'label': 'XY positions', 'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 3},
-        'Batch Z':    {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8', 'label': 'Z slices',    'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 4},
-        'Batch Time': {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8', 'label': 'Time points', 'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 5},
+        # Batch fields accept 1-indexed ranges or `all`; include all three.
+        'Batch XY':   {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all', 'label': 'XY positions', 'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 3},
+        'Batch Z':    {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all', 'label': 'Z slices',    'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 4},
+        'Batch Time': {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all', 'label': 'Time points', 'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 5},
     }
     client.setWorkerImageInterface(image, interface)
 
@@ -304,6 +306,8 @@ def test_compute(mock_annotation_client, mock_dataset_client):
 
 Include an edge-case test for a dataset with **no `IndexRange`** (single-frame) —
 that omission is a recurring production crash; see `nimbus-worker-hardening`.
+For WorkerClient batch fields, also exercise `all` against a mocked
+multi-position `IndexRange` and assert every expected coordinate is processed.
 
 `tests/Dockerfile_Test` (conda worker) — mirror the house convention exactly
 (`SHELL` activates the env, then a plain `pip install`; `python3` in the

@@ -52,6 +52,14 @@ tags = params['workerInterface'].get('Training Tag', [])
 tags = params['workerInterface'].get('Training Tag', {}).get('tags', [])
 ```
 
+### Batch ranges are dataset-aware
+Standard `Batch XY`, `Batch Z`, and `Batch Time` text fields accept 1-indexed
+numeric ranges such as `1-3, 5-8`, case-insensitive `all`, or an empty string.
+`all` expands from the dataset's `IndexRange`; empty fields use the current tile.
+Use `WorkerClient` or `batch_argument_parser.get_batch_ranges(...)` so missing
+dimensions safely fall back to coordinate `0`. See the detailed API reference
+for direct-loop and custom-range examples.
+
 ### Multi-channel merge output dtype
 `process_and_merge_channels` returns `float64` with values 0-255 (not 0-1). Convert for ML:
 ```python
@@ -111,3 +119,4 @@ See [references/api.md](references/api.md) for complete API patterns including:
 - Property value computation and submission
 - Writing images back to Girder
 - Worker interface type table
+- Dataset-aware Batch XY/Z/Time parsing, including `all`

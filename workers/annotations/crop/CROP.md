@@ -14,14 +14,14 @@ Subsets a multi-dimensional image by XY position, Z plane, time point, and/or sp
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| **XY Range** | text | all | XY positions to retain (e.g., "1-3, 5-8"). 1-indexed. |
-| **Z Range** | text | all | Z positions to retain (e.g., "1-3, 5-8"). 1-indexed. |
-| **Time Range** | text | all | Time positions to retain (e.g., "1-3, 5-8"). 1-indexed. |
+| **XY Range** | text | all | XY positions to retain (e.g., "1-3, 5-8"), or `all` for every XY position. Numeric ranges are 1-indexed. |
+| **Z Range** | text | all | Z positions to retain (e.g., "1-3, 5-8"), or `all` for every Z position. Numeric ranges are 1-indexed. |
+| **Time Range** | text | all | Time positions to retain (e.g., "1-3, 5-8"), or `all` for every time position. Numeric ranges are 1-indexed. |
 | **Crop Rectangle** | tags | -- | Tag of a rectangle or polygon annotation defining the spatial crop region. Uses the bounding box of the first matching annotation. |
 
 ## Implementation Details
 
-- Dimension ranges are 1-indexed in the UI and converted to 0-indexed internally via `batch_argument_parser`. Values outside the image's actual range are silently ignored.
+- Numeric dimension ranges are 1-indexed in the UI and converted to 0-indexed internally via `batch_argument_parser`. The case-insensitive value `all` expands from the dataset's `IndexRange`; leaving a field empty also retains every position. Values outside the image's actual range are silently ignored.
 - The output frame indices are re-mapped so they start from 0 and are contiguous. For example, if you keep Z planes 3,5,7, they become 0,1,2 in the output.
 - The spatial crop (Crop Rectangle) uses `getRegion` with `left`, `top`, `right`, `bottom` in base pixel units, derived from the bounding box of the first annotation matching the specified tag. Both polygon and rectangle annotation shapes are searched.
 - All channels are always retained in the output (channel selection is commented out in the code due to front-end limitations with changing channel definitions).

@@ -42,7 +42,7 @@ over time, so **check the current tree before relying on one** rather than
 assuming:
 
 ```bash
-grep -rn "def geometry_to_polygon_coords\|def get_selected_channels\|def find_out_of_range\|def validate_coordinates" \
+grep -rn "def geometry_to_polygon_coords\|def get_selected_channels\|def get_batch_ranges\|def find_out_of_range\|def validate_coordinates" \
   annotation_utilities/ worker_client/
 ```
 
@@ -144,14 +144,49 @@ with a 1-indexed message matching the UI's Batch fields. Prefer
 helper if present; if not yet merged, guard inline against the dimension size
 (`index_range.get(key, 1)`) and report which coordinates are out of range.
 
-**Sweep:** the `WorkerClient.process()` path (≈6 workers) is the priority;
-~26 workers parse batch ranges directly and can adopt the shared validator as it
-rolls out. Find batch-range consumers:
+**Sweep:** the `WorkerClient.process()` path is the priority; direct processing
+loops can adopt the shared validator as it rolls out. Find batch-range consumers:
 ```bash
 grep -rln "batch_argument_parser\|Batch XY\|coordinatesToFrameIndex" workers/
 ```
 
-### 5. Build-time transitive dependency breakage
+### 5. Literal `all` parsed without dataset context
+
+**Symptom:** entering `all` in a Batch XY/Z/Time field raises a numeric parsing
+error or `ValueError: 'all' requires all_values`, while numeric ranges still
+work. The range parser cannot infer a dataset dimension by itself.
+
+**Fix:** standard batch fields should go through the shared dataset-aware helper:
+```python
+index_range = datasetClient.tiles.get('IndexRange', {})
+batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+    params['tile'], params['workerInterface'], index_range)
+```
+This preserves 1-indexed numeric UI inputs, expands case-insensitive `all` to
+zero-indexed dataset coordinates, keeps the current tile for an empty field,
+and treats a missing dimension as coordinate `0`. Annotation workers using
+`WorkerClient` inherit this behavior automatically.
+
+For a non-standard range field, pass the final available coordinates explicitly:
+```python
+values = batch_argument_parser.process_range_list(
+    raw_value,
+    convert_one_to_zero_index=True,
+    all_values=range(index_range.get('IndexZ', 1)),
+)
+```
+`all_values` must already use the coordinate system required by the caller;
+conversion flags apply to numeric user input, not to `all_values`.
+
+**Sweep:**
+```bash
+grep -rln "Batch XY\|Batch Z\|Batch Time" workers/
+grep -rln "process_range_list" workers/
+```
+Inspect local parser copies separately; legacy one-indexed loops may need
+`range(1, size + 1)` before subtracting one inside the loop.
+
+### 6. Build-time transitive dependency breakage
 
 **Symptom:** the image builds one day and a fresh deploy build later crashes at
 **import time** with e.g. `ModuleNotFoundError: No module named 'pkg_resources'`.
@@ -170,7 +205,7 @@ build — so when a worker imports a pinned-era library (`stardist`, older ML
 packages), check the pins proactively. Related: PRs that slimmed startup and
 deferred heavy imports; keep interface-path imports light.
 
-### 6. `tags` interface field treated as a dict
+### 7. `tags` interface field treated as a dict
 
 **Symptom:** `AttributeError: 'list' object has no attribute 'get'`. A `tags`
 **interface field** returns a plain list of strings, not a dict.

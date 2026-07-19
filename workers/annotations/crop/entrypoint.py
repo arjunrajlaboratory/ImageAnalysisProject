@@ -27,7 +27,7 @@ def interface(image, apiUrl, token):
                 'label': 'Enter the XY positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the XY positions to retain. Separate multiple groups with a comma.'
+                'tooltip': 'Enter XY positions separated by commas, or all to retain every XY position.'
             },
             'displayOrder': 1
         },
@@ -38,7 +38,7 @@ def interface(image, apiUrl, token):
                 'label': 'Enter the Z positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Z positions to retain. Separate multiple groups with a comma.'
+                'tooltip': 'Enter Z positions separated by commas, or all to retain every Z position.'
             },
             'displayOrder': 2
         },
@@ -49,7 +49,7 @@ def interface(image, apiUrl, token):
                 'label': 'Enter the Time positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Time positions to retain. Separate multiple groups with a comma.'
+                'tooltip': 'Enter Time positions separated by commas, or all to retain every Time position.'
             },
             'displayOrder': 3
         },

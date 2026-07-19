@@ -134,7 +134,7 @@ Each interface type returns a specific data type in `params['workerInterface']['
 | Interface Type | Returns | Example Value |
 |----------------|---------|---------------|
 | `number` | `int` or `float` | `32`, `0.5` |
-| `text` | `str` | `"1-3, 5-8"`, `""` |
+| `text` | `str` | `"1-3, 5-8"`, `"all"`, `""` |
 | `select` | `str` | `"sam2.1_hiera_small.pt"` |
 | `checkbox` | `bool` | `True`, `False` |
 | `channel` | `int` | `0` |
@@ -184,11 +184,17 @@ annotations = annotationClient.getAnnotationsByDatasetId(
 
 **annotation_utilities** (local package in `annotation_utilities/`):
 - `annotation_tools`: Filter annotations by tags, convert to/from shapely geometries
-- `batch_argument_parser`: Parse batch ranges like "1-3, 5-8"
+- `batch_argument_parser`: Parse numeric batch ranges like "1-3, 5-8" and expand dataset-aware `all` values
 - `progress`: `update_progress()` helper
 
 **worker_client** (local package in `worker_client/`):
-- `WorkerClient`: High-level class for annotation workers that handles batching over XY/Z/Time
+- `WorkerClient`: High-level class for annotation workers that handles batching over XY/Z/Time, including dataset-aware `all` expansion
+
+**Batch range convention**:
+- Numeric `Batch XY`, `Batch Z`, and `Batch Time` inputs are 1-indexed in the UI and converted to zero-indexed coordinates internally.
+- The case-insensitive value `all` expands to every coordinate in the corresponding dataset dimension. An empty field processes only the current tile coordinate.
+- Prefer `WorkerClient` for annotation workers. Direct batching loops should call `batch_argument_parser.get_batch_ranges(tile, workerInterface, index_range)` rather than parsing each standard field independently.
+- A missing `IndexRange` or missing dimension key represents one available coordinate, `0`.
 
 ### Coordinate Conventions (Critical)
 
@@ -319,7 +325,8 @@ def process_image(image):
     # Return list of polygon coordinates as [(x,y), (x,y), ...]
     return detected_polygons
 
-# Automatically iterates over Batch XY/Z/Time from interface
+# Automatically iterates over Batch XY/Z/Time. Numeric values are 1-indexed;
+# `all` expands from dataset metadata; empty fields use the current tile.
 worker.process(process_image, f_annotation='polygon', stack_channels=[channel])
 ```
 
