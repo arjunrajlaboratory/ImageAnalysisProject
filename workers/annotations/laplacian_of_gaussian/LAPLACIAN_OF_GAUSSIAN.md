@@ -14,9 +14,9 @@ Detects spots in fluorescence images using the Laplacian of Gaussian (LoG) metho
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **Laplacian of Gaussian** | notes | -- | Descriptive text explaining the tool |
-| **Batch XY** | text | -- | XY positions to process (e.g., "1-3, 5-8") |
-| **Batch Z** | text | -- | Z positions to process (e.g., "1-3, 5-8") |
-| **Batch Time** | text | -- | Time positions to process (e.g., "1-3, 5-8") |
+| **Batch XY** | text | -- | XY positions to process (e.g., "1-3, 5-8"), or `all` |
+| **Batch Z** | text | -- | Z positions to process (e.g., "1-3, 5-8"), or `all` |
+| **Batch Time** | text | -- | Time positions to process (e.g., "1-3, 5-8"), or `all` |
 | **Mode** | select | Current Z | Processing mode: "Current Z" for 2D per-slice detection, "Z-Stack" for 3D volumetric detection |
 | **Sigma** | number | 2 | Sigma for the Gaussian filter (range 0-5). Sets the spatial scale of spots to detect. |
 | **Threshold** | text | 0.001 | Sensitivity threshold for the LoG filter. Lower values detect more spots. |

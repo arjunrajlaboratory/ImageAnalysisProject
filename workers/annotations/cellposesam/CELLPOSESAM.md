@@ -16,9 +16,9 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **Cellpose-SAM** | notes | -- | Informational text with documentation link |
-| **Batch XY** | text | -- | XY positions to iterate over (e.g., "1-3, 5-8") |
-| **Batch Z** | text | -- | Z slices to iterate over |
-| **Batch Time** | text | -- | Time points to iterate over |
+| **Batch XY** | text | -- | XY positions to iterate over (e.g., "1-3, 5-8"), or `all` |
+| **Batch Z** | text | -- | Z slices to iterate over, or `all` |
+| **Batch Time** | text | -- | Time points to iterate over, or `all` |
 | **Model** | select | cellpose-sam | Model to use. `cellpose-sam` runs the `cpsam_v2` checkpoint (current default); `cellpose-sam (legacy cpsam)` runs the original April 2025 `cpsam` checkpoint. User-trained models from Girder are also listed |
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |

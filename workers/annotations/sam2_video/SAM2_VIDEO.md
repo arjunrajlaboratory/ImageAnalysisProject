@@ -15,9 +15,9 @@ This worker uses SAM2's **video predictor** to track objects across time or Z-sl
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8") |
-| **Batch Z** | text | Current tile | Z positions to process |
-| **Batch Time** | text | Current tile | Time positions to process |
+| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8"), or `all` |
+| **Batch Z** | text | Current tile | Z positions to process, or `all` |
+| **Batch Time** | text | Current tile | Time positions to process, or `all` |
 | **Track across** | select | Time | Dimension to track along: "Time" or "Z" |
 | **Track direction** | select | Forward | Direction of tracking: "Forward" or "Backward" |
 | **Model** | select | `sam2.1_hiera_small.pt` | SAM2.1 model checkpoint |

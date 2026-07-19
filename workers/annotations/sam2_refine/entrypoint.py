@@ -41,33 +41,33 @@ def interface(image, apiUrl, token):
         'Batch XY': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': 'ex. 1-3, 5-8, or all',
                 'label': 'Enter the XY positions you want to process',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the XY positions to process. Separate multiple groups with a comma.'
+                'tooltip': 'Enter XY positions separated by commas, or all for every XY position.'
             },
             'displayOrder': 1
         },
         'Batch Z': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': 'ex. 1-3, 5-8, or all',
                 'label': 'Enter the Z positions you want to process',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Z positions to process. Separate multiple groups with a comma.'
+                'tooltip': 'Enter Z positions separated by commas, or all for every Z position.'
             },
             'displayOrder': 2
         },
         'Batch Time': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': 'ex. 1-3, 5-8, or all',
                 'label': 'Enter the Time positions you want to process',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Time positions to process. Separate multiple groups with a comma.'
+                'tooltip': 'Enter Time positions separated by commas, or all for every Time position.'
             },
             'displayOrder': 3
         },
@@ -189,31 +189,15 @@ def compute(datasetId, apiUrl, token, params):
     smoothing = float(params['workerInterface']['Smoothing'])
     refine_tags = params['workerInterface']['Tag of objects to refine']
     delete_original = params['workerInterface']['Delete original annotations']
-    batch_xy = params['workerInterface'].get('Batch XY', '')
-    batch_z = params['workerInterface'].get('Batch Z', '')
-    batch_time = params['workerInterface'].get('Batch Time', '')
-
-    # Parse batch parameters
-    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
-
     # Get annotation context
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
-
-    # Use tile values as defaults if batch parameters not specified
-    if batch_xy is None:
-        batch_xy = [tile['XY']]
-    if batch_z is None:
-        batch_z = [tile['Z']]
-    if batch_time is None:
-        batch_time = [tile['Time']]
-
-    batch_xy = list(batch_xy)
-    batch_z = list(batch_z)
-    batch_time = list(batch_time)
+    batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+        tile,
+        params['workerInterface'],
+        tileClient.tiles.get('IndexRange', {}),
+    )
 
     sendProgress(0.05, "Fetching annotations", "Retrieving annotations to refine")
 

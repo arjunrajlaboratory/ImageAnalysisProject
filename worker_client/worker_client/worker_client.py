@@ -40,28 +40,6 @@ class WorkerClient:
         self.tile = tile
         self.workerInterface = workerInterface
 
-        batch_xy = workerInterface.get('Batch XY', None)
-        batch_z = workerInterface.get('Batch Z', None)
-        batch_time = workerInterface.get('Batch Time', None)
-
-        batch_xy = batch_argument_parser.process_range_list(
-            batch_xy, convert_one_to_zero_index=True)
-        batch_z = batch_argument_parser.process_range_list(
-            batch_z, convert_one_to_zero_index=True)
-        batch_time = batch_argument_parser.process_range_list(
-            batch_time, convert_one_to_zero_index=True)
-
-        if batch_xy is None:
-            batch_xy = [tile['XY']]
-        if batch_z is None:
-            batch_z = [tile['Z']]
-        if batch_time is None:
-            batch_time = [tile['Time']]
-
-        self.batch_xy = batch_xy
-        self.batch_z = batch_z
-        self.batch_time = batch_time
-
         annotationClient = annotations.UPennContrastAnnotationClient(
             apiUrl=apiUrl, token=token)
         datasetClient = tiles.UPennContrastDataset(
@@ -69,6 +47,12 @@ class WorkerClient:
 
         self.annotationClient = annotationClient
         self.datasetClient = datasetClient
+
+        index_range = datasetClient.tiles.get('IndexRange', {})
+        self.batch_xy, self.batch_z, self.batch_time = (
+            batch_argument_parser.get_batch_ranges(
+                tile, workerInterface, index_range)
+        )
 
     def get_image(self, xy=None, z=None, time=None, channel=None):
 

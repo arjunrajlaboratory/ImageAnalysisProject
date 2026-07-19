@@ -17,9 +17,9 @@ This worker uses [Cellori](https://github.com/zjniu/Cellori) for cell segmentati
 | **Nuclei Channel** | channel | -1 | Channel containing nuclear stain. Set to -1 to disable. |
 | **Cytoplasm Channel** | channel | -1 | Channel containing cytoplasm/membrane stain. Set to -1 to disable. |
 | **Diameter** | number | 10 | Expected cell diameter in pixels (0-200) |
-| **Batch XY** | text | (current tile) | XY positions to process, e.g. "1-3, 5-8" |
-| **Batch Z** | text | (current tile) | Z slices to process, e.g. "1-3, 5-8" |
-| **Batch Time** | text | (current tile) | Time points to process, e.g. "1-3, 5-8" |
+| **Batch XY** | text | (current tile) | XY positions to process, e.g. "1-3, 5-8", or `all` |
+| **Batch Z** | text | (current tile) | Z slices to process, e.g. "1-3, 5-8", or `all` |
+| **Batch Time** | text | (current tile) | Time points to process, e.g. "1-3, 5-8", or `all` |
 
 ## Implementation Details
 

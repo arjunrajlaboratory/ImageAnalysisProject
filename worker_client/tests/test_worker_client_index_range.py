@@ -53,6 +53,42 @@ def _params():
     }
 
 
+def test_batch_all_expands_from_dataset_index_range(monkeypatch):
+    dataset_client = DummyDatasetClient(tiles={
+        "IndexRange": {"IndexXY": 2, "IndexZ": 3, "IndexT": 4},
+    })
+    WorkerClient = _load_worker_client(monkeypatch, dataset_client)
+    params = _params()
+    params["workerInterface"] = {
+        "Batch XY": "all",
+        "Batch Z": "ALL",
+        "Batch Time": " all ",
+    }
+
+    worker = WorkerClient("dataset", "http://api", "token", params)
+
+    assert list(worker.batch_xy) == [0, 1]
+    assert list(worker.batch_z) == [0, 1, 2]
+    assert list(worker.batch_time) == [0, 1, 2, 3]
+
+
+def test_batch_all_defaults_missing_index_range_to_single_position(monkeypatch):
+    dataset_client = DummyDatasetClient(tiles={})
+    WorkerClient = _load_worker_client(monkeypatch, dataset_client)
+    params = _params()
+    params["workerInterface"] = {
+        "Batch XY": "all",
+        "Batch Z": "all",
+        "Batch Time": "all",
+    }
+
+    worker = WorkerClient("dataset", "http://api", "token", params)
+
+    assert list(worker.batch_xy) == [0]
+    assert list(worker.batch_z) == [0]
+    assert list(worker.batch_time) == [0]
+
+
 def test_get_image_stack_defaults_missing_index_range_to_single_plane(monkeypatch):
     dataset_client = DummyDatasetClient(tiles={})
     WorkerClient = _load_worker_client(monkeypatch, dataset_client)

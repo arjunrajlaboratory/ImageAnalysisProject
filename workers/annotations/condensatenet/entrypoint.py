@@ -27,7 +27,7 @@ def interface(image, apiUrl, token):
         'Batch XY': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': 'ex. 1-3, 5-8, or all',
                 'label': 'Enter the XY positions you want to iterate over',
                 'persistentPlaceholder': True,
                 'filled': True,
@@ -37,7 +37,7 @@ def interface(image, apiUrl, token):
         'Batch Z': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': 'ex. 1-3, 5-8, or all',
                 'label': 'Enter the Z slices you want to iterate over',
                 'persistentPlaceholder': True,
                 'filled': True,
@@ -47,7 +47,7 @@ def interface(image, apiUrl, token):
         'Batch Time': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': 'ex. 1-3, 5-8, or all',
                 'label': 'Enter the Time points you want to iterate over',
                 'persistentPlaceholder': True,
                 'filled': True,

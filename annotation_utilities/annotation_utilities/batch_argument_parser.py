@@ -1,12 +1,22 @@
 from itertools import chain
 
-def process_range_list(rl, convert_one_to_zero_index=False, convert_zero_to_one_index=False):
+
+def process_range_list(
+        rl,
+        convert_one_to_zero_index=False,
+        convert_zero_to_one_index=False,
+        all_values=None):
 
     if rl is None or rl == '':
         return None
 
     if convert_one_to_zero_index and convert_zero_to_one_index:
         raise ValueError("Both 'convert_one_to_zero_index' and 'convert_zero_to_one_index' cannot be set to True at the same time.")
+
+    if isinstance(rl, str) and rl.strip().lower() == 'all':
+        if all_values is None:
+            raise ValueError("'all' requires all_values to define the available coordinates.")
+        return iter(all_values)
 
     g = parse_range_list(rl)
     first, g = peek_generator(g)
@@ -21,6 +31,33 @@ def process_range_list(rl, convert_one_to_zero_index=False, convert_zero_to_one_
         g = None
 
     return g
+
+
+def get_batch_ranges(tile, worker_interface, index_range=None):
+    """Return zero-indexed XY, Z, and Time coordinates for Batch fields.
+
+    Empty fields retain the current tile coordinate. The case-insensitive value
+    ``all`` expands to every coordinate available in the corresponding dataset
+    dimension. A missing IndexRange dimension represents a single coordinate.
+    """
+    index_range = index_range or {}
+    dimensions = (
+        ('Batch XY', 'XY', 'IndexXY'),
+        ('Batch Z', 'Z', 'IndexZ'),
+        ('Batch Time', 'Time', 'IndexT'),
+    )
+    batches = []
+
+    for field_name, tile_key, index_key in dimensions:
+        available = range(index_range.get(index_key, 1))
+        values = process_range_list(
+            worker_interface.get(field_name),
+            convert_one_to_zero_index=True,
+            all_values=available,
+        )
+        batches.append([tile[tile_key]] if values is None else list(values))
+
+    return tuple(batches)
 
 
 def parse_range_list(rl):
@@ -77,5 +114,4 @@ def _split_range(value):
             if prev == '':
                 val *= -1
             yield val
-
 

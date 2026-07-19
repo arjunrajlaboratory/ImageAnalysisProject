@@ -18,9 +18,9 @@ This worker uses SAM2's image predictor to refine existing polygon annotations. 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **SAM2 Refiner** | notes | -- | Description of the tool's purpose |
-| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8") |
-| **Batch Z** | text | Current tile | Z positions to process |
-| **Batch Time** | text | Current tile | Time positions to process |
+| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8"), or `all` |
+| **Batch Z** | text | Current tile | Z positions to process, or `all` |
+| **Batch Time** | text | Current tile | Time positions to process, or `all` |
 | **Tag of objects to refine** | tags | -- | Tag(s) identifying annotations to refine |
 | **Model** | select | `sam2.1_hiera_small.pt` | SAM2.1 model checkpoint |
 | **Delete original annotations** | checkbox | False | Delete originals after creating refined versions |

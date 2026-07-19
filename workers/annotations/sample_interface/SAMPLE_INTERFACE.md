@@ -22,9 +22,9 @@ Demonstrates every available NimbusImage worker interface type, tooltip/display 
 | Sample channel checkboxes | channelCheckboxes | -- | Multi-channel checkbox selector. Returns `dict` of `str` to `bool` (e.g., `{"0": True, "1": False}`). |
 | Sample tags | tags | -- | Tag selector. Returns `list` of `str` (e.g., `["DAPI blob"]`). |
 | Sample layer | layer | -- | Layer selector (`required: False`). Returns `str` (layer ID). |
-| Batch XY | text | -- | XY positions to iterate over (e.g., "1-3, 5-8") |
-| Batch Z | text | -- | Z slices to iterate over (e.g., "1-3, 5-8") |
-| Batch Time | text | -- | Time points to iterate over (e.g., "1-3, 5-8") |
+| Batch XY | text | -- | XY positions to iterate over (e.g., "1-3, 5-8"), or `all` |
+| Batch Z | text | -- | Z slices to iterate over (e.g., "1-3, 5-8"), or `all` |
+| Batch Time | text | -- | Time points to iterate over (e.g., "1-3, 5-8"), or `all` |
 
 ## Interface Type Reference
 

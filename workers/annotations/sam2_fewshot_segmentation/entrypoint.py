@@ -32,14 +32,17 @@ def interface(image, apiUrl, token):
         },
         'Batch XY': {
             'type': 'text',
+            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
             'displayOrder': 1,
         },
         'Batch Z': {
             'type': 'text',
+            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
             'displayOrder': 2,
         },
         'Batch Time': {
             'type': 'text',
+            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
             'displayOrder': 3,
         },
         'Model': {
@@ -266,24 +269,14 @@ def compute(datasetId, apiUrl, token, params):
     max_mask_area = int(params['workerInterface']['Max Mask Area'])
     smoothing = float(params['workerInterface']['Smoothing'])
 
-    batch_xy = params['workerInterface'].get('Batch XY', '')
-    batch_z = params['workerInterface'].get('Batch Z', '')
-    batch_time = params['workerInterface'].get('Batch Time', '')
-
-    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
-
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
-
-    if batch_xy is None:
-        batch_xy = [tile['XY']]
-    if batch_z is None:
-        batch_z = [tile['Z']]
-    if batch_time is None:
-        batch_time = [tile['Time']]
+    batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+        tile,
+        params['workerInterface'],
+        tileClient.tiles.get('IndexRange', {}),
+    )
 
     # Parse training tag - 'type': 'tags' returns a list of strings directly
     training_tags = params['workerInterface'].get('Training Tag', [])

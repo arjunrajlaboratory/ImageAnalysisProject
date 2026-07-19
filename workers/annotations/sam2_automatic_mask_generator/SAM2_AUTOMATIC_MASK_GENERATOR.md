@@ -13,9 +13,9 @@ This worker uses Meta's [Segment Anything 2 (SAM2)](https://github.com/facebookr
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8") |
-| **Batch Z** | text | Current tile | Z positions to process |
-| **Batch Time** | text | Current tile | Time positions to process |
+| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8"), or `all` |
+| **Batch Z** | text | Current tile | Z positions to process, or `all` |
+| **Batch Time** | text | Current tile | Time positions to process, or `all` |
 | **Model** | select | `sam2.1_hiera_small.pt` | SAM2.1 model checkpoint to use |
 | **Smoothing** | number | 0.3 | Polygon simplification tolerance (0 to 3) |
 | **Points per side** | number | 32 | Grid density for automatic mask generation (16 to 128) |
