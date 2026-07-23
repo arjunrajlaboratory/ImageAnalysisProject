@@ -19,7 +19,7 @@ It is the Cellpose-SAM counterpart to the older [Cellpose Train worker](../cellp
 |-----------|------|---------|-------------|
 | **Cellpose-SAM retrain** | notes | -- | Informational text with documentation link |
 | **Base Model** | select | cellpose-sam | Base model to fine-tune. `cellpose-sam` starts from the `cpsam_v2` checkpoint; `cellpose-sam (legacy cpsam)` starts from the original April 2025 `cpsam` checkpoint. User-trained models from Girder are also listed |
-| **Output Model Name** | text | -- | **Required.** Name for the saved model. Will appear in the Model dropdown of the Cellpose-SAM worker |
+| **Output Model Name** | text | -- | **Required.** Name for the saved model. Will appear in the Model dropdown of the Cellpose-SAM worker. Built-in model labels are reserved and cannot be used as custom output names |
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |
 | **Channel for Slot 3** | channelCheckboxes | -- | Optional third input slot channel |

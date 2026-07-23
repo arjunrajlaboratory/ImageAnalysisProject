@@ -304,6 +304,19 @@ def compute(datasetId, apiUrl, token, params):
                 training_images.append(training_image_crop)
                 label_images.append(label_image_crop)
 
+    training_images, label_images, dropped_samples = (
+        annotation_tools.filter_usable_training_samples(
+            training_images, label_images))
+    if not training_images:
+        sendError(
+            "No usable training samples found.",
+            info="The selected training regions must contain at least one annotation with the training tag.")
+        raise ValueError("No usable training samples found.")
+    if dropped_samples:
+        sendWarning(
+            "Skipped empty training samples.",
+            info=f"Skipped {dropped_samples} sample(s) that contained no tagged training annotations.")
+
     using_gpu = core.use_gpu()
     print(f"Using GPU: {using_gpu}")
     # TODO: Allow different models. Not sure if this will work for pre-trained models as a base, might need the whole path.

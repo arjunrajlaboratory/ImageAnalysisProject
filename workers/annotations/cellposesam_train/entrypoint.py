@@ -18,7 +18,8 @@ import girder_utils
 from girder_utils import CELLPOSE_DIR, MODELS_DIR
 
 from models_config import (
-    BASE_MODELS, BASE_MODEL_CHECKPOINTS, DEFAULT_MODEL, build_model_items)
+    BASE_MODELS, BASE_MODEL_CHECKPOINTS, DEFAULT_MODEL, build_model_items,
+    validate_output_model_name)
 
 
 def interface(image, apiUrl, token):
@@ -56,7 +57,8 @@ def interface(image, apiUrl, token):
         'Output Model Name': {
             'type': 'text',
             'tooltip': 'The name of the retrained model (saved to your .cellposesam/models folder).\n'
-                       'It will appear in the Model dropdown of the Cellpose-SAM worker.',
+                       'It will appear in the Model dropdown of the Cellpose-SAM worker.\n'
+                       'Built-in model names are reserved and cannot be used.',
             'displayOrder': 2,
         },
         'Channel for Slot 1': {
@@ -186,10 +188,11 @@ def compute(datasetId, apiUrl, token, params):
     print(f"Training tag: {training_tag}")
     print(f"Training regions: {training_regions}")
 
-    if not output_model_name:
-        sendError("No output model name provided.",
-                  info="Please provide a name for the retrained model.")
-        raise ValueError("No output model name provided.")
+    try:
+        output_model_name = validate_output_model_name(output_model_name)
+    except ValueError as exc:
+        sendError("Invalid output model name.", info=str(exc))
+        raise
 
     if training_tag is None or len(training_tag) == 0:
         sendError("No training tag selected.",
@@ -329,6 +332,19 @@ def compute(datasetId, apiUrl, token, params):
 
                 training_images.append(stacked_image_crop)
                 label_images.append(label_image_crop)
+
+    training_images, label_images, dropped_samples = (
+        annotation_tools.filter_usable_training_samples(
+            training_images, label_images))
+    if not training_images:
+        sendError(
+            "No usable training samples found.",
+            info="The selected training regions must contain at least one annotation with the training tag.")
+        raise ValueError("No usable training samples found.")
+    if dropped_samples:
+        sendWarning(
+            "Skipped empty training samples.",
+            info=f"Skipped {dropped_samples} sample(s) that contained no tagged training annotations.")
 
     using_gpu = core.use_gpu()
     print(f"Using GPU: {using_gpu}")

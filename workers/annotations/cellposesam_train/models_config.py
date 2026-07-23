@@ -40,3 +40,22 @@ def build_model_items(girder_model_names):
     custom = [name for name in girder_model_names
               if name not in BASE_MODEL_CHECKPOINTS]
     return sorted(set(BASE_MODELS) | set(custom))
+
+
+def validate_output_model_name(model_name):
+    """Return a normalized custom model name or raise ``ValueError``.
+
+    Built-in dropdown labels are reserved because inference always routes them
+    to their bundled checkpoints, making a custom model with the same name
+    impossible to select.
+    """
+    if not isinstance(model_name, str) or not model_name.strip():
+        raise ValueError("Please provide a name for the retrained model.")
+
+    model_name = model_name.strip()
+    if model_name in BASE_MODEL_CHECKPOINTS:
+        raise ValueError(
+            f'"{model_name}" is reserved for a built-in Cellpose-SAM model. '
+            "Please choose a different output model name."
+        )
+    return model_name

@@ -57,6 +57,32 @@ def get_annotations_with_tags(elements, tags, exclusive=False):
     return result
 
 
+def filter_usable_training_samples(training_images, label_images):
+    """Drop empty image/label pairs and samples without labeled objects.
+
+    Cellpose removes samples with fewer than ``min_train_masks`` objects inside
+    ``train_seg``. If every region is empty, that leaves an empty training set
+    and the upstream code fails later with an opaque divide-by-zero. Filtering
+    here lets workers report a useful error before starting model training.
+
+    Returns the filtered image list, filtered label list, and number dropped.
+    """
+    if len(training_images) != len(label_images):
+        raise ValueError("Training images and labels must have the same length.")
+
+    usable_images = []
+    usable_labels = []
+    dropped = 0
+    for image, labels in zip(training_images, label_images):
+        if image.size == 0 or labels.size == 0 or not np.any(labels > 0):
+            dropped += 1
+            continue
+        usable_images.append(image)
+        usable_labels.append(labels)
+
+    return usable_images, usable_labels, dropped
+
+
 def get_annotations_with_tag(elements, tag, exclusive=False):
     result = []
     for element in elements:

@@ -7,14 +7,16 @@ local venv without the full worker stack. Run with:
     .cache/testvenv/bin/pytest workers/annotations/cellposesam/tests -q
 """
 
-import sys
+import importlib.util
 from pathlib import Path
 
-# Put the worker directory (parent of tests/) on the path so we can import the
-# standalone mapping module without installing the whole worker.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import models_config  # noqa: E402
+# Load under a worker-specific module name so this suite can be collected in
+# the same pytest process as cellposesam_train's models_config tests.
+_MODELS_CONFIG_PATH = Path(__file__).resolve().parent.parent / 'models_config.py'
+_SPEC = importlib.util.spec_from_file_location(
+    'cellposesam_models_config', _MODELS_CONFIG_PATH)
+models_config = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(models_config)
 
 
 def test_default_model_resolves_to_cpsam_v2():
