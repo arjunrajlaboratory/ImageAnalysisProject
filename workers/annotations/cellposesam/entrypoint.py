@@ -15,7 +15,7 @@ from shapely.geometry import Polygon
 from worker_client import WorkerClient, geometry_to_polygon_coords
 
 from models_config import (
-    BASE_MODELS, BASE_MODEL_CHECKPOINTS, DEFAULT_MODEL, build_model_items)
+    BASE_MODELS, DEFAULT_MODEL, build_cellpose_parameters, build_model_items)
 
 
 def interface(image, apiUrl, token):
@@ -91,23 +91,13 @@ def interface(image, apiUrl, token):
             'tooltip': "Select source channel(s) for the model's third input slot. If multiple are selected, only the first will be used. (Optional)",
             'displayOrder': 7
         },
-        'Diameter': {
-            'type': 'number',
-            'min': 0,
-            'max': 200,
-            'default': 10,
-            'unit': 'pixels',
-            'tooltip': 'The diameter of the cells in the image. Choose as close as you can\n'
-                       'because the model is most accurate when the diameter is close to the actual cell diameter.',
-            'displayOrder': 8,
-        },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 10,
             'default': 0.7,
             'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.7 is a good default.',
-            'displayOrder': 9,
+            'displayOrder': 8,
         },
         'Padding': {
             'type': 'number',
@@ -116,7 +106,7 @@ def interface(image, apiUrl, token):
             'default': 0,
             'unit': 'pixels',
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
-            'displayOrder': 10,
+            'displayOrder': 9,
         },
         'Tile Size': {
             'type': 'number',
@@ -125,7 +115,7 @@ def interface(image, apiUrl, token):
             'default': 1024,
             'unit': 'pixels',
             'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the Cellpose model may not be able to run on them.',
-            'displayOrder': 11,
+            'displayOrder': 10,
         },
         'Tile Overlap': {
             'type': 'number',
@@ -136,7 +126,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'The amount of overlap between tiles. A value of 0.1 means that the tiles will overlap by 10%, which is 102 pixels if the tile size is 1024.\n'
                        'Make sure your objects are smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
                        'then the largest object should be less than 102 pixels in its longest dimension.',
-            'displayOrder': 12,
+            'displayOrder': 11,
         },
     }
     # Send the interface object to the server
@@ -199,9 +189,8 @@ def compute(datasetId, apiUrl, token, params):
 
     worker = WorkerClient(datasetId, apiUrl, token, params)
 
-    # Get the model and diameter from interface values
+    # Get the model and post-processing parameters from interface values
     model = worker.workerInterface['Model']
-    diameter = float(worker.workerInterface['Diameter'])
     tile_size = int(worker.workerInterface['Tile Size'])
     tile_overlap = float(worker.workerInterface['Tile Overlap'])
     padding = float(worker.workerInterface['Padding'])
@@ -245,25 +234,22 @@ def compute(datasetId, apiUrl, token, params):
 
     client = workers.UPennContrastWorkerPreviewClient(
         apiUrl=apiUrl, token=token)
+    models_dir = MODELS_DIR
     if model not in BASE_MODELS:
-        girder_utils.download_girder_model(client.client, model)
+        try:
+            downloaded_model = girder_utils.download_girder_model(
+                client.client, model)
+        except FileNotFoundError as exc:
+            sendError("Custom model unavailable.", info=str(exc))
+            raise
+        models_dir = downloaded_model.parent
 
     # Print the contents of the models directory
     print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
 
-    if model in BASE_MODELS:
-        # Pass the checkpoint name explicitly so behavior is pinned to the
-        # selected model rather than relying on cellpose's internal default,
-        # which can change between cellpose versions.
-        checkpoint = BASE_MODEL_CHECKPOINTS[model]
-        cellpose = cellpose_segmentation(
-            model_parameters={'gpu': True, 'pretrained_model': checkpoint},
-            eval_parameters={}, output_format='polygons')
-    else:
-        # Get the full path to the model
-        model_path = str(MODELS_DIR / model)
-        cellpose = cellpose_segmentation(model_parameters={'gpu': True, 'pretrained_model': model_path}, eval_parameters={
-                                         'diameter': diameter}, output_format='polygons')
+    cellpose_parameters = build_cellpose_parameters(model, models_dir)
+    cellpose = cellpose_segmentation(
+        **cellpose_parameters, output_format='polygons')
     f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size,
                         tile_overlap=tile_overlap, padding=padding, smoothing=smoothing)
 

@@ -1,26 +1,27 @@
-"""Unit tests for the built-in Cellpose-SAM model mapping.
+"""Unit tests for the built-in Cellpose-SAM retraining model mapping.
 
 These exercise ``models_config`` in isolation — it must stay free of heavy
-imports (cellpose/deeptile/annotation_client) so it runs in the lightweight
-local venv without the full worker stack. Run with:
+imports (cellpose/annotation_client) so it runs in the lightweight local venv
+without the full worker stack. Run with:
 
-    .cache/testvenv/bin/pytest workers/annotations/cellposesam/tests -q
+    .cache/testvenv/bin/pytest workers/annotations/cellposesam_train/tests -q
 """
 
 import importlib.util
 from pathlib import Path
 
+
 # Load under a worker-specific module name so this suite can be collected in
-# the same pytest process as cellposesam_train's models_config tests.
+# the same pytest process as cellposesam's models_config tests.
 _MODELS_CONFIG_PATH = Path(__file__).resolve().parent.parent / 'models_config.py'
 _SPEC = importlib.util.spec_from_file_location(
-    'cellposesam_models_config', _MODELS_CONFIG_PATH)
+    'cellposesam_train_models_config', _MODELS_CONFIG_PATH)
 models_config = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(models_config)
 
 
 def test_default_model_resolves_to_cpsam_v2():
-    """The default dropdown selection must run the new cpsam_v2 checkpoint."""
+    """The default dropdown selection must fine-tune from the cpsam_v2 checkpoint."""
     checkpoint = models_config.BASE_MODEL_CHECKPOINTS[models_config.DEFAULT_MODEL]
     assert checkpoint == 'cpsam_v2'
 
@@ -52,11 +53,7 @@ def test_build_model_items_includes_base_and_custom():
 
 
 def test_build_model_items_excludes_reserved_name_collision():
-    """A custom model named exactly like a base label is dropped, not duplicated.
-
-    Otherwise it would silently route to the built-in checkpoint in compute()
-    and the custom weights would never be used.
-    """
+    """A custom model named exactly like a base label is dropped, not duplicated."""
     items = models_config.build_model_items(
         ['cellpose-sam', 'cellpose-sam (legacy cpsam)'])
     assert items.count('cellpose-sam') == 1
@@ -78,27 +75,42 @@ def test_build_model_items_empty_returns_base_models():
     assert models_config.DEFAULT_MODEL in items
 
 
-def test_builtin_runtime_parameters_use_checkpoint_at_native_scale(tmp_path):
-    parameters = models_config.build_cellpose_parameters(
-        'cellpose-sam', tmp_path)
-
-    assert parameters == {
-        'model_parameters': {
-            'gpu': True,
-            'pretrained_model': 'cpsam_v2',
-        },
-        'eval_parameters': {},
-    }
+def test_validate_output_model_name_normalizes_custom_name():
+    assert models_config.validate_output_model_name('  my custom model  ') == 'my custom model'
 
 
-def test_custom_runtime_parameters_use_downloaded_path_at_native_scale(tmp_path):
-    parameters = models_config.build_cellpose_parameters(
-        'my custom model', tmp_path)
+def test_validate_output_model_name_rejects_empty_name():
+    try:
+        models_config.validate_output_model_name('   ')
+    except ValueError as exc:
+        assert 'provide a name' in str(exc)
+    else:
+        raise AssertionError('Expected an empty output name to be rejected')
 
-    assert parameters == {
-        'model_parameters': {
-            'gpu': True,
-            'pretrained_model': str(tmp_path / 'my custom model'),
-        },
-        'eval_parameters': {},
-    }
+
+def test_validate_output_model_name_rejects_builtin_labels():
+    for model_name in models_config.BASE_MODELS:
+        try:
+            models_config.validate_output_model_name(model_name)
+        except ValueError as exc:
+            assert 'reserved' in str(exc)
+        else:
+            raise AssertionError(f'Expected {model_name!r} to be rejected')
+
+
+def test_validate_output_model_name_rejects_path_like_names():
+    invalid_names = [
+        '.',
+        '..',
+        '../escaped',
+        'nested/model',
+        '/tmp/escaped',
+    ]
+
+    for model_name in invalid_names:
+        try:
+            models_config.validate_output_model_name(model_name)
+        except ValueError as exc:
+            assert 'plain file name' in str(exc)
+        else:
+            raise AssertionError(f'Expected {model_name!r} to be rejected')

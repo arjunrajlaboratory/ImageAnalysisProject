@@ -76,7 +76,8 @@ def upload_girder_model(gc, model_name):
 
     girder_models, models_folder_id = list_girder_models(gc)
     girder_model = [model for model in girder_models if model['name'] == model_name]
+    uploaded_file = gc.uploadFileToFolder(
+        models_folder_id, MODELS_DIR / model_name)
     if girder_model:
         gc.delete(f"{girder_model[0]['_modelType']}/{girder_model[0]['_id']}")
-
-    gc.uploadFileToFolder(models_folder_id, MODELS_DIR / model_name)
+    return uploaded_file

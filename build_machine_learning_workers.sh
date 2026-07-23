@@ -31,6 +31,9 @@ docker build . -f ./workers/annotations/cellpose_train/Dockerfile -t annotations
 echo "Building Cellpose-SAM worker"
 docker build . -f ./workers/annotations/cellposesam/Dockerfile -t annotations/cellposesam_worker:latest $NO_CACHE
 
+echo "Building Cellpose-SAM retrain worker"
+docker build . -f ./workers/annotations/cellposesam_train/Dockerfile -t annotations/cellposesam_train_worker:latest $NO_CACHE
+
 echo "Building Stardist worker"
 docker build . -f ./workers/annotations/stardist/Dockerfile -t annotations/stardist_worker:latest $NO_CACHE
 

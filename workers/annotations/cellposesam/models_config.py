@@ -8,6 +8,9 @@ mapping can be unit-tested in the lightweight local venv without the full
 worker stack.
 """
 
+from pathlib import Path
+
+
 # Human-friendly dropdown label -> cellpose built-in checkpoint name.
 # Insertion order lists the default (cpsam_v2) first.
 BASE_MODEL_CHECKPOINTS = {
@@ -38,3 +41,21 @@ def build_model_items(girder_model_names):
     custom = [name for name in girder_model_names
               if name not in BASE_MODEL_CHECKPOINTS]
     return sorted(set(BASE_MODELS) | set(custom))
+
+
+def build_cellpose_parameters(model_name, models_dir):
+    """Build native-scale Cellpose-SAM constructor and evaluation parameters."""
+    if model_name in BASE_MODEL_CHECKPOINTS:
+        pretrained_model = BASE_MODEL_CHECKPOINTS[model_name]
+    else:
+        pretrained_model = str(Path(models_dir) / model_name)
+
+    return {
+        'model_parameters': {
+            'gpu': True,
+            'pretrained_model': pretrained_model,
+        },
+        # Cellpose-SAM trains and evaluates at native resolution. Passing a
+        # diameter would rescale the input to 30 / diameter before inference.
+        'eval_parameters': {},
+    }
