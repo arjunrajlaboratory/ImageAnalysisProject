@@ -58,7 +58,7 @@ def interface(image, apiUrl, token):
             'type': 'text',
             'tooltip': 'The name of the retrained model (saved to your .cellposesam/models folder).\n'
                        'It will appear in the Model dropdown of the Cellpose-SAM worker.\n'
-                       'Built-in model names are reserved and cannot be used.',
+                       'Use a plain name without path separators; built-in model names are reserved.',
             'displayOrder': 2,
         },
         'Channel for Slot 1': {
@@ -230,8 +230,12 @@ def compute(datasetId, apiUrl, token, params):
         # change between versions.
         pretrained_model = BASE_MODEL_CHECKPOINTS[base_model]
     else:
-        girder_utils.download_girder_model(client.client, base_model)
-        pretrained_model = str(MODELS_DIR / base_model)
+        try:
+            pretrained_model = str(girder_utils.download_girder_model(
+                client.client, base_model))
+        except FileNotFoundError as exc:
+            sendError("Custom base model unavailable.", info=str(exc))
+            raise
 
     # Print the contents of the models directory
     print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")

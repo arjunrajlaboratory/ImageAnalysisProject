@@ -96,3 +96,21 @@ def test_validate_output_model_name_rejects_builtin_labels():
             assert 'reserved' in str(exc)
         else:
             raise AssertionError(f'Expected {model_name!r} to be rejected')
+
+
+def test_validate_output_model_name_rejects_path_like_names():
+    invalid_names = [
+        '.',
+        '..',
+        '../escaped',
+        'nested/model',
+        '/tmp/escaped',
+    ]
+
+    for model_name in invalid_names:
+        try:
+            models_config.validate_output_model_name(model_name)
+        except ValueError as exc:
+            assert 'plain file name' in str(exc)
+        else:
+            raise AssertionError(f'Expected {model_name!r} to be rejected')

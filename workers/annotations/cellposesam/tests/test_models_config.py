@@ -76,3 +76,29 @@ def test_build_model_items_empty_returns_base_models():
     items = models_config.build_model_items([])
     assert set(items) == set(models_config.BASE_MODELS)
     assert models_config.DEFAULT_MODEL in items
+
+
+def test_builtin_runtime_parameters_use_checkpoint_at_native_scale(tmp_path):
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path)
+
+    assert parameters == {
+        'model_parameters': {
+            'gpu': True,
+            'pretrained_model': 'cpsam_v2',
+        },
+        'eval_parameters': {},
+    }
+
+
+def test_custom_runtime_parameters_use_downloaded_path_at_native_scale(tmp_path):
+    parameters = models_config.build_cellpose_parameters(
+        'my custom model', tmp_path)
+
+    assert parameters == {
+        'model_parameters': {
+            'gpu': True,
+            'pretrained_model': str(tmp_path / 'my custom model'),
+        },
+        'eval_parameters': {},
+    }

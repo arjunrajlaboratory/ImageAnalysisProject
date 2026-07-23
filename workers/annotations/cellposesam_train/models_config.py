@@ -10,6 +10,9 @@ cellpose/annotation_client) so the mapping can be unit-tested in the lightweight
 local venv without the full worker stack.
 """
 
+from pathlib import Path
+
+
 # Human-friendly dropdown label -> cellpose built-in checkpoint name.
 # Insertion order lists the default (cpsam_v2) first.
 BASE_MODEL_CHECKPOINTS = {
@@ -53,6 +56,12 @@ def validate_output_model_name(model_name):
         raise ValueError("Please provide a name for the retrained model.")
 
     model_name = model_name.strip()
+    model_path = Path(model_name)
+    if (model_name in {'.', '..'} or model_path.is_absolute()
+            or model_path.name != model_name):
+        raise ValueError(
+            "The output model name must be a plain file name without path separators."
+        )
     if model_name in BASE_MODEL_CHECKPOINTS:
         raise ValueError(
             f'"{model_name}" is reserved for a built-in Cellpose-SAM model. '

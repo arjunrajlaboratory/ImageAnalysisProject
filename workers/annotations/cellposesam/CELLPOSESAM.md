@@ -23,7 +23,6 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |
 | **Channel for Slot 3** | channelCheckboxes | -- | Optional third input slot channel |
-| **Diameter** | number | 10 | Expected cell diameter in pixels (range: 0-200). Only used for custom models, not the base `cellpose-sam` model |
 | **Smoothing** | number | 0.7 | Polygon simplification tolerance (range: 0-10) |
 | **Padding** | number | 0 | Expand (positive) or shrink (negative) polygons in pixels (range: -20 to 20) |
 | **Tile Size** | number | 1024 | Tile dimension in pixels (range: 0-2048) |
@@ -42,8 +41,8 @@ Unlike the standard Cellpose worker which uses Primary/Secondary channel selecto
 
 ### Model Behavior
 
-- **Base models**: The dropdown labels map to cellpose built-in checkpoints in `models_config.py` — `cellpose-sam` → `cpsam_v2`, `cellpose-sam (legacy cpsam)` → `cpsam`. The selected checkpoint name is passed explicitly as `pretrained_model` (rather than relying on cellpose's internal default, which can shift between versions). Runs with `gpu=True` and no diameter/channel parameters in `eval_parameters`.
-- **Custom models**: Loaded from Girder by path and use the user-specified diameter in `eval_parameters`
+- **Base models**: The dropdown labels map to cellpose built-in checkpoints in `models_config.py` — `cellpose-sam` → `cpsam_v2`, `cellpose-sam (legacy cpsam)` → `cpsam`. The selected checkpoint name is passed explicitly as `pretrained_model` rather than relying on Cellpose's internal default, which can shift between versions.
+- **Custom models**: Loaded from Girder by path. Like built-in Cellpose-SAM checkpoints, they run at native resolution with no diameter rescaling.
 
 ### Built-in Checkpoints
 
