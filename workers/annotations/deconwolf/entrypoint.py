@@ -10,6 +10,8 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress, sendWarning, sendError
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np
 import tifffile
 
@@ -322,8 +324,8 @@ def copy_image_unchanged(tileClient, datasetId, gc):
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items()
-                                  if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
             image = tileClient.getRegion(datasetId, frame=i).squeeze()
             sink.addTile(image, 0, 0, **large_image_params)
             sendProgress(i / len(tileClient.tiles['frames']), 'Copying image',
@@ -501,8 +503,8 @@ def compute(datasetId, apiUrl, token, params):
         sendProgress(0.9, 'Assembling output', 'Writing frames')
 
         for i, frame in enumerate(tileClient.tiles.get('frames', [])):
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items()
-                                  if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
 
             xy = frame.get('IndexXY', 0)
             t = frame.get('IndexT', 0)

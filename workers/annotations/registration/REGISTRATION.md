@@ -46,9 +46,14 @@ Registers time-lapse images to correct for drift and movement over time using th
 
 - Uses a `safe_astype` function that clips values to the dtype range before casting, preventing integer overflow artifacts in the registered output.
 
+### Dimensions of Size One
+
+- Girder omits an index key from the frame metadata entirely for any dimension with a single position, so a single-channel dataset has no `IndexC` key and a single-position dataset has no `IndexXY`. The worker reads frame indices through `annotation_tools.get_frame_index()`, which treats an absent dimension as coordinate 0 — the only coordinate such a dataset has.
+
 ## Notes
 
 - Requires a time dimension; sends an error if the image has no IndexT.
+- If "Apply to XY coordinates" names no position that exists in the dataset, the worker sends an error rather than silently writing an unregistered copy.
 - The registration transform is computed on the reference channel only but applied to all selected channels.
 - Unselected channels and XY positions outside the specified range pass through unchanged.
 - Output metadata includes the tool name, algorithm, reference coordinates, and which XY positions were registered.

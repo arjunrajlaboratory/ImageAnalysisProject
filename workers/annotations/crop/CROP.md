@@ -21,7 +21,8 @@ Subsets a multi-dimensional image by XY position, Z plane, time point, and/or sp
 
 ## Implementation Details
 
-- Dimension ranges are 1-indexed in the UI and converted to 0-indexed internally via `batch_argument_parser`. Values outside the image's actual range are silently ignored.
+- Dimension ranges are 1-indexed in the UI and converted to 0-indexed internally via `batch_argument_parser`. Individual values outside the image's actual range are dropped, but if a range leaves **nothing** selected along a dimension, the worker sends an error rather than uploading an empty image.
+- A dimension with a single position has no index key in the frame metadata (a one-Z-plane dataset has no `IndexZ`). Such a frame is treated as coordinate 0 of that dimension, so a range that excludes coordinate 0 excludes the frame instead of silently matching it.
 - The output frame indices are re-mapped so they start from 0 and are contiguous. For example, if you keep Z planes 3,5,7, they become 0,1,2 in the output.
 - The spatial crop (Crop Rectangle) uses `getRegion` with `left`, `top`, `right`, `bottom` in base pixel units, derived from the bounding box of the first annotation matching the specified tag. Both polygon and rectangle annotation shapes are searched.
 - All channels are always retained in the output (channel selection is commented out in the code due to front-end limitations with changing channel definitions).

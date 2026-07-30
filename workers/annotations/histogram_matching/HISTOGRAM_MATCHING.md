@@ -30,3 +30,4 @@ Normalizes intensity distributions across frames by matching the histogram of ea
 - Useful for correcting intensity drift across time-lapse acquisitions or normalizing illumination differences across XY positions.
 - The reference frame itself will be matched to itself (a no-op), preserving its original intensities.
 - Output metadata includes the tool name and reference coordinates used.
+- A dataset with a single channel has no `IndexC` key in its frame metadata, so the worker treats those frames as channel 0 (the only channel such a dataset has).

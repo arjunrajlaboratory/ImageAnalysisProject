@@ -526,3 +526,70 @@ def test_image_processing_pipeline(mock_tile_client, mock_large_image, sample_pa
             processed_image = call[0][0]  # First positional argument
             # Should be numpy array (the processed image)
             assert isinstance(processed_image, np.ndarray)
+
+
+def test_compute_single_channel_dataset(mock_tile_client, mock_large_image, mock_rolling_ball):
+    """A single-channel dataset must be background-subtracted without a KeyError.
+
+    Girder omits an index key from the frames entirely for any dimension of size
+    one, so a single-channel dataset has no 'IndexC' key at all.
+    """
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+            {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1},
+        ],
+        'IndexRange': {'IndexT': 2},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20,
+        'dtype': np.uint16
+    }
+
+    params = {
+        'workerInterface': {
+            'Radius': 10.0,
+            'Channels to correct': {'0': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # The absent IndexC means channel 0, which is selected.
+    assert mock_rolling_ball.call_count == 2
+    # Only the dimensions the dataset actually has reach addTile.
+    assert [call[1] for call in mock_large_image.addTile.call_args_list] == [
+        {'t': 0}, {'t': 1}]
+    mock_large_image.write.assert_called_once_with('/tmp/output.tiff')
+
+
+def test_compute_single_channel_dataset_unselected_channel(mock_tile_client, mock_large_image, mock_rolling_ball):
+    """A channel-less frame is copied through untouched when channel 0 is not selected."""
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+        ],
+        'IndexRange': {'IndexT': 1},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20,
+        'dtype': np.uint16
+    }
+
+    params = {
+        'workerInterface': {
+            'Radius': 10.0,
+            'Channels to correct': {'0': False, '1': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 1
+    }
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_rolling_ball.assert_not_called()
+    mock_large_image.addTile.assert_called_once()

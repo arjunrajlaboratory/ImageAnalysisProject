@@ -27,3 +27,4 @@ Performs rolling ball background subtraction on selected channels using `skimage
 - The radius parameter controls sensitivity: small radii remove fine-grained background variations, while large radii only remove broad, slowly varying backgrounds.
 - Useful for correcting uneven illumination in fluorescence microscopy images.
 - Output metadata includes the tool name and radius used.
+- A dataset with a single channel has no `IndexC` key in its frame metadata, so the worker treats those frames as channel 0 (the only channel such a dataset has).

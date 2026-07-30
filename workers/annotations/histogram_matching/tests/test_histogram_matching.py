@@ -494,4 +494,71 @@ def test_different_coordinate_string_formats():
         client.client.addMetadataToItem.assert_called_once_with(
             'test', expected_metadata
         )
- 
+
+
+def test_compute_single_channel_dataset(mock_tile_client, mock_large_image, mock_match_histograms):
+    """A single-channel dataset must be matched without a KeyError.
+
+    Girder omits an index key from the frames entirely for any dimension of size
+    one, so a single-channel dataset has no 'IndexC' key at all. The reference
+    image for the absent channel is the one collected for channel 0.
+    """
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+            {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1},
+        ],
+        'IndexRange': {'IndexT': 2},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20,
+        'dtype': np.uint16
+    }
+
+    params = {
+        'workerInterface': {
+            'Reference XY Coordinate': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '1',
+            'Channels to correct': {'0': True}
+        }
+    }
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # The absent IndexC means channel 0, which is selected.
+    assert mock_match_histograms.call_count == 2
+    # Only the dimensions the dataset actually has reach addTile.
+    assert [call[1] for call in mock_large_image.addTile.call_args_list] == [
+        {'t': 0}, {'t': 1}]
+    mock_large_image.write.assert_called_once_with('/tmp/normalized.tiff')
+
+
+def test_compute_single_channel_dataset_unselected_channel(mock_tile_client, mock_large_image, mock_match_histograms):
+    """A channel-less frame is copied through untouched when channel 0 is not selected."""
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+        ],
+        'IndexRange': {'IndexT': 1},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20,
+        'dtype': np.uint16
+    }
+
+    params = {
+        'workerInterface': {
+            'Reference XY Coordinate': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Channels to correct': {'0': False, '1': True}
+        }
+    }
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_match_histograms.assert_not_called()
+    mock_large_image.addTile.assert_called_once()

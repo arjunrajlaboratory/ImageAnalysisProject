@@ -28,3 +28,4 @@ Applies a Gaussian blur filter to selected channels of an image and uploads the 
 
 - The "Channel" parameter is only used for the preview function, not for the main compute. The "All channels" checkboxes control which channels are actually processed.
 - Output metadata includes the tool name, sigma, and channel used.
+- A dataset with a single channel has no `IndexC` key in its frame metadata, so the worker treats those frames as channel 0 (the only channel such a dataset has).

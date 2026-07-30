@@ -8,6 +8,8 @@ import annotation_client.workers as workers
 
 from annotation_client.utils import sendProgress, sendError
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 
 
 from skimage.exposure import match_histograms
@@ -123,16 +125,17 @@ def compute(datasetId, apiUrl, token, params):
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
-            # Create a parameters dictionary with only the indices that exist in frame
-            # The len(k) > 5 is to avoid the 'Index' key that has no postfix to it
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items(
-            ) if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
 
             image = tileClient.getRegion(datasetId, frame=i).squeeze()
-            if frame['IndexC'] in channels:
+            # A single-channel dataset omits IndexC from the frame entirely; channel
+            # 0 is then the only channel there is.
+            frame_channel = annotation_tools.get_frame_index(frame, 'IndexC')
+            if frame_channel in channels:
                 # Only process the channel that is being processed
                 image = match_histograms(
-                    image, reference_images[frame['IndexC']])
+                    image, reference_images[frame_channel])
 
             sink.addTile(image, 0, 0, **large_image_params)
 

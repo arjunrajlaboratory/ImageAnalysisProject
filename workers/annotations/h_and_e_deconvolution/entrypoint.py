@@ -8,6 +8,8 @@ import annotation_client.workers as workers
 
 from annotation_client.utils import sendProgress, sendError
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np
 
 
@@ -148,13 +150,15 @@ def compute(datasetId, apiUrl, token, params):
             im_rgb = np.zeros((height, width, num_channels), dtype=first_image.dtype)
 
             # Store first image in the correct channel position
-            im_rgb[:, :, first_frame['IndexC']] = first_image
+            im_rgb[:, :, annotation_tools.get_frame_index(
+                first_frame, 'IndexC')] = first_image
 
             # Load remaining channel images
             for frame in position_frames[1:]:
                 frame_index = tileClient.tiles['frames'].index(frame)
                 image = tileClient.getRegion(datasetId, frame=frame_index).squeeze()
-                im_rgb[:, :, frame['IndexC']] = image
+                im_rgb[:, :, annotation_tools.get_frame_index(
+                    frame, 'IndexC')] = image
 
             # Now im_hed has all channels for this position
             im_hed = rgb2hed(im_rgb)
@@ -162,13 +166,14 @@ def compute(datasetId, apiUrl, token, params):
             # After transformations, write each channel back
             for frame in position_frames:
                 # Create parameters for sink.addTile
-                large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items()
-                                      if k.startswith('Index') and len(k) > 5}
+                large_image_params = annotation_tools.frame_to_large_image_params(
+                    frame)
 
                 # Extract the transformed channel
-                transformed_channel = rescale_intensity(im_hed[:, :, frame['IndexC']],
+                frame_channel = annotation_tools.get_frame_index(frame, 'IndexC')
+                transformed_channel = rescale_intensity(im_hed[:, :, frame_channel],
                                                         out_range=(0, 255),
-                                                        in_range=(0, np.percentile(im_hed[:, :, frame['IndexC']], maxPercentile))).astype(np.uint8)
+                                                        in_range=(0, np.percentile(im_hed[:, :, frame_channel], maxPercentile))).astype(np.uint8)
 
                 # Save the transformed channel
                 sink.addTile(transformed_channel, 0, 0, **large_image_params)

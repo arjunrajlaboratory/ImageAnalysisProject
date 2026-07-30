@@ -75,6 +75,31 @@ The shared helper `annotation_tools.get_images_for_all_channels` already handles
 this; workers that read channel counts by hand should mirror the `.get(...)`
 pattern.
 
+**The same omission happens per-frame**, and this form is easy to miss because it
+does not mention `IndexRange` at all. Every entry of `tileClient.tiles['frames']`
+omits the index key for any dimension of size one, so a single-channel dataset's
+frames are `{'Channel': 'Default', 'Frame': 3, 'Index': 3, 'IndexT': 3}` — no
+`IndexC` whatsoever. This crashed time lapse registration in July 2026 at
+`if frame['IndexC'] in channels`, after ~20 minutes of successful work.
+
+```python
+if frame['IndexC'] in channels:                                    # crashes
+if annotation_tools.get_frame_index(frame, 'IndexC') in channels:   # coordinate 0
+```
+`get_frame_index(frame, dimension, default=0)` (on master in
+`annotation_utilities.annotation_tools`) defaults an absent dimension to 0 and
+raises `ValueError` on an unknown dimension name so typos don't silently read as
+channel 0. Its companion `frame_to_large_image_params(frame)` replaces the
+`{f'{k.lower()[5:]}': v for k, v in frame.items() if k.startswith('Index') and
+len(k) > 5}` comprehension that used to be copy-pasted into seven workers.
+
+```bash
+grep -rn "frame\['Index" workers/                   # per-frame subscripts
+grep -rn "len(k) > 5" workers/                      # the copy-pasted comprehension
+```
+Note that a frame-index bug is invisible on multi-channel test data; when adding
+a frame-loop test, use frames with **no** `IndexC` key (not `IndexC: 0`).
+
 ### 2. Malformed `channelCheckboxes` (arrives as a non-dict)
 
 **Symptom:** `AttributeError: 'list' object has no attribute 'items'`.
