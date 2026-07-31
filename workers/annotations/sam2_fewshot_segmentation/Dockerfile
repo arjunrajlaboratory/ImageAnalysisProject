@@ -11,12 +11,32 @@
 # PyTorch never uses the base image's CUDA libraries: it loads the cuDNN /
 # cuBLAS / cuFFT / NCCL shipped inside its own `nvidia-*` pip wheels under
 # site-packages. The devel image's copy of all of that was pure duplication.
+#
+# The base CUDA *major* version must still match the CUDA that PyTorch itself was
+# built against (`torch.version.cuda`), because torch.utils.cpp_extension refuses
+# to compile against a mismatched nvcc -- and sam2 swallows that error by default,
+# silently shipping an image with no sam2._C. torch's unpinned PyPI wheel is
+# currently cu130, hence the CUDA 13.0 bases below.
 # ---------------------------------------------------------------------------
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04 AS build
+FROM nvidia/cuda:13.0.3-cudnn-devel-ubuntu24.04 AS build
 
 # pip's wheel cache is a full second copy of the torch + nvidia-* wheels
 # (~4 GB) and is worthless inside an image.
 ENV PIP_NO_CACHE_DIR=1
+
+# Fail loudly if sam2's CUDA extension does not compile. setup.py defaults to
+# SAM2_BUILD_ALLOW_ERRORS=1, which swallows the error and only prints a warning
+# under `pip install -v` -- that is how a CUDA version mismatch was able to
+# silently ship images with no sam2._C at all.
+ENV SAM2_BUILD_ALLOW_ERRORS=0
+
+# `docker build` has no GPU, so torch cannot detect a device capability and
+# torch.utils.cpp_extension._get_cuda_arch_flags() ends up with an empty arch
+# list (IndexError). Name the targets explicitly. This list mirrors the arches
+# the cu130 torch wheel itself is built for -- torch.cuda.get_arch_list() --
+# so the extension covers every GPU torch does: Turing (7.5), Ampere (8.0/8.6),
+# Hopper (9.0) and Blackwell (10.0/12.0), plus PTX for anything newer.
+ENV TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6;9.0;10.0;12.0+PTX"
 
 # Build-time toolchain only; none of this is carried into the runtime stage.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
@@ -57,6 +77,9 @@ RUN git clone --depth 1 https://github.com/facebookresearch/sam2.git /code/sam2 
 # Compiles the optional sam2._C CUDA extension (csrc/connected_components.cu)
 # here, where nvcc exists. It is the only reason this stage needs `devel`.
 RUN pip install -e /code/sam2
+# SAM2_BUILD_ALLOW_ERRORS=0 above catches a *failed* compile; this catches an
+# extension that was never built at all.
+RUN ls /code/sam2/sam2/_C*.so
 
 # Change directory to the checkpoints directory
 WORKDIR /code/sam2/checkpoints
@@ -74,7 +97,7 @@ RUN conda clean --all --yes
 # ---------------------------------------------------------------------------
 # Runtime stage
 # ---------------------------------------------------------------------------
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+FROM nvidia/cuda:13.0.3-runtime-ubuntu24.04
 
 LABEL isUPennContrastWorker=True
 LABEL com.nvidia.volumes.needed="nvidia_driver"
