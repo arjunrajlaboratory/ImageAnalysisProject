@@ -495,3 +495,46 @@ def test_different_coordinate_string_formats():
             'test', expected_metadata
         )
  
+
+def test_channel_selection_rejects_list_form(mock_tile_client, mock_large_image, mock_match_histograms):
+    """A list-shaped channelCheckboxes value is malformed and must be reported.
+
+    Regression test: reading the raw value with .items() raised
+    AttributeError: 'list' object has no attribute 'items'. The worker now
+    reports it via sendError instead of crashing, and does not guess which
+    channel [0] meant.
+    """
+    params = {
+        'workerInterface': {
+            'Reference XY Coordinate': '1',
+            'Reference Z Coordinate': '1',
+            'Reference Time Coordinate': '1',
+            'Channels to correct': [0]  # Malformed: expected {'0': True}
+        }
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert mock_match_histograms.call_count == 0
+    mock_large_image.write.assert_not_called()
+
+
+def test_channel_selection_rejects_unexpected_form(mock_tile_client, mock_large_image, mock_match_histograms):
+    """A channel selection we cannot interpret must fail loudly, not guess."""
+    params = {
+        'workerInterface': {
+            'Reference XY Coordinate': '1',
+            'Reference Z Coordinate': '1',
+            'Reference Time Coordinate': '1',
+            'Channels to correct': 'DAPI'
+        }
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert mock_match_histograms.call_count == 0
+    mock_large_image.write.assert_not_called()

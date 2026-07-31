@@ -5,6 +5,7 @@ from functools import partial
 
 import annotation_client.workers as workers
 from annotation_client.utils import sendError, sendWarning
+import annotation_utilities.annotation_tools as annotation_tools
 
 
 import girder_utils
@@ -133,6 +134,42 @@ def interface(image, apiUrl, token):
     client.setWorkerImageInterface(image, interface)
 
 
+def get_slot_channels(workerInterface):
+    """Resolve the selected input-slot channels into an ordered channel list.
+
+    Slot 1 is required, Slots 2 and 3 are optional, and if multiple channels are
+    checked in a slot only the first is used (with a warning). The raw values are
+    parsed by annotation_tools.get_selected_channels rather than .items(), which
+    crashed on the malformed list shape ([0]) found in a saved tool config.
+    """
+    slots = []
+    for slot in ('Channel for Slot 1', 'Channel for Slot 2', 'Channel for Slot 3'):
+        try:
+            slots.append(annotation_tools.get_selected_channels(
+                workerInterface.get(slot), slot))
+        except ValueError as exc:
+            sendError(f"Could not read the channel selection for {slot}.",
+                      info=str(exc))
+            raise
+
+    slot1, slot2, slot3 = slots
+    stack_channels = []
+
+    if not slot1:
+        sendError("No channel selected for Slot 1. This is a required field.")
+        raise ValueError("No channel selected for Slot 1.")
+
+    for name, channels in (('Slot 1', slot1), ('Slot 2', slot2), ('Slot 3', slot3)):
+        if not channels:
+            continue
+        if len(channels) > 1:
+            sendWarning(
+                f"Multiple channels selected for {name} ({channels}). Using the first: {channels[0]}.")
+        stack_channels.append(channels[0])
+
+    return stack_channels
+
+
 def run_model(image, cellpose, tile_size, tile_overlap, padding, smoothing):
 
     # Lazy import: keeps deeptile off the interface/startup path (~seconds). See todo/worker-startup-latency.md
@@ -196,39 +233,7 @@ def compute(datasetId, apiUrl, token, params):
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
 
-    # Process new channel selections
-    slot1_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 1', {}).items() if v]
-    slot2_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 2', {}).items() if v]
-    slot3_channel_str_keys = [k for k, v in worker.workerInterface.get(
-        'Channel for Slot 3', {}).items() if v]
-
-    stack_channels = []
-
-    if not slot1_channel_str_keys:
-        sendError("No channel selected for Slot 1. This is a required field.")
-        raise ValueError("No channel selected for Slot 1.")
-    if len(slot1_channel_str_keys) > 1:
-        sendWarning(
-            f"Multiple channels selected for Slot 1 ({slot1_channel_str_keys}). Using the first: {slot1_channel_str_keys[0]}.")
-    stack_channels.append(int(slot1_channel_str_keys[0]))
-
-    if slot2_channel_str_keys:
-        if len(slot2_channel_str_keys) > 1:
-            sendWarning(
-                f"Multiple channels selected for Slot 2 ({slot2_channel_str_keys}). Using the first: {slot2_channel_str_keys[0]}.")
-        stack_channels.append(int(slot2_channel_str_keys[0]))
-
-    if slot3_channel_str_keys:
-        if len(slot3_channel_str_keys) > 1:
-            sendWarning(
-                f"Multiple channels selected for Slot 3 ({slot3_channel_str_keys}). Using the first: {slot3_channel_str_keys[0]}.")
-        stack_channels.append(int(slot3_channel_str_keys[0]))
-
-    if not stack_channels:  # Should technically be caught by slot 1 check, but as a safeguard.
-        sendError("No channels were selected for processing.")
-        raise ValueError("No channels selected for processing.")
+    stack_channels = get_slot_channels(worker.workerInterface)
 
     print(f"Using channels for Cellpose-SAM input (slots 1, 2, 3): {stack_channels}")
 

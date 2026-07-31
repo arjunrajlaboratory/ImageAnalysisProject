@@ -921,3 +921,55 @@ def test_compute_tiling_metadata_saved(
     assert 'tile_overlap' in metadata_call
     assert metadata_call['tile_size'] == 2048
     assert metadata_call['tile_overlap'] == 150
+
+
+def test_compute_rejects_list_form_channel_selection(
+    mock_tile_client, mock_large_image, mock_subprocess, mock_tifffile, capsys
+):
+    """A list-shaped channelCheckboxes value is malformed and must be reported.
+
+    Regression test: reading the raw value with .items() raised
+    AttributeError: 'list' object has no attribute 'items'. The worker now
+    reports it instead of crashing, and does not guess which channel [0] meant.
+    """
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': [0],  # Malformed: expected {'0': True}
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+        }
+    }
+
+    with patch('os.path.exists', return_value=True):
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    captured = capsys.readouterr()
+    assert 'Could not read the channel selection' in captured.out
+    mock_tile_client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_compute_rejects_unexpected_channel_selection(mock_tile_client, capsys):
+    """A channel selection we cannot interpret must fail loudly, not guess."""
+    params = {
+        'workerInterface': {
+            'Channels to deconvolve': 'DAPI',
+            'Auto-extract from ND2': False,
+            'Numerical Aperture (NA)': 0.75,
+            'Refractive Index (ni)': 1.0,
+            'Pixel Size XY (nm)': 325,
+            'Z Step (nm)': 5000,
+            'Emission Wavelength (nm)': '450',
+            'Iterations': 50,
+        }
+    }
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    captured = capsys.readouterr()
+    assert 'Could not read the channel selection' in captured.out
+    mock_tile_client.client.uploadFileToFolder.assert_not_called()

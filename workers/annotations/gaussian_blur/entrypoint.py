@@ -8,7 +8,9 @@ from operator import itemgetter
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendError
+
+import annotation_utilities.annotation_tools as annotation_tools
 
 import imageio
 import numpy as np
@@ -116,12 +118,19 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
     sigma = float(workerInterface['Sigma'])
     channel = int(workerInterface['Channel'])
-    allChannels = workerInterface['All channels']
+    allChannels = workerInterface.get('All channels')
 
     print("allChannels", allChannels)
-    # Output is allChannels {'1': True, '2': True}
-    # This means that channels 1 and 2 are being blurred
-    channels = [int(k) for k, v in allChannels.items() if v]
+    # The front end sends either {'1': True, '2': True} or [1, 2]; both mean
+    # channels 1 and 2 are being blurred.
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'All channels')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
+    # An empty selection is not an error here: the worker still writes out a
+    # copy of the dataset with no channel blurred.
     print("channels", channels)
 
     tile = params['tile']
