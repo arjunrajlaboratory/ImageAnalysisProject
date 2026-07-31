@@ -9,8 +9,6 @@ dependencies:
   - rasterio
   - shapely
   - pillow
-  - pytorch
-  - torchvision
   - scikit-image
   - pip:
     - segment-anything

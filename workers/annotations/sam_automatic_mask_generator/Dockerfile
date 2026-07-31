@@ -44,6 +44,11 @@ COPY ./workers/annotations/sam_automatic_mask_generator/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
+# conda-forge's `pytorch` package is a CPU-only build, which silently made this
+# GPU-labelled worker run on CPU. Install the CUDA 11.8 wheels to match the base
+# image, exactly as sam_fewshot_segmentation does.
+RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
 RUN pip install rtree shapely
 
 # Shallow clones: full history is dead weight in an image.

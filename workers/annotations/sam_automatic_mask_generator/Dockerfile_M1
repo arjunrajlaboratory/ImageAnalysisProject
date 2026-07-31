@@ -46,6 +46,10 @@ COPY ./workers/annotations/sam_automatic_mask_generator/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
+# The CUDA 11.8 wheel index has no Linux aarch64 build, so use the
+# plain PyPI (CPU) wheels for the Mac development image.
+RUN pip install torch torchvision
+
 RUN pip install rtree shapely
 
 # Shallow clones: full history is dead weight in an image.
