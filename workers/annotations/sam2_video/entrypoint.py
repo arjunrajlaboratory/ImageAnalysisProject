@@ -12,9 +12,7 @@ import annotation_utilities.annotation_tools as annotation_tools
 import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import numpy as np  # library for array manipulation
-from shapely.geometry import Polygon
 from skimage.measure import find_contours
-from shapely.geometry import Polygon
 
 
 from annotation_client.utils import sendProgress
@@ -322,7 +320,15 @@ def compute(datasetId, apiUrl, token, params):
                         contours = find_contours(mask.squeeze(), 0.5)
                         if len(contours) == 0:
                             continue
-                        polygon = Polygon(contours[0]).buffer(padding).simplify(smoothing, preserve_topology=True)
+                        # Guarded construction: a contour too short to form a
+                        # ring raises ValueError and a non-finite coordinate
+                        # makes simplify() raise GEOSException, either of which
+                        # would abort the whole run.
+                        polygon = annotation_tools.safe_buffer(
+                            annotation_tools.safe_polygon(contours[0]), padding)
+                        polygon = annotation_tools.safe_simplify(polygon, smoothing)
+                        if polygon is None:
+                            continue
                         # Create annotations
                         annotations = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z, Time=Time_frame, tags=tags, channel=channel)
                         for annotation in annotations:
@@ -397,7 +403,15 @@ def compute(datasetId, apiUrl, token, params):
                         contours = find_contours(mask.squeeze(), 0.5)
                         if len(contours) == 0:
                             continue
-                        polygon = Polygon(contours[0]).buffer(padding).simplify(smoothing, preserve_topology=True)
+                        # Guarded construction: a contour too short to form a
+                        # ring raises ValueError and a non-finite coordinate
+                        # makes simplify() raise GEOSException, either of which
+                        # would abort the whole run.
+                        polygon = annotation_tools.safe_buffer(
+                            annotation_tools.safe_polygon(contours[0]), padding)
+                        polygon = annotation_tools.safe_simplify(polygon, smoothing)
+                        if polygon is None:
+                            continue
                         # Create annotations
                         annotations = annotation_tools.polygons_to_annotations(polygon, datasetId, XY=XY, Z=Z_frame, Time=Time, tags=tags, channel=channel)
                         for annotation in annotations:

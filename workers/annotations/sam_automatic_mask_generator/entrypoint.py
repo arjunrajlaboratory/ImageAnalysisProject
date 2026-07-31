@@ -7,10 +7,10 @@ import annotation_client.annotations as annotations_client
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np  # library for array manipulation
-from shapely.geometry import Polygon
 from skimage.measure import find_contours
-from shapely.geometry import Polygon
 
 
 
@@ -162,10 +162,14 @@ def compute(datasetId, apiUrl, token, params):
         contours = find_contours(mask, 0.5)
         
         for contour in contours:
-            # Simplify the contour to reduce the number of points
-            polygon = Polygon(contour).simplify(smoothing, preserve_topology=True)
-            
-            if polygon.is_valid and not polygon.is_empty:
+            # Simplify the contour to reduce the number of points. Guarded
+            # construction: a contour too short to form a ring raises ValueError
+            # and a non-finite coordinate makes simplify() raise GEOSException,
+            # either of which would abort the whole run.
+            polygon = annotation_tools.safe_simplify(
+                annotation_tools.safe_polygon(contour), smoothing)
+
+            if polygon is not None and polygon.is_valid and not polygon.is_empty:
                 # Convert the polygon coordinates to the required format
                 coordinates = [{"x": float(y), "y": float(x)} for x, y in polygon.exterior.coords]
                 

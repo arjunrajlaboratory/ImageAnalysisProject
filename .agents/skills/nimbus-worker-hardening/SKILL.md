@@ -125,11 +125,49 @@ for coords in geometry_to_polygon_coords(geometry):   # returns [] if degenerate
     # build one polygon annotation from coords
 ```
 
+**But the geometry has to exist first.** `geometry_to_polygon_coords` only
+guards the code *after* construction, and construction is the other half of this
+failure mode:
+
+* `Polygon(contour)` raises `ValueError: A linearring requires at least 4
+  coordinates` for a 1-2 point contour (a one-pixel-wide mask);
+* a contour carrying a NaN/inf coordinate builds fine, then detonates inside
+  `.simplify()` with `GEOSException: Non-finite envelope bounds` -- which is not
+  a `ValueError`, so it slips past a naive `except ValueError`.
+
+Both abort the whole run, so one unusable mask out of hundreds loses every good
+annotation in the frame. Never call `Polygon()`/`.buffer()`/`.simplify()` bare on
+model output; use the guarded helpers, which return `None`/`[]` instead of
+raising:
+```python
+from annotation_utilities.annotation_tools import (
+    clean_polygon_coords, safe_polygon, safe_buffer, safe_simplify)
+
+# contour -> annotation-ready rings in one step (buffer, then simplify)
+for coords in clean_polygon_coords(contour, padding=padding, smoothing=smoothing):
+    ...                                     # [] if anything was unusable
+
+# or, where the worker needs the geometry itself (SAM family)
+polygon = safe_simplify(safe_polygon(contour), smoothing)
+if polygon is not None:
+    polygons.append(polygon)
+```
+`safe_polygon` also rejects non-finite coordinates up front and drops a third
+coordinate column (a 3D ring yields 3-tuples, which break the `(x, y)` unpacking
+used to build annotation coordinates).
+
 **Sweep:**
 ```bash
 grep -rn "\.exterior\.coords" workers/ annotation_utilities/   # candidates to route through the helper
 grep -rn "\.buffer(\|\.simplify(" workers/                     # sources of degenerate geometry
+grep -rn "Polygon(" workers/ | grep -v safe_polygon              # unguarded construction
 ```
+Covered so far: cellposesam/cellpose/condensatenet (`clean_polygon_coords`),
+sam2_video/sam2_propagate/sam2_refine and the SAM/SAM2 automatic-mask-generator
+and few-shot workers (`safe_*`), plus the `worker_client` and
+`polygons_to_annotations` upload chokepoints. Still unguarded: the
+`cellpose_train`/`cellposesam_train` region-polygon reads, where a degenerate
+*user* annotation can still abort a training run.
 
 ### 4. Out-of-range batch coordinates
 

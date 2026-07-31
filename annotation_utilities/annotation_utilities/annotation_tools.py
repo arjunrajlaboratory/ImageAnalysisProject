@@ -1,6 +1,16 @@
 from shapely.geometry import Point, Polygon
 import numpy as np
 
+try:  # shapely >= 2.0
+    from shapely.errors import GEOSException as _GEOSException
+except ImportError:  # pragma: no cover - shapely 1.x fallback
+    from shapely.errors import ShapelyError as _GEOSException
+
+# Everything shapely throws when handed a geometry it cannot work with. GEOS
+# errors are not ValueErrors, so they slip past a naive `except ValueError` and
+# kill the worker run.
+GEOMETRY_ERRORS = (ValueError, TypeError, AttributeError, _GEOSException)
+
 
 # Note that this function should reverse x and y. It is used by point_count_worker, which mixes up x and y for the polygons as well, so it works consistently.
 # But that's not good. This function should not be used outside of the point_count_worker.
@@ -189,10 +199,105 @@ def geometry_to_polygon_coords(geometry, keep_largest_only=False):
             coords = [max(coords, key=lambda ring: Polygon(ring).area)]
         return coords
     exterior = getattr(geometry, "exterior", None)
-    if exterior is None or not geometry.is_valid or geometry.area <= 0:
-        # not a polygon, invalid (self-intersecting), or a degenerate sliver
+    if exterior is None:
+        return []  # not a polygon (a Point/LineString has no exterior)
+    try:
+        # `not (area > 0)` rather than `area <= 0` so a NaN area (from non-finite
+        # coordinates) is rejected too -- every NaN comparison is False.
+        if not geometry.is_valid or not (geometry.area > 0):
+            # invalid (self-intersecting) or a degenerate sliver
+            return []
+    except GEOMETRY_ERRORS:
         return []
     return [list(exterior.coords)]
+
+
+def safe_polygon(coords):
+    """Build a shapely ``Polygon`` from raw coordinates, or return ``None``.
+
+    ``geometry_to_polygon_coords`` only protects the code *after* a geometry
+    exists; this protects the construction itself, which is where segmentation
+    workers actually crash. ``Polygon(coords)`` raises ``ValueError`` for a
+    contour with fewer than 3 points (a one-pixel-wide mask), and a contour
+    carrying a NaN/inf coordinate builds a geometry that detonates later inside
+    ``simplify()`` with a ``GEOSException``. Both abort the entire worker run, so
+    one unusable mask out of hundreds loses every good annotation in the frame.
+
+    ``coords`` may be a coordinate sequence (list of ``(x, y)`` tuples, a numpy
+    contour array, ...) or an already-built geometry, which is returned as-is. A
+    third coordinate column is dropped: a 3D ring yields 3-tuples, which break
+    the ``(x, y)`` unpacking used to build annotation coordinates.
+
+    Returns a ``Polygon``, or ``None`` if the input cannot form a usable one.
+    """
+    if coords is None:
+        return None
+    if hasattr(coords, "geom_type"):  # already a shapely geometry
+        return coords
+    try:
+        array = np.asarray(coords, dtype=float)
+    except (TypeError, ValueError):
+        return None  # e.g. a list of dicts, or a string
+    if array.ndim != 2 or array.shape[0] < 3 or array.shape[1] < 2:
+        return None  # too few points, or not (x, y) pairs, to form a ring
+    array = array[:, :2]
+    if not np.isfinite(array).all():
+        return None
+    try:
+        return Polygon(array)
+    except GEOMETRY_ERRORS:
+        return None
+
+
+def safe_buffer(geometry, distance):
+    """``geometry.buffer(distance)``, tolerating ``None`` and GEOS failures.
+
+    Used for polygon padding. Returns ``None`` if there is nothing to buffer or
+    the operation fails; an empty result is left to
+    ``geometry_to_polygon_coords`` to drop.
+    """
+    if geometry is None:
+        return None
+    try:
+        return geometry.buffer(distance)
+    except GEOMETRY_ERRORS:
+        return None
+
+
+def safe_simplify(geometry, tolerance, preserve_topology=True):
+    """``geometry.simplify(tolerance)``, tolerating ``None`` and GEOS failures.
+
+    Used for polygon smoothing. A geometry built from non-finite coordinates
+    raises ``GEOSException: Non-finite envelope bounds`` here, which is fatal to
+    the run unless caught.
+    """
+    if geometry is None:
+        return None
+    try:
+        return geometry.simplify(tolerance, preserve_topology=preserve_topology)
+    except GEOMETRY_ERRORS:
+        return None
+
+
+def clean_polygon_coords(coords, padding=0, smoothing=0, keep_largest_only=False):
+    """Turn one raw mask contour into annotation-ready coordinate rings.
+
+    This is the whole guarded pipeline the segmentation workers need: build the
+    polygon, apply optional ``padding`` (buffer) then ``smoothing`` (simplify) --
+    the order the cellpose-family workers have always used -- and normalize the
+    result with :func:`geometry_to_polygon_coords`. Anything unusable at any step
+    is dropped rather than raised, so a single bad contour costs one object
+    instead of the entire frame.
+
+    Returns a (possibly empty) list of coordinate lists, each a list of
+    ``(x, y)`` tuples ready to become one polygon annotation.
+    """
+    geometry = safe_polygon(coords)
+    if padding:
+        geometry = safe_buffer(geometry, padding)
+    if smoothing and smoothing > 0:
+        geometry = safe_simplify(geometry, smoothing)
+    return geometry_to_polygon_coords(geometry, keep_largest_only=keep_largest_only)
 
 
 def polygons_to_annotations(polygons, datasetId, XY=0, Time=0, Z=0, tags=None, channel=0):

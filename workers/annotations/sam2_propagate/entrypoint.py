@@ -13,9 +13,7 @@ import annotation_utilities.annotation_tools as annotation_tools
 import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import numpy as np  # library for array manipulation
-from shapely.geometry import Polygon
 from skimage.measure import find_contours
-from shapely.geometry import Polygon
 
 
 from annotation_client.utils import sendProgress
@@ -148,9 +146,15 @@ def sam2_masks_to_polygons(masks, smoothing, padding):
             mask = mask.squeeze(0)
         contours = find_contours(mask, 0.5)
         if contours:  # Check if contours were found
-            polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
-            polygon = polygon.buffer(padding)
-            polygons.append(polygon)
+            # A contour too short to form a ring raises ValueError, and a
+            # non-finite coordinate makes simplify() raise GEOSException; either
+            # would abort the whole run, so skip that mask instead (same as the
+            # no-contours case above).
+            polygon = annotation_tools.safe_polygon(contours[0])
+            polygon = annotation_tools.safe_simplify(polygon, smoothing)
+            polygon = annotation_tools.safe_buffer(polygon, padding)
+            if polygon is not None:
+                polygons.append(polygon)
     return polygons
 
 

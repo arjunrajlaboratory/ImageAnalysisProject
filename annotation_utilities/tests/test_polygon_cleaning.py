@@ -1,14 +1,19 @@
 import sys
 from pathlib import Path
 
+import numpy as np
 from shapely.geometry import Polygon
 
 package_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(package_root))
 
 from annotation_utilities.annotation_tools import (
+    clean_polygon_coords,
     geometry_to_polygon_coords,
     polygons_to_annotations,
+    safe_buffer,
+    safe_polygon,
+    safe_simplify,
 )
 
 
@@ -143,3 +148,128 @@ def test_polygons_to_annotations_preserves_xy_swap_and_drops_closing_point():
     assert annotations[0]["location"] == {"XY": 4, "Time": 5, "Z": 6}
     assert annotations[0]["tags"] == ["t"]
     assert annotations[0]["channel"] == 2
+
+
+# ---------------------------------------------------------------------------
+# safe_polygon / safe_buffer / safe_simplify: guarding geometry *construction*
+#
+# The geometry_to_polygon_coords chokepoint above only helps once a shapely
+# geometry exists. Segmentation workers build that geometry from raw mask
+# contours, where construction itself can blow up and take the whole run with
+# it: a 1-2 point contour raises ValueError, and a non-finite coordinate makes
+# simplify() raise GEOSException.
+# ---------------------------------------------------------------------------
+
+def test_safe_polygon_builds_a_valid_ring():
+    poly = safe_polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
+    assert poly is not None
+    assert poly.area == 100
+
+
+def test_safe_polygon_rejects_contours_too_short_to_form_a_ring():
+    # Polygon() raises ValueError: A linearring requires at least 4 coordinates.
+    assert safe_polygon([(0, 0), (1, 1)]) is None
+    assert safe_polygon([(0, 0)]) is None
+    assert safe_polygon([]) is None
+
+
+def test_safe_polygon_rejects_non_finite_coordinates():
+    # These construct fine but explode later, inside simplify().
+    assert safe_polygon([(0, 0), (np.nan, 5), (10, 10), (0, 10)]) is None
+    assert safe_polygon([(0, 0), (np.inf, 5), (10, 10), (0, 10)]) is None
+
+
+def test_safe_polygon_rejects_non_coordinate_input():
+    assert safe_polygon(None) is None
+    assert safe_polygon("not coordinates") is None
+    assert safe_polygon([{"x": 1, "y": 2}]) is None
+
+
+def test_safe_polygon_accepts_numpy_contours():
+    contour = np.array([[0.0, 0.0], [8.0, 0.0], [8.0, 8.0], [0.0, 8.0]])
+    poly = safe_polygon(contour)
+    assert poly is not None
+    assert poly.area == 64
+
+
+def test_safe_polygon_ignores_a_third_coordinate_column():
+    # A 3D ring would yield 3-tuples, which crash the (x, y) unpacking used to
+    # build annotation coordinates.
+    poly = safe_polygon([(0, 0, 5), (10, 0, 5), (10, 10, 5), (0, 10, 5)])
+    assert poly is not None
+    assert all(len(point) == 2 for point in poly.exterior.coords)
+
+
+def test_safe_polygon_passes_through_an_existing_geometry():
+    square = Polygon([(0, 0), (4, 0), (4, 4), (0, 4)])
+    assert safe_polygon(square) is square
+
+
+def test_safe_buffer_and_simplify_tolerate_none():
+    assert safe_buffer(None, -1) is None
+    assert safe_simplify(None, 0.7) is None
+
+
+def test_safe_simplify_survives_geos_failure_on_non_finite_geometry():
+    # Bypasses safe_polygon to prove the transform guard stands on its own:
+    # this raises GEOSException (Non-finite envelope bounds) unguarded.
+    nan_poly = Polygon([(0, 0), (np.nan, 5), (10, 10), (0, 10)])
+    assert safe_simplify(nan_poly, 0.7) is None
+
+
+def test_safe_buffer_returns_empty_geometry_rather_than_raising():
+    tiny = Polygon([(0, 0), (1.5, 0), (1.5, 1.5), (0, 1.5)])
+    eroded = safe_buffer(tiny, -1.0)
+    # Empty is fine here -- geometry_to_polygon_coords drops it downstream.
+    assert eroded is None or eroded.is_empty
+
+
+# ---------------------------------------------------------------------------
+# clean_polygon_coords: contour -> annotation-ready rings, in one guarded step
+# ---------------------------------------------------------------------------
+
+def test_clean_polygon_coords_applies_padding_and_smoothing():
+    square = [(0, 0), (20, 0), (20, 20), (0, 20)]
+    rings = clean_polygon_coords(square, padding=-1.0, smoothing=0.7)
+    assert len(rings) == 1
+    assert Polygon(rings[0]).area < 400  # eroded by the negative padding
+
+
+def test_clean_polygon_coords_drops_unconstructable_contour():
+    assert clean_polygon_coords([(0, 0), (1, 1)], padding=-1.0, smoothing=0.7) == []
+
+
+def test_clean_polygon_coords_drops_non_finite_contour():
+    nan_contour = [(0, 0), (np.nan, 5), (10, 10), (0, 10)]
+    assert clean_polygon_coords(nan_contour, padding=-1.0, smoothing=0.7) == []
+
+
+def test_clean_polygon_coords_drops_contour_eroded_away():
+    tiny = [(0, 0), (1.5, 0), (1.5, 1.5), (0, 1.5)]
+    assert clean_polygon_coords(tiny, padding=-1.0) == []
+
+
+def test_clean_polygon_coords_expands_multipolygon_into_separate_rings():
+    dumbbell = [
+        (0, 0), (10, 0), (10, 4), (6, 4), (6, 5), (10, 5), (10, 9),
+        (0, 9), (0, 5), (4, 5), (4, 4), (0, 4),
+    ]
+    rings = clean_polygon_coords(dumbbell, padding=-1.0)
+    assert len(rings) == 2
+    assert all(len(ring) >= 4 for ring in rings)
+
+
+def test_clean_polygon_coords_can_collapse_to_the_largest_piece():
+    dumbbell = [
+        (0, 0), (10, 0), (10, 4), (6, 4), (6, 5), (10, 5), (10, 9),
+        (0, 9), (0, 5), (4, 5), (4, 4), (0, 4),
+    ]
+    rings = clean_polygon_coords(dumbbell, padding=-1.0, keep_largest_only=True)
+    assert len(rings) == 1
+
+
+def test_clean_polygon_coords_without_transforms_returns_the_ring():
+    square = [(0, 0), (10, 0), (10, 10), (0, 10)]
+    rings = clean_polygon_coords(square)
+    assert len(rings) == 1
+    assert Polygon(rings[0]).area == 100
