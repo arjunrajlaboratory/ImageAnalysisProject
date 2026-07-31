@@ -104,7 +104,7 @@ The `image_embed` from `predictor._features["image_embed"]` gives a `(1, 256, 64
 
 ## Performance Characteristics
 
-- **GPU required**: SAM2 encoder needs CUDA
+- **GPU required**: SAM2 encoder needs CUDA. The image ships CUDA 13.0 with PyTorch's cu130 wheel, which requires an NVIDIA driver of r580 or newer on the host.
 - **Memory**: ~4GB VRAM for SAM2 small model
 - **Speed**: Most time is spent encoding candidate masks individually (one forward pass per candidate). With 128 points per side, expect ~200-800 candidate masks per image.
 - **Data efficiency**: Works with 5-20 training examples
@@ -136,7 +136,7 @@ The `image_embed` from `predictor._features["image_embed"]` gives a `(1, 256, 64
 | File | Purpose |
 |------|---------|
 | `entrypoint.py` | Worker logic: interface definition, feature extraction, inference pipeline |
-| `Dockerfile` | x86_64 production build (CUDA 12.1, SAM2 checkpoints) |
+| `Dockerfile` | x86_64 production build (CUDA 13.0, SAM2 checkpoints) |
 | `Dockerfile_M1` | arm64/M1 Mac build (CUDA 11.8) |
 | `environment.yml` | Conda environment specification |
 | `tests/test_sam2_fewshot.py` | Unit tests for helper functions |

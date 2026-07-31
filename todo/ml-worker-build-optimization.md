@@ -3,6 +3,12 @@
 **Status:** Deferred
 **Priority:** Medium
 **Related PR:** [#132 — Refactor ML worker Dockerfiles: mamba + shared base images](https://github.com/arjunrajlaboratory/ImageAnalysisProject/pull/132)
+**See also:** [TODO-003 — SAM/SAM2 worker image size](ml-worker-image-size.md), which
+converted the SAM workers to real multi-stage builds and made the five
+`sam2_*/environment.yml` files identical (they previously differed by a single
+trailing newline, which alone was enough to prevent any layer sharing between
+them). That makes a shared `sam2-worker-base` considerably more tractable, and
+it re-examines the GPU-passthrough blocker recorded below.
 
 ## Summary
 

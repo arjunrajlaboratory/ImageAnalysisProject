@@ -35,7 +35,7 @@ Available SAM2.1 Hiera model variants (auto-detected from `/code/sam2/checkpoint
 
 ### GPU Handling
 
-Requires CUDA GPU. Enables bfloat16 autocast for performance and enables TF32 on Ampere (compute capability 8+) GPUs.
+Requires CUDA GPU. Enables bfloat16 autocast for performance and enables TF32 on Ampere (compute capability 8+) GPUs. The image ships CUDA 13.0 with PyTorch's cu130 wheel, which requires an NVIDIA driver of r580 or newer on the host.
 
 ### Image Compositing
 
