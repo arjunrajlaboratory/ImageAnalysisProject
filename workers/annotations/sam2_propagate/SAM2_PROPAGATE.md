@@ -53,7 +53,7 @@ Same SAM2.1 Hiera variants as the automatic mask generator: tiny, small (default
 
 ### GPU Handling
 
-Requires CUDA GPU. Enables bfloat16 autocast and TF32 on Ampere GPUs.
+Requires CUDA GPU. Enables bfloat16 autocast and TF32 on Ampere GPUs. The image ships CUDA 13.0 with PyTorch's cu130 wheel, which requires an NVIDIA driver of r580 or newer on the host.
 
 ## Notes
 

@@ -39,7 +39,7 @@ In addition to polygon annotations, the worker also attempts to fetch and refine
 
 ### GPU Handling
 
-Detects CUDA availability at runtime and falls back to CPU if no GPU is available. When CUDA is present, enables bfloat16 autocast and TF32 on Ampere GPUs. This is the only SAM2 worker with explicit CPU fallback.
+Detects CUDA availability at runtime and falls back to CPU if no GPU is available. When CUDA is present, enables bfloat16 autocast and TF32 on Ampere GPUs. This is the only SAM2 worker with explicit CPU fallback. The image ships CUDA 13.0 with PyTorch's cu130 wheel, which requires an NVIDIA driver of r580 or newer on the host.
 
 ### Error Handling
 
