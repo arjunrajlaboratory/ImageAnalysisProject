@@ -41,6 +41,7 @@ This worker therefore uses the same three `channelCheckboxes` slots as the Cellp
 - **Slots 2 and 3** are optional
 - If multiple channels are checked in a single slot, a warning is issued and only the first is used
 - Selected channels are stacked channels-last and passed to training via `channel_axis=-1`
+- Each slot value is parsed by `annotation_tools.get_selected_channels()` rather than `.items()`, which crashed when a saved tool config held a bare list (`[0]`) instead of the documented `{"0": True}` mapping. A value in any other shape is reported as an error rather than defaulting to some channel
 
 Matching the inference worker's channel layout matters: a model trained on a given channel arrangement should be run with the same arrangement.
 

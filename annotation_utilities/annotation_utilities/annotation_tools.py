@@ -289,6 +289,65 @@ def points_to_annotations(points, datasetId, XY=0, Time=0, Z=0, tags=None, chann
     return annotations
 
 
+def get_selected_channels(value, field_name='channel selection'):
+    """
+    Parse a `channelCheckboxes` interface value into a sorted list of channel indices.
+
+    The only valid shape is the documented mapping of channel index to checked
+    state, e.g. ``{'0': True, '1': False, '2': True}`` -> ``[0, 2]``. An unset
+    field (``None``, ``''``, ``{}``) returns an empty list, which callers must
+    treat as "nothing selected" and handle with their own required-field logic.
+
+    Anything else raises ``ValueError`` rather than guessing a channel, since
+    running a tool on the wrong channel is worse than failing outright.
+
+    In particular, a bare list of channel indices (``[0]``) is rejected. The
+    NimbusImage checkbox widget has never emitted that shape, and the one
+    upstream path that accepts arrays (the AI panel) normalizes them to the map
+    before saving, so a list value means the tool config was written by something
+    outside the UI. Because we cannot confirm which channel it meant, it raises
+    here rather than being read as "channel 0"; the config needs its channels
+    re-selected (see todo/channelcheckboxes-serialization.md).
+
+    Args:
+    - value: the raw ``params['workerInterface'][field_name]`` value
+    - field_name: name of the interface field, used in error messages
+
+    Returns:
+    - a sorted list of unique non-negative int channel indices
+    """
+    def bad(detail):
+        return ValueError(
+            f"'{field_name}' has an unexpected format ({detail}). The worker "
+            f"interface may be out of date or misconfigured.")
+
+    if value is None or value == '':
+        return []
+
+    if isinstance(value, (list, tuple)):
+        raise bad(
+            f"got a list of channel indices ({value!r}) instead of a mapping of "
+            f"channel index to on/off")
+
+    if not isinstance(value, dict):
+        raise bad(f"{type(value).__name__}: {value!r}")
+
+    selected = []
+    for key, checked in value.items():
+        if not checked:
+            continue
+        try:
+            index = int(key)
+        except (TypeError, ValueError):
+            raise bad(f"channel key {key!r} is not an integer")
+        selected.append(index)
+
+    if any(index < 0 for index in selected):
+        raise bad(f"negative channel index in {value!r}")
+
+    return sorted(set(selected))
+
+
 def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):
     """
     Get images for all channels for a given XY, Z, Time

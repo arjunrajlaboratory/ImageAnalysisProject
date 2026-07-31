@@ -211,12 +211,17 @@ def compute(datasetId, apiUrl, token, params):
     if reference_channel == "" or reference_channel == -1:
         reference_channel = 0
 
-    allChannels = workerInterface['Channels to correct']
+    allChannels = workerInterface.get('Channels to correct')
 
     print("allChannels", allChannels)
-    # Output is allChannels {'1': True, '2': True}
-    # This means that channels 1 and 2 are being blurred
-    channels = [int(k) for k, v in allChannels.items() if v]
+    # The front end sends either {'1': True, '2': True} or [1, 2]; both mean
+    # channels 1 and 2 are being corrected.
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'Channels to correct')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
     print("channels", channels)
     if len(channels) == 0:
         sendError("No channels to correct")

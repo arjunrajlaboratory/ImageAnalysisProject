@@ -123,33 +123,34 @@ def get_slot_channels(workerInterface):
 
     Mirrors the cellposesam inference worker: Slot 1 is required, Slots 2 and 3
     are optional, and if multiple channels are checked in a slot only the first
-    is used (with a warning).
+    is used (with a warning). The raw values are parsed by
+    annotation_tools.get_selected_channels rather than .items(), which crashed on
+    the malformed list shape ([0]) found in a saved tool config.
     """
-    slot1 = [k for k, v in workerInterface.get('Channel for Slot 1', {}).items() if v]
-    slot2 = [k for k, v in workerInterface.get('Channel for Slot 2', {}).items() if v]
-    slot3 = [k for k, v in workerInterface.get('Channel for Slot 3', {}).items() if v]
+    slots = []
+    for slot in ('Channel for Slot 1', 'Channel for Slot 2', 'Channel for Slot 3'):
+        try:
+            slots.append(annotation_tools.get_selected_channels(
+                workerInterface.get(slot), slot))
+        except ValueError as exc:
+            sendError(f"Could not read the channel selection for {slot}.",
+                      info=str(exc))
+            raise
 
+    slot1, slot2, slot3 = slots
     stack_channels = []
 
     if not slot1:
         sendError("No channel selected for Slot 1. This is a required field.")
         raise ValueError("No channel selected for Slot 1.")
-    if len(slot1) > 1:
-        sendWarning(
-            f"Multiple channels selected for Slot 1 ({slot1}). Using the first: {slot1[0]}.")
-    stack_channels.append(int(slot1[0]))
 
-    if slot2:
-        if len(slot2) > 1:
+    for name, channels in (('Slot 1', slot1), ('Slot 2', slot2), ('Slot 3', slot3)):
+        if not channels:
+            continue
+        if len(channels) > 1:
             sendWarning(
-                f"Multiple channels selected for Slot 2 ({slot2}). Using the first: {slot2[0]}.")
-        stack_channels.append(int(slot2[0]))
-
-    if slot3:
-        if len(slot3) > 1:
-            sendWarning(
-                f"Multiple channels selected for Slot 3 ({slot3}). Using the first: {slot3[0]}.")
-        stack_channels.append(int(slot3[0]))
+                f"Multiple channels selected for {name} ({channels}). Using the first: {channels[0]}.")
+        stack_channels.append(channels[0])
 
     return stack_channels
 
