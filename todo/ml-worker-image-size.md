@@ -69,6 +69,25 @@ Also fixed along the way:
   now; `run_worker.sh` activates the env by path). They now call `pip`/`python`
   directly via `run_worker.sh`.
 
+## Follow-up from PR #160 review
+
+Codex flagged (P1) that `sam_fewshot_segmentation/Dockerfile_M1` installed torch
+from `https://download.pytorch.org/whl/cu118`, which publishes no Linux aarch64
+wheels — a native arm64 build would fail with "No matching distribution found".
+Correct, and it was introduced by this change: the original M1 file had no torch
+install line at all. The arm64 variant now takes the plain PyPI (CPU) wheels,
+which do ship `manylinux_2_28_aarch64` builds, matching the CPU-only intent of
+`MAC_DEVELOPMENT_MODE`.
+
+Worth noting the pre-existing state was also broken, just later: without that
+line and with no `pytorch` in `environment.yml`, the M1 image had no torch at
+all (`segment-anything` declares no `install_requires`), so it would have failed
+at import time rather than build time. The fix resolves both.
+
+Checked at the same time: all four CUDA tags in use
+(`11.8.0`/`12.1.0` × `cudnn8-devel`/`runtime`, ubuntu22.04) publish arm64
+manifests, so the devel→runtime swap is safe on M1.
+
 ## Not yet verified
 
 **None of this has been built.** The changes were made in an environment without
