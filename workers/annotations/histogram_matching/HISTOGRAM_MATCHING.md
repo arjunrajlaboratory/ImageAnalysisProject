@@ -31,3 +31,4 @@ Normalizes intensity distributions across frames by matching the histogram of ea
 - The reference frame itself will be matched to itself (a no-op), preserving its original intensities.
 - Output metadata includes the tool name and reference coordinates used.
 - A dataset with a single channel has no `IndexC` key in its frame metadata, so the worker treats those frames as channel 0 (the only channel such a dataset has).
+- Selecting a channel the dataset does not have (e.g. a saved config that selects channel 1, run on a single-channel dataset) is reported: an error if no selected channel exists, a warning naming the missing indices if only some are absent. Missing channels are dropped before the reference images are collected, so no reference lookup is attempted for a channel that does not exist.

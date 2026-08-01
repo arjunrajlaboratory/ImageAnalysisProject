@@ -140,6 +140,50 @@ already hold list-shaped values now report a clear error until re-saved, and the
 submitter that wrote them is still unidentified — tracked in
 `todo/channelcheckboxes-serialization.md`.
 
+**A well-formed selection can still name channels the dataset does not have.**
+`get_selected_channels` validates shape, not range: a saved config selecting
+channel 1 parses cleanly and then matches no frame when it is run against a
+single-channel dataset. There is no crash — the worker processes nothing, uploads
+a byte-identical copy of its input, and reports success, which is worse than an
+error because nobody looks for it. Split the selection against the dataset's real
+channel count and report:
+```python
+num_channels = tileClient.tiles.get('IndexRange', {}).get('IndexC', 1)
+channels, missing_channels = annotation_tools.split_channel_selection(
+    channels, num_channels)
+if missing_channels:
+    detail = (f"Selected channel indices {missing_channels} do not exist in "
+              f"this dataset, which has {num_channels} channel(s) "
+              f"(indices 0-{num_channels - 1}).")
+    if not channels:
+        sendError("None of the selected channels exist in this dataset.", info=detail)
+        return
+    sendWarning("Ignoring channels this dataset does not have.", info=detail)
+```
+Note the asymmetry: an **empty** selection is a different case — the user
+deselected everything, and gaussian_blur/rolling_ball deliberately still write an
+unprocessed copy — so `split_channel_selection` reports nothing missing for it.
+This applies to every dimension a worker filters on, not just channels: crop
+checks its XY/Z/Time ranges and registration checks `Apply to XY coordinates` the
+same way. Anywhere a worker intersects a user selection with what the dataset
+has, an empty intersection needs reporting.
+
+**Sweep:**
+```bash
+grep -rn "get_selected_channels" workers/   # every caller is a candidate
+```
+Done for the five image-processing workers that filter frames by channel:
+gaussian_blur, rolling_ball, histogram_matching, registration, deconwolf. Still
+unaudited: cellposesam and cellposesam_train (three independent per-slot
+selections feeding a channel merge, so an out-of-range index fails differently)
+and sample_interface (a demo worker that only prints its selection).
+
+Covered by `annotation_utilities/tests/test_split_channel_selection.py` (runs in
+CI) plus per-worker tests in all five workers above. A test for this needs a
+fixture whose `IndexRange` channel count is **smaller** than the selected index;
+on the usual 2-channel fixture every selection is in range and the bug is
+invisible.
+
 ### 3. Degenerate / MultiPolygon geometry
 
 **Symptom:** either `AttributeError` on `.exterior` (a `MultiPolygon` has no

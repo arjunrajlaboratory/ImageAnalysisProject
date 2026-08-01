@@ -570,6 +570,6 @@ def test_compute_size_one_dimensions_default_to_all_frames(mock_tile_client, moc
 
     mock_send_error.assert_not_called()
     # Only the dimension the dataset actually has is passed through to addTile.
-    assert [call[1] for call in mock_large_image.addTile.call_args_list] == [
+    assert [call.kwargs for call in mock_large_image.addTile.call_args_list] == [
         {'t': 0}, {'t': 1}]
     mock_large_image.write.assert_called_once_with('/tmp/cropped.tiff')

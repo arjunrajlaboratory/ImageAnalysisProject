@@ -399,6 +399,48 @@ def get_selected_channels(value, field_name='channel selection'):
     return sorted(set(selected))
 
 
+def split_channel_selection(selected_channels, num_channels):
+    """
+    Split a channel selection into the channels a dataset has and the ones it lacks.
+
+    `get_selected_channels` validates the *shape* of a `channelCheckboxes` value but
+    cannot know how many channels the dataset actually has, so a saved tool config
+    legitimately parses to something like [1] when it is run against a
+    single-channel dataset. Left unchecked, the per-frame channel filter then
+    matches no frame at all and the worker uploads an untouched copy of its input
+    while reporting success. Callers use the `missing` half to report that instead:
+    an error when nothing is left to process, a warning when only part of the
+    selection is unusable.
+
+    Args:
+    selected_channels (iterable of int): Channel indices, typically the return of
+        get_selected_channels().
+    num_channels (int): How many channels the dataset has, i.e.
+        tileClient.tiles.get('IndexRange', {}).get('IndexC', 1). A dataset with a
+        single channel omits 'IndexC' from IndexRange entirely, which is why the
+        default of 1 matters.
+
+    Returns:
+    (present, missing): two sorted lists of unique ints. `present` holds the
+        selected indices that fall inside range(num_channels), `missing` the rest.
+        An empty selection yields two empty lists, so "nothing selected" stays
+        distinguishable from "nothing selected exists".
+
+    Raises:
+    ValueError: If num_channels is not a positive integer. Every dataset has at
+        least one channel, so a zero or negative count is a caller bug that would
+        otherwise silently reject every channel.
+    """
+    if not isinstance(num_channels, int) or num_channels < 1:
+        raise ValueError(
+            f"num_channels must be a positive integer, got {num_channels!r}.")
+
+    unique = sorted(set(selected_channels))
+    present = [channel for channel in unique if 0 <= channel < num_channels]
+    missing = [channel for channel in unique if not 0 <= channel < num_channels]
+    return present, missing
+
+
 def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):
     """
     Get images for all channels for a given XY, Z, Time

@@ -832,8 +832,14 @@ def test_compute_single_channel_dataset():
         sink.write.assert_called_with('/tmp/registered.tiff')
 
 
-def test_compute_single_channel_dataset_skips_unselected_channel():
-    """With no channel selected for correction, a channel-less frame is copied as-is."""
+def test_compute_channel_selection_outside_dataset_range():
+    """Selecting only a channel the dataset lacks must be reported, not ignored.
+
+    A saved config selecting channel 1, run against a single-channel dataset,
+    parses cleanly and then matches no frame in the output loop: the worker would
+    compute the whole registration and then upload an unregistered copy of the
+    input while reporting success.
+    """
     params = {
         'workerInterface': {
             'Algorithm': 'Rigid',
@@ -854,6 +860,7 @@ def test_compute_single_channel_dataset_skips_unselected_channel():
             patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
             patch('large_image.new') as mock_sink, \
             patch('entrypoint.StackReg') as mock_stackreg, \
+            patch('entrypoint.sendError') as mock_send_error, \
             patch('entrypoint.sendProgress'):
 
         client = mock_tile_client.return_value
@@ -879,9 +886,72 @@ def test_compute_single_channel_dataset_skips_unselected_channel():
 
         compute('test_dataset', 'http://test-api', 'test-token', params)
 
-        # The absent IndexC means channel 0, which was not selected.
+        mock_send_error.assert_called_once()
+        # Reported before any registration work, not after.
+        sr.register.assert_not_called()
         sr.transform.assert_not_called()
+        sink.addTile.assert_not_called()
+        sink.write.assert_not_called()
+        client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_compute_channel_selection_partially_outside_range_warns():
+    """A selection that is only partly out of range warns and registers the rest."""
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Rigid',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            # The dataset below has a single channel, so index 5 does not exist.
+            'Channels to correct': {'0': True, '5': True},
+            'Reference region tag': [],
+            'Control point tag': []
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('large_image.new') as mock_sink, \
+            patch('entrypoint.StackReg') as mock_stackreg, \
+            patch('entrypoint.sendWarning') as mock_send_warning, \
+            patch('entrypoint.sendError') as mock_send_error, \
+            patch('entrypoint.sendProgress'):
+
+        client = mock_tile_client.return_value
+        client.tiles = {
+            'IndexRange': {'IndexT': 2},
+            'frames': [
+                {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+                {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1}
+            ],
+            'channels': ['Default'],
+            'mm_x': None, 'mm_y': None, 'magnification': None
+        }
+        client.getRegion.return_value = np.zeros((100, 100), dtype=np.uint16)
+        client.coordinatesToFrameIndex.return_value = 0
+        client.client = MagicMock()
+        client.client.uploadFileToFolder.return_value = {'itemId': 'test'}
+
+        sr = mock_stackreg.return_value
+        sr.register.return_value = np.eye(3)
+        sr.transform.return_value = np.zeros((100, 100))
+
+        sink = mock_sink.return_value
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        mock_send_warning.assert_called_once()
+        assert '5' in mock_send_warning.call_args.kwargs['info']
+        mock_send_error.assert_not_called()
+        # Channel 0 is still registered and written out.
+        assert sr.transform.call_count == 2
         assert sink.addTile.call_count == 2
+        sink.write.assert_called_with('/tmp/registered.tiff')
 
 
 def test_compute_no_matching_xy_coordinates_error():

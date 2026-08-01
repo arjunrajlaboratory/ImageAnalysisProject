@@ -561,13 +561,18 @@ def test_compute_single_channel_dataset(mock_tile_client, mock_large_image, mock
     # The absent IndexC means channel 0, which is selected.
     assert mock_rolling_ball.call_count == 2
     # Only the dimensions the dataset actually has reach addTile.
-    assert [call[1] for call in mock_large_image.addTile.call_args_list] == [
+    assert [call.kwargs for call in mock_large_image.addTile.call_args_list] == [
         {'t': 0}, {'t': 1}]
     mock_large_image.write.assert_called_once_with('/tmp/output.tiff')
 
 
-def test_compute_single_channel_dataset_unselected_channel(mock_tile_client, mock_large_image, mock_rolling_ball):
-    """A channel-less frame is copied through untouched when channel 0 is not selected."""
+def test_compute_channel_selection_outside_dataset_range(mock_tile_client, mock_large_image, mock_rolling_ball):
+    """Selecting only a channel the dataset lacks must be reported, not ignored.
+
+    A saved config selecting channel 1, run against a single-channel dataset,
+    parses cleanly and then matches no frame: the worker would subtract nothing and
+    upload a byte-identical copy of the input while reporting success.
+    """
     mock_tile_client.tiles = {
         'frames': [
             {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
@@ -589,10 +594,38 @@ def test_compute_single_channel_dataset_unselected_channel(mock_tile_client, moc
         'channel': 1
     }
 
-    compute('test_dataset', 'http://test-api', 'test-token', params)
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
 
+    mock_send_error.assert_called_once()
     mock_rolling_ball.assert_not_called()
-    mock_large_image.addTile.assert_called_once()
+    mock_large_image.addTile.assert_not_called()
+    mock_large_image.write.assert_not_called()
+    mock_tile_client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_compute_channel_selection_partially_outside_range_warns(mock_tile_client, mock_large_image, mock_rolling_ball):
+    """A selection that is only partly out of range warns and processes the rest."""
+    params = {
+        'workerInterface': {
+            'Radius': 10.0,
+            # The fixture dataset has 2 channels, so index 5 does not exist.
+            'Channels to correct': {'0': True, '5': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('entrypoint.sendWarning') as mock_send_warning, \
+            patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_warning.assert_called_once()
+    assert '5' in mock_send_warning.call_args.kwargs['info']
+    mock_send_error.assert_not_called()
+    # Channel 0 still gets processed: 2 of the fixture's 4 frames.
+    assert mock_rolling_ball.call_count == 2
+    mock_large_image.write.assert_called_once_with('/tmp/output.tiff')
 
 
 def test_channel_selection_rejects_list_form(mock_tile_client, mock_large_image, mock_rolling_ball):

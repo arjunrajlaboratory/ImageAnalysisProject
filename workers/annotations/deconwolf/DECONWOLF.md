@@ -16,7 +16,7 @@ The worker wraps two deconwolf command-line tools:
 
 ## How It Works
 
-1. **Channel Selection**: The user selects which channels to deconvolve. Unselected channels pass through to the output unchanged.
+1. **Channel Selection**: The user selects which channels to deconvolve. Unselected channels pass through to the output unchanged. A selection naming a channel the dataset does not have (e.g. a saved config selecting channel 1, run on a single-channel dataset) is reported before any PSF is built: an error if no selected channel exists, a warning naming the missing indices if only some are absent.
 2. **Parameter Extraction**: Optical parameters (NA, refractive index, pixel size, Z step, emission wavelengths) are either entered manually or auto-extracted from ND2 image metadata when available.
 3. **PSF Generation**: For each unique emission wavelength among the selected channels, a Born-Wolf PSF is generated using `dw_bw`. The PSF size is set to `2 * num_z_slices - 1` to cover the full axial extent of the image.
 4. **Deconvolution**: Each Z-stack (grouped by XY position, timepoint, and channel) is deconvolved using `dw` with the corresponding PSF. GPU acceleration is attempted first if enabled, with automatic fallback to CPU if OpenCL fails.

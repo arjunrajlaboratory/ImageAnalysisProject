@@ -54,6 +54,7 @@ Registers time-lapse images to correct for drift and movement over time using th
 
 - Requires a time dimension; sends an error if the image has no IndexT.
 - If "Apply to XY coordinates" names no position that exists in the dataset, the worker sends an error rather than silently writing an unregistered copy.
+- "Channels to correct" is checked the same way: an error if no selected channel exists in the dataset (a config selecting channel 1, run on a single-channel dataset), a warning naming the missing indices if only some are absent. The check runs before the registration matrices are computed, so an impossible selection fails immediately rather than after the full registration pass.
 - The registration transform is computed on the reference channel only but applied to all selected channels.
 - Unselected channels and XY positions outside the specified range pass through unchanged.
 - Output metadata includes the tool name, algorithm, reference coordinates, and which XY positions were registered.
