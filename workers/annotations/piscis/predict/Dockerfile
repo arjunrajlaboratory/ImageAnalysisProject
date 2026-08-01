@@ -26,8 +26,17 @@ FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS build
 # (~4 GB) and is worthless inside an image.
 ENV PIP_NO_CACHE_DIR=1
 
-# Build-time toolchain only; none of this is carried into the runtime stage.
-# `r-base` (listed twice) and `software-properties-common` were never used.
+# Build-time toolchain, plus the opencv runtime libs (see below) -- only the
+# latter are repeated in the runtime stage.
+#
+# `r-base` (listed twice) and `software-properties-common` were never used
+# *directly*, but r-base-core's dependency tree was silently supplying the
+# shared libraries `opencv-python` needs: libglib2.0-0, libx11-6, libsm6 and
+# libice6 (via libxt6) and libxext6 (via libtk8.6). piscis depends on
+# `opencv-python` -- not `-headless` -- and imports cv2 at module scope in
+# piscis/transforms.py, so `import piscis` needs them here as well: the
+# `python /download_models.py` step below imports the package. libgl1 is listed
+# explicitly rather than left to whatever the CUDA base happens to carry.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
   apt-get install -qy \
   build-essential \
@@ -37,7 +46,13 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata 
   libssl-dev \
   libjpeg-dev \
   zlib1g-dev \
-  libpython3-dev && \
+  libpython3-dev \
+  libgl1 \
+  libglib2.0-0 \
+  libsm6 \
+  libice6 \
+  libx11-6 \
+  libxext6 && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/miniforge3/bin:$PATH"
@@ -90,9 +105,17 @@ LABEL com.nvidia.volumes.needed="nvidia_driver"
 ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
+# libgl1 .. libxext6 are what `opencv-python` links against; piscis imports cv2
+# at module scope, so the worker cannot start without them. See the build stage.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy \
   tzdata \
-  ca-certificates && \
+  ca-certificates \
+  libgl1 \
+  libglib2.0-0 \
+  libsm6 \
+  libice6 \
+  libx11-6 \
+  libxext6 && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/miniforge3/envs/worker/bin:$PATH"

@@ -60,6 +60,7 @@ In **Z-Stack mode**, all Z slices are passed to the model at once for 3D detecti
 - Training validates that annotation tags, region tags, annotations, and regions are all non-empty before proceeding, sending user-facing error messages via `sendError()` for each failure case.
 - Training uses a warmup fraction of 0.1 (10% of epochs) and splits the random seed into two child seeds -- one for dataset generation and one for model training.
 - Both predict and train automatically use CUDA if a GPU is available, falling back to CPU otherwise.
+- Both images must install `libgl1`, `libglib2.0-0`, `libsm6`, `libice6`, `libx11-6` and `libxext6`. `piscis` depends on `opencv-python` (not `opencv-python-headless`) and imports `cv2` at module scope in `piscis/transforms.py`, so `import piscis` fails without them — at build time as well, since `download_models.py` imports the package. They are listed explicitly in both Dockerfile stages; before the multi-stage rewrite they arrived by accident through `r-base`'s dependency tree. Do not remove them without first switching the worker to `opencv-python-headless`, which needs nothing beyond glibc.
 
 ## Notes
 

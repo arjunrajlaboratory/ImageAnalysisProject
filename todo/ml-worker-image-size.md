@@ -227,6 +227,44 @@ piscis images intentionally differ.
     `conda tos accept --channel https://repo.anaconda.com/pkgs/{main,r}` calls
     and the `defaults` channel entirely. Safe here because
     `piscis/environment.yml` is only `python=3.11` + `pip`.
+  - **`libgl1 libglib2.0-0 libsm6 libice6 libx11-6 libxext6` are now installed
+    explicitly, in both stages.** See "The r-base trap" below.
+
+## The r-base trap (caught in review, applies to `deconwolf` next)
+
+Dropping the copy-pasted `r-base` is not purely cosmetic. `r-base-core`
+*depends on* `libglib2.0-0`, `libx11-6`, `libxt6` (→ `libsm6`, `libice6`),
+`libtk8.6` (→ `libxext6`), `libcairo2` (→ `libxcb1`) and `libgomp1` — so for
+four years every worker with `r-base` in its apt list has been getting those
+shared libraries by accident. Removing it removes them.
+
+That matters exactly once here: `piscis` depends on `opencv-python`, **not**
+`opencv-python-headless`, and `piscis/transforms.py` does `import cv2 as cv` at
+module scope. `cv2` links (via the Qt5 libs vendored in the wheel)
+`libGL.so.1`, `libglib-2.0.so.0`, `libgthread-2.0.so.0`, `libX11.so.6`,
+`libSM.so.6`, `libICE.so.6`, `libXext.so.6` and `libxcb.so.1`. Without them
+`import piscis` raises `ImportError` — in the **build** stage too, since
+`download_models.py` imports the package.
+
+Checked and cleared for the rest of the fleet by reading `DT_NEEDED` off every
+wheel's `.so` files against what the wheel vendors:
+
+| Wheel | Needs from the image |
+|---|---|
+| `opencv-python` (piscis) | libGL, libglib/libgthread, libX11, libSM, libICE, libXext, libxcb |
+| `opencv-python-headless` (cellpose ×4) | nothing beyond glibc/libstdc++ (`libz.so.1`, always present) |
+| `torch` | nothing — vendors its own libgomp and the whole CUDA stack |
+| `tensorflow==2.11.0` (stardist) | nothing linked; **dlopens** libcudnn.so.8 by name, hence the `cudnn8` runtime tag |
+| `stardist==0.9.1` | nothing beyond glibc/libstdc++ |
+| `rtree`, `shapely` | nothing — vendor libspatialindex / GEOS |
+
+`libgomp1` is safe to lose everywhere: conda-forge ships `libgomp` *inside* the
+env, and the torch wheels vendor their own.
+
+The lesson for `deconwolf`: it links fftw/gsl/png/tiff/OpenCL directly, so its
+runtime stage needs the non-`-dev` versions of those installed deliberately —
+`ldd /usr/bin/dw` in the build stage is the way to get the list, rather than
+assuming the base image carries them.
 
 ## Not yet verified
 
