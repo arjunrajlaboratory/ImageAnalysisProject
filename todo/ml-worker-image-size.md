@@ -266,32 +266,92 @@ runtime stage needs the non-`-dev` versions of those installed deliberately —
 `ldd /usr/bin/dw` in the build stage is the way to get the list, rather than
 assuming the base image carries them.
 
-## Not yet verified
+## `ptxas` / `nvcc` are gone from the runtime stage (measured, accepted)
 
-**None of this has been built** — same constraint as wave 1 (no Docker daemon in
-the environment where the change was made). Before merging:
+The CUDA *devel* images ship the toolkit binaries under `/usr/local/cuda/bin`;
+the `*-runtime` images do not. So every worker in this wave loses `ptxas`,
+`nvcc`, `cuobjdump` and friends. Confirmed on the built images: `which ptxas`
+resolves in the old `stardist_worker`, and finds nothing in the new one.
 
-1. `./build_machine_learning_workers.sh` and record `docker images` sizes
-   before/after for the eight images above.
-2. Per worker, confirm the model cache survived the stage copy and that no
-   download happens on first run:
-   - cellpose ×4: `ls /root/.cellpose/models` → `cyto/cyto2/cyto3/nuclei`
-     (cellpose 3) or `cpsam_v2`/`cpsam` (cellpose 4).
-   - stardist: `ls /root/.keras/models` → `2D_versatile_fluo`,
-     `2D_versatile_he`.
-   - condensatenet: `ls /models/condensatenet /models/condensatenet-v1` →
-     `config.json` + `model.safetensors` in each.
-   - piscis ×2: `ls /root/.piscis/models` → the four dated models plus the
-     `rajlab/raj-lab-piscis-models` collection.
-3. Confirm the GPU is actually used from the `runtime` base — not just that the
-   job completes. `torch.cuda.is_available()` for the seven torch workers, and
-   for stardist `tf.config.list_physical_devices('GPU')` **plus** a check that
-   the log has no "Could not load dynamic library libcudnn" line, since TF
-   degrades to CPU silently.
-4. Run one real job per worker (segmentation for cellpose/cellposesam/stardist/
-   condensatenet, spot detection for piscis predict, and a short retrain for the
-   three training workers, which is the path that writes into the copied model
-   directories).
+This is visible in exactly one place. **stardist** (TensorFlow) logs, on every
+run:
+
+```
+Couldn't get ptxas version string: INTERNAL: Couldn't invoke ptxas --version
+Failed to launch ptxas
+Relying on driver to perform ptx compilation.
+```
+
+TF wants `ptxas` to JIT-compile PTX and to run the redzone-checked autotuning
+pass when picking conv algorithms. Without it, it falls back to letting the
+driver compile PTX, which still works — a real segmentation on the RTX 3060
+returned the correct object count with cuDNN 8906 loaded and the GPU in use.
+The cost is the autotune redzone check being skipped and a possible first-call
+JIT slowdown, not wrong output. Accepted rather than fixed: pulling `cuda-nvcc`
+into the runtime stage would add back a few hundred MB to save log noise.
+
+**The seven torch workers are unaffected**, and not because they never JIT: the
+`triton` wheel bundles its own copy at
+`site-packages/triton/backends/nvidia/bin/ptxas`, so `torch.compile` finds one
+regardless of the base image. Anything that shells out to the *image's*
+`ptxas`, though, would now fail — worth remembering before adding a worker that
+compiles kernels at runtime.
+
+Note this interacts with the "`nvidia/cuda:*-base` for the torch workers" idea
+below: `-base` drops even more of the toolkit, so that change should be
+re-checked against this same question rather than assumed safe.
+
+## Verification (built and measured 2026-08-01)
+
+Built on x86_64 with an RTX 3060 (driver CUDA 13.0), against a live NimbusImage
+stack. Sizes are `docker image inspect .Size`, i.e. unpacked and base-10.
+
+| Worker | Before | After | Saved |
+|---|---:|---:|---:|
+| cellpose | 25.23 G | 8.87 G | −65% |
+| cellpose_train | 25.07 G | 8.88 G | −65% |
+| cellposesam | 23.21 G | 11.21 G | −52% |
+| cellposesam_train | 23.05 G | 11.22 G | −51% |
+| stardist | 20.44 G | 6.69 G | −67% |
+| condensatenet | 24.09 G | 8.28 G | −66% |
+| piscis/predict | 18.53 G | 8.71 G | −53% |
+| piscis/train | 18.87 G | 8.82 G | −53% |
+| **Fleet** | **178.5 G** | **72.7 G** | **−105.8 G (59%)** |
+
+The pre-change estimates in the PR that introduced this wave were written
+without a Docker daemon and overstated the baseline (they guessed a 215 G fleet
+and a 55% cut); the percentage was conservative, the absolute saving was not.
+Build times were 136–293 s per worker. **Compressed pull sizes were never
+measured** — every figure here is unpacked.
+
+Confirmed per worker:
+
+1. Model caches survived the stage copy, and no download happens on first run —
+   `/root/.cellpose/models` (`cyto*`/`nuclei*` for cellpose 3, `cpsam`+`cpsam_v2`
+   for cellpose 4), `/root/.keras/models/StarDist2D`, `/models/condensatenet-v1`,
+   `/root/.piscis/models` (four dated models + the `rajlab` collection).
+2. The GPU is genuinely used from the `runtime` base:
+   `torch.cuda.is_available()` is true for the seven torch workers, and stardist
+   reports `[PhysicalDevice('/physical_device:GPU:0')]` with `Loaded cuDNN
+   version 8906` and **no** "Could not load dynamic library libcudnn" line.
+3. `import cv2` succeeds inside both piscis images — the check that would have
+   caught the r-base trap above.
+4. Real jobs on a 5-channel dataset, all writing annotations back to Girder:
+   cellposesam (17 objects), stardist (17), cellpose (12), condensatenet (7976
+   condensates), piscis predict (spots on a synthetic field). cellposesam was
+   additionally run through the NimbusImage UI, whose job log shows
+   `runtime: nvidia` — so the `isGPUWorker` label still routes to the GPU queue
+   through girder_worker.
+5. Both training workers: GPU visible, checkpoints present, the copied model
+   directory is **writable**, and `from cellpose import train` imports.
+
+### Still not verified
+
+**An actual retrain.** Items above cover the preconditions (writable copied
+model dir, `train` importable) but no training run was executed, so nothing has
+yet written a real checkpoint into a directory that now arrives via
+`COPY --from`. This is the weakest point in the wave-2 verification and is worth
+doing the next time a training dataset is at hand.
 
 ## Remaining opportunities (wave 2)
 

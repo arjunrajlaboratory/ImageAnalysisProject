@@ -81,6 +81,15 @@ RUN conda clean --all --yes
 
 # ---------------------------------------------------------------------------
 # Runtime stage
+#
+# The runtime image has no /usr/local/cuda/bin, so `ptxas` is gone. TF wants it
+# to JIT PTX and to run the redzone-checked conv autotune, and logs on every run:
+#   Couldn't invoke ptxas --version / Relying on driver to perform ptx compilation
+# That fallback is correct -- verified against a real segmentation with cuDNN
+# 8906 loaded on the GPU -- so this is accepted rather than fixed; adding
+# `cuda-nvcc` back would cost a few hundred MB to silence log noise. See
+# todo/ml-worker-image-size.md. (The torch workers never hit this: the triton
+# wheel bundles its own ptxas.)
 # ---------------------------------------------------------------------------
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
