@@ -289,6 +289,57 @@ def points_to_annotations(points, datasetId, XY=0, Time=0, Z=0, tags=None, chann
     return annotations
 
 
+# The index keys Girder puts on each frame in tileClient.tiles['frames']. A key is
+# omitted entirely when the dataset has only one position along that dimension.
+FRAME_INDEX_KEYS = ('IndexXY', 'IndexZ', 'IndexT', 'IndexC')
+
+
+def get_frame_index(frame, dimension, default=0):
+    """
+    Read one index out of a frame from tileClient.tiles['frames'].
+
+    Girder omits an index key from the frame dictionaries whenever the dataset has a
+    single position along that dimension: a single-channel dataset has no 'IndexC'
+    key at all, a dataset with no time series has no 'IndexT', and so on. A missing
+    key therefore means "coordinate 0 along that dimension", so subscripting the
+    frame directly (frame['IndexC']) raises KeyError on perfectly valid datasets.
+
+    Args:
+    frame (dict): One entry of tileClient.tiles['frames'].
+    dimension (str): 'IndexC' or 'C' (likewise XY, Z, T).
+    default (int): Value for an absent dimension. Default is 0, the only valid
+        coordinate along a dimension the dataset does not have.
+
+    Raises:
+    ValueError: If dimension is not one of the known frame index keys, so that a
+        typo fails loudly instead of silently reporting coordinate 0.
+    """
+    key = dimension if dimension.startswith('Index') else f'Index{dimension}'
+    if key not in FRAME_INDEX_KEYS:
+        raise ValueError(f"Unknown frame dimension {dimension!r}; "
+                         f"expected one of {FRAME_INDEX_KEYS}.")
+    return frame.get(key, default)
+
+
+def frame_to_large_image_params(frame):
+    """
+    Convert a frame into the keyword arguments for a large_image sink's addTile().
+
+    Girder frames carry keys such as 'IndexXY'/'IndexZ'/'IndexT'/'IndexC', which
+    large_image expects as 'xy'/'z'/'t'/'c'. Dimensions the dataset does not use are
+    absent from the frame and are likewise absent from the result. Any other 'Index*'
+    axis is passed through the same way rather than dropped, so that an unusual axis
+    still lands in its own plane instead of colliding with another frame. The bare
+    'Index' key (the flat frame number) is skipped, as are non-index keys like
+    'Channel'; the length test is what excludes 'Index' itself.
+
+    Args:
+    frame (dict): One entry of tileClient.tiles['frames'].
+    """
+    return {key.lower()[5:]: value for key, value in frame.items()
+            if key.startswith('Index') and len(key) > 5}
+
+
 def get_selected_channels(value, field_name='channel selection'):
     """
     Parse a `channelCheckboxes` interface value into a sorted list of channel indices.
@@ -346,6 +397,48 @@ def get_selected_channels(value, field_name='channel selection'):
         raise bad(f"negative channel index in {value!r}")
 
     return sorted(set(selected))
+
+
+def split_channel_selection(selected_channels, num_channels):
+    """
+    Split a channel selection into the channels a dataset has and the ones it lacks.
+
+    `get_selected_channels` validates the *shape* of a `channelCheckboxes` value but
+    cannot know how many channels the dataset actually has, so a saved tool config
+    legitimately parses to something like [1] when it is run against a
+    single-channel dataset. Left unchecked, the per-frame channel filter then
+    matches no frame at all and the worker uploads an untouched copy of its input
+    while reporting success. Callers use the `missing` half to report that instead:
+    an error when nothing is left to process, a warning when only part of the
+    selection is unusable.
+
+    Args:
+    selected_channels (iterable of int): Channel indices, typically the return of
+        get_selected_channels().
+    num_channels (int): How many channels the dataset has, i.e.
+        tileClient.tiles.get('IndexRange', {}).get('IndexC', 1). A dataset with a
+        single channel omits 'IndexC' from IndexRange entirely, which is why the
+        default of 1 matters.
+
+    Returns:
+    (present, missing): two sorted lists of unique ints. `present` holds the
+        selected indices that fall inside range(num_channels), `missing` the rest.
+        An empty selection yields two empty lists, so "nothing selected" stays
+        distinguishable from "nothing selected exists".
+
+    Raises:
+    ValueError: If num_channels is not a positive integer. Every dataset has at
+        least one channel, so a zero or negative count is a caller bug that would
+        otherwise silently reject every channel.
+    """
+    if not isinstance(num_channels, int) or num_channels < 1:
+        raise ValueError(
+            f"num_channels must be a positive integer, got {num_channels!r}.")
+
+    unique = sorted(set(selected_channels))
+    present = [channel for channel in unique if 0 <= channel < num_channels]
+    missing = [channel for channel in unique if not 0 <= channel < num_channels]
+    return present, missing
 
 
 def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):

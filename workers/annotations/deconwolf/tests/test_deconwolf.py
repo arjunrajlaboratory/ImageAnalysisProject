@@ -363,6 +363,47 @@ def test_compute_no_channels_error(mock_tile_client, sample_params_no_channels, 
     assert '"error": "No channels selected for deconvolution"' in captured.out
 
 
+def test_compute_channel_selection_outside_dataset_range(
+    mock_tile_client, mock_large_image, sample_params_basic, capsys
+):
+    """Selecting only a channel the dataset lacks must be reported, not ignored.
+
+    The frame-group loop would deconvolve nothing and the worker would upload an
+    unchanged copy of the input while reporting success — after building PSFs.
+    parse_wavelengths would also index past the end of the wavelength list.
+    """
+    params = dict(sample_params_basic)
+    # The fixture dataset has 2 channels, so index 5 does not exist.
+    params['workerInterface'] = dict(sample_params_basic['workerInterface'],
+                                     **{'Channels to deconvolve': {'5': True}})
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    captured = capsys.readouterr()
+    assert 'None of the selected channels exist' in captured.out
+    mock_tile_client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_compute_channel_selection_partially_outside_range_warns(
+    mock_tile_client, mock_large_image, mock_subprocess, mock_tifffile,
+    sample_params_basic, capsys
+):
+    """A selection that is only partly out of range warns and deconvolves the rest."""
+    params = dict(sample_params_basic)
+    params['workerInterface'] = dict(sample_params_basic['workerInterface'],
+                                     **{'Channels to deconvolve': {'0': True, '5': True}})
+
+    # As in test_compute_basic_functionality: pretend deconwolf's outputs exist.
+    with patch('os.path.exists', return_value=True):
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    captured = capsys.readouterr()
+    assert 'Ignoring channels this dataset does not have' in captured.out
+    assert 'None of the selected channels exist' not in captured.out
+    # Channel 0 is still deconvolved and the result uploaded.
+    mock_tile_client.client.uploadFileToFolder.assert_called_once()
+
+
 def test_compute_2d_image_skip(mock_tile_client_2d, mock_large_image, sample_params_basic, capsys):
     """Test that 2D images skip deconvolution with warning"""
     compute('test_dataset', 'http://test-api', 'test-token', sample_params_basic)

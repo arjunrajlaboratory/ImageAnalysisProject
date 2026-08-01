@@ -210,6 +210,38 @@ def test_compute_custom_percentile(mock_tile_client):
         mock_sink.write.assert_called_once()
 
 
+def test_compute_addtile_params_come_from_frame_indices(mock_tile_client, sample_params):
+    """Only 'Index*' keys reach addTile, mapped to large_image's short axis names.
+
+    Girder frames also carry 'Channel', 'Frame' and the bare 'Index' (the flat
+    frame number), none of which are addTile parameters. The frames below are
+    shaped like real Girder output, with a time dimension so each channel is
+    written at more than one position.
+    """
+    mock_tile_client.tiles['frames'] = [
+        {'Channel': 'Red', 'Frame': 0, 'Index': 0, 'IndexT': 0, 'IndexC': 0},
+        {'Channel': 'Green', 'Frame': 1, 'Index': 1, 'IndexT': 0, 'IndexC': 1},
+        {'Channel': 'Blue', 'Frame': 2, 'Index': 2, 'IndexT': 0, 'IndexC': 2},
+        {'Channel': 'Red', 'Frame': 3, 'Index': 3, 'IndexT': 1, 'IndexC': 0},
+        {'Channel': 'Green', 'Frame': 4, 'Index': 4, 'IndexT': 1, 'IndexC': 1},
+        {'Channel': 'Blue', 'Frame': 5, 'Index': 5, 'IndexT': 1, 'IndexC': 2},
+    ]
+    mock_tile_client.tiles['IndexRange'] = {'IndexT': 2, 'IndexC': 3}
+
+    with patch('large_image.new') as mock_li_new, \
+            patch('annotation_client.utils.sendProgress'):
+
+        mock_sink = MagicMock()
+        mock_li_new.return_value = mock_sink
+
+        compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+        assert [call.kwargs for call in mock_sink.addTile.call_args_list] == [
+            {'t': 0, 'c': 0}, {'t': 0, 'c': 1}, {'t': 0, 'c': 2},
+            {'t': 1, 'c': 0}, {'t': 1, 'c': 1}, {'t': 1, 'c': 2}]
+        mock_sink.write.assert_called_once_with('/tmp/deconvolved.tiff')
+
+
 def test_parameter_validation():
     """Test that required parameters are handled correctly"""
     # Test with various percentile values

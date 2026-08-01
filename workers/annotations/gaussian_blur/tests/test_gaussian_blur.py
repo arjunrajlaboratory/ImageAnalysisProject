@@ -457,6 +457,110 @@ def test_different_image_dimensions(mock_tile_client, mock_large_image, sample_p
         mock_large_image.write.assert_called_once_with('/tmp/output.tiff')
 
 
+def test_compute_single_channel_dataset(mock_tile_client, mock_large_image, mock_gaussian_filter):
+    """A single-channel dataset must be blurred without a KeyError.
+
+    Girder omits an index key from the frames entirely for any dimension of size
+    one, so a single-channel dataset has no 'IndexC' key at all. Frames below are
+    shaped like a real single-channel time lapse.
+    """
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+            {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1},
+        ],
+        'IndexRange': {'IndexT': 2},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20,
+        'dtype': np.uint16
+    }
+
+    params = {
+        'workerInterface': {
+            'Sigma': 2.0,
+            'Channel': 0,
+            'All channels': {'0': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    # The absent IndexC means channel 0, which is selected, so both frames blur.
+    assert mock_gaussian_filter.call_count == 2
+    # Only the dimensions the dataset actually has reach addTile.
+    assert [call.kwargs for call in mock_large_image.addTile.call_args_list] == [
+        {'t': 0}, {'t': 1}]
+    mock_large_image.write.assert_called_once_with('/tmp/output.tiff')
+
+
+def test_compute_channel_selection_outside_dataset_range(mock_tile_client, mock_large_image, mock_gaussian_filter):
+    """Selecting only a channel the dataset lacks must be reported, not ignored.
+
+    A saved config selecting channel 1, run against a single-channel dataset,
+    parses cleanly and then matches no frame: the worker would blur nothing and
+    upload a byte-identical copy of the input while reporting success.
+    """
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+        ],
+        'IndexRange': {'IndexT': 1},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20,
+        'dtype': np.uint16
+    }
+
+    params = {
+        'workerInterface': {
+            'Sigma': 2.0,
+            'Channel': 1,
+            'All channels': {'0': False, '1': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 1
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    mock_gaussian_filter.assert_not_called()
+    mock_large_image.addTile.assert_not_called()
+    mock_large_image.write.assert_not_called()
+    mock_tile_client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_compute_channel_selection_partially_outside_range_warns(mock_tile_client, mock_large_image, mock_gaussian_filter):
+    """A selection that is only partly out of range warns and processes the rest."""
+    params = {
+        'workerInterface': {
+            'Sigma': 2.0,
+            'Channel': 0,
+            # The fixture dataset has 2 channels, so index 5 does not exist.
+            'All channels': {'0': True, '5': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('entrypoint.sendWarning') as mock_send_warning, \
+            patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_warning.assert_called_once()
+    assert '5' in mock_send_warning.call_args.kwargs['info']
+    mock_send_error.assert_not_called()
+    # Channel 0 still gets blurred: 2 of the fixture's 4 frames.
+    assert mock_gaussian_filter.call_count == 2
+    mock_large_image.write.assert_called_once_with('/tmp/output.tiff')
+
+
 def test_channel_selection_rejects_list_form(mock_tile_client, mock_large_image, mock_gaussian_filter):
     """A list-shaped channelCheckboxes value is malformed and must be reported.
 

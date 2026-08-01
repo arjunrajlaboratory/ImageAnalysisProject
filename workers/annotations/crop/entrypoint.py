@@ -135,6 +135,9 @@ def compute(datasetId, apiUrl, token, params):
     print("range_z", range_z)
     print("range_time", range_time)
 
+    # Keep the raw strings so an out-of-range request can name what the user typed.
+    requested_xy, requested_z, requested_time = batch_xy, batch_z, batch_time
+
     # Check strings and then convert from iterators to lists
     if batch_xy is not None and batch_xy.strip():
         batch_xy = list(batch_argument_parser.process_range_list(
@@ -156,6 +159,19 @@ def compute(datasetId, apiUrl, token, params):
         batch_time = [x for x in batch_time if x in range_time]
     else:
         batch_time = range_time
+
+    # A range that intersects nothing would otherwise write an empty image (for a
+    # dimension the dataset has) or be ignored outright (for a dimension of size
+    # one, which is absent from the frames). Report it instead.
+    for label, requested, selected, available in (
+            ('XY', requested_xy, batch_xy, range_xy),
+            ('Z', requested_z, batch_z, range_z),
+            ('Time', requested_time, batch_time, range_time)):
+        if len(selected) == 0:
+            sendError(f"None of the requested {label} coordinates ({requested}) "
+                      f"exist in this dataset, which has {len(available)} "
+                      f"{label} position(s).")
+            return
 
     # TODO: Leaving this logic in place for now, but nothing is really being
     # done with it. If we implement channel selection, we can add in the
@@ -213,10 +229,8 @@ def compute(datasetId, apiUrl, token, params):
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
-            # Create a parameters dictionary with only the indices that exist in frame
-            # The len(k) > 5 is to avoid the 'Index' key that has no postfix to it
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items(
-            ) if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
 
             # Check if the frame indices match our batch selections
             should_process = True
@@ -231,11 +245,14 @@ def compute(datasetId, apiUrl, token, params):
             }
 
             for batch_list, param_key in param_batch_mapping.values():
+                # A dimension of size one is absent from the frame, in which case
+                # coordinate 0 is the only one it has.
+                value = large_image_params.get(param_key, 0)
+                if value not in batch_list:
+                    should_process = False
+                    break
                 if param_key in large_image_params:
-                    value = large_image_params[param_key]
-                    if value not in batch_list:
-                        should_process = False
-                        break
+                    # Renumber kept coordinates so the output is contiguous.
                     new_params[param_key] = batch_list.index(value)
 
             if should_process:

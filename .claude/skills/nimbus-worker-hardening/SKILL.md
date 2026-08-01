@@ -75,6 +75,31 @@ The shared helper `annotation_tools.get_images_for_all_channels` already handles
 this; workers that read channel counts by hand should mirror the `.get(...)`
 pattern.
 
+**The same omission happens per-frame**, and this form is easy to miss because it
+does not mention `IndexRange` at all. Every entry of `tileClient.tiles['frames']`
+omits the index key for any dimension of size one, so a single-channel dataset's
+frames are `{'Channel': 'Default', 'Frame': 3, 'Index': 3, 'IndexT': 3}` — no
+`IndexC` whatsoever. This crashed time lapse registration in July 2026 at
+`if frame['IndexC'] in channels`, after ~20 minutes of successful work.
+
+```python
+if frame['IndexC'] in channels:                                    # crashes
+if annotation_tools.get_frame_index(frame, 'IndexC') in channels:   # coordinate 0
+```
+`get_frame_index(frame, dimension, default=0)` (on master in
+`annotation_utilities.annotation_tools`) defaults an absent dimension to 0 and
+raises `ValueError` on an unknown dimension name so typos don't silently read as
+channel 0. Its companion `frame_to_large_image_params(frame)` replaces the
+`{f'{k.lower()[5:]}': v for k, v in frame.items() if k.startswith('Index') and
+len(k) > 5}` comprehension that used to be copy-pasted into seven workers.
+
+```bash
+grep -rn "frame\['Index" workers/                   # per-frame subscripts
+grep -rn "len(k) > 5" workers/                      # the copy-pasted comprehension
+```
+Note that a frame-index bug is invisible on multi-channel test data; when adding
+a frame-loop test, use frames with **no** `IndexC` key (not `IndexC: 0`).
+
 ### 2. Malformed `channelCheckboxes` (arrives as a non-dict)
 
 **Symptom:** `AttributeError: 'list' object has no attribute 'items'`.
@@ -114,6 +139,50 @@ sample_interface. Regression coverage lives in
 already hold list-shaped values now report a clear error until re-saved, and the
 submitter that wrote them is still unidentified — tracked in
 `todo/channelcheckboxes-serialization.md`.
+
+**A well-formed selection can still name channels the dataset does not have.**
+`get_selected_channels` validates shape, not range: a saved config selecting
+channel 1 parses cleanly and then matches no frame when it is run against a
+single-channel dataset. There is no crash — the worker processes nothing, uploads
+a byte-identical copy of its input, and reports success, which is worse than an
+error because nobody looks for it. Split the selection against the dataset's real
+channel count and report:
+```python
+num_channels = tileClient.tiles.get('IndexRange', {}).get('IndexC', 1)
+channels, missing_channels = annotation_tools.split_channel_selection(
+    channels, num_channels)
+if missing_channels:
+    detail = (f"Selected channel indices {missing_channels} do not exist in "
+              f"this dataset, which has {num_channels} channel(s) "
+              f"(indices 0-{num_channels - 1}).")
+    if not channels:
+        sendError("None of the selected channels exist in this dataset.", info=detail)
+        return
+    sendWarning("Ignoring channels this dataset does not have.", info=detail)
+```
+Note the asymmetry: an **empty** selection is a different case — the user
+deselected everything, and gaussian_blur/rolling_ball deliberately still write an
+unprocessed copy — so `split_channel_selection` reports nothing missing for it.
+This applies to every dimension a worker filters on, not just channels: crop
+checks its XY/Z/Time ranges and registration checks `Apply to XY coordinates` the
+same way. Anywhere a worker intersects a user selection with what the dataset
+has, an empty intersection needs reporting.
+
+**Sweep:**
+```bash
+grep -rn "get_selected_channels" workers/   # every caller is a candidate
+```
+Done for the five image-processing workers that filter frames by channel:
+gaussian_blur, rolling_ball, histogram_matching, registration, deconwolf. Still
+unaudited: cellposesam and cellposesam_train (three independent per-slot
+selections feeding a channel merge, so an out-of-range index fails differently)
+and sample_interface (a demo worker that only prints its selection).
+
+Covered by `annotation_utilities/tests/test_split_channel_selection.py` (runs in
+CI) plus per-worker tests in all five workers above. A test for this needs a
+fixture whose `IndexRange` channel count is **smaller** than the selected index;
+on the usual 2-channel fixture every selection is in range and the bug is
+invisible.
 
 ### 3. Degenerate / MultiPolygon geometry
 

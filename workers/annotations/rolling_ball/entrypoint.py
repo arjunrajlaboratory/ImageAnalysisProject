@@ -8,7 +8,7 @@ from operator import itemgetter
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-from annotation_client.utils import sendProgress, sendError
+from annotation_client.utils import sendProgress, sendError, sendWarning
 
 import annotation_utilities.annotation_tools as annotation_tools
 
@@ -114,8 +114,8 @@ def compute(datasetId, apiUrl, token, params):
     allChannels = workerInterface.get('Channels to correct')
 
     print("allChannels", allChannels)
-    # The front end sends either {'1': True, '2': True} or [1, 2]; both mean
-    # channels 1 and 2 are being corrected.
+    # The front end sends {'1': True, '2': True}, meaning channels 1 and 2 are
+    # being corrected. Any other shape is malformed and is rejected below.
     try:
         channels = annotation_tools.get_selected_channels(
             allChannels, 'Channels to correct')
@@ -124,6 +124,23 @@ def compute(datasetId, apiUrl, token, params):
         return
     # An empty selection is not an error here: the worker still writes out a
     # copy of the dataset with no channel corrected.
+    #
+    # A selection that names channels the dataset does not have is different: the
+    # per-frame filter below would match nothing and the worker would upload an
+    # untouched copy of the input while reporting success. A single-channel dataset
+    # run with a config that selects channel 1 does exactly that.
+    num_channels = tileClient.tiles.get('IndexRange', {}).get('IndexC', 1)
+    channels, missing_channels = annotation_tools.split_channel_selection(
+        channels, num_channels)
+    if missing_channels:
+        detail = (f"Selected channel indices {missing_channels} do not exist in "
+                  f"this dataset, which has {num_channels} channel(s) "
+                  f"(indices 0-{num_channels - 1}).")
+        if not channels:
+            sendError("None of the selected channels exist in this dataset.",
+                      info=detail)
+            return
+        sendWarning("Ignoring channels this dataset does not have.", info=detail)
     print("channels", channels)
 
     tile = params['tile']
@@ -136,13 +153,13 @@ def compute(datasetId, apiUrl, token, params):
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
-            # Create a parameters dictionary with only the indices that exist in frame
-            # The len(k) > 5 is to avoid the 'Index' key that has no postfix to it
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items(
-            ) if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
 
             image = tileClient.getRegion(datasetId, frame=i).squeeze()
-            if frame['IndexC'] in channels:
+            # A single-channel dataset omits IndexC from the frame entirely; channel
+            # 0 is then the only channel there is.
+            if annotation_tools.get_frame_index(frame, 'IndexC') in channels:
                 # Only process the channel that is being processed
                 background = restoration.rolling_ball(
                     image, radius=radius)
