@@ -38,6 +38,7 @@ Unlike the standard Cellpose worker which uses Primary/Secondary channel selecto
 - **Slots 2 and 3** are optional
 - If multiple channels are checked in a single slot, a warning is issued and only the first is used
 - Selected channels are stacked in order and passed to the model
+- Each slot value is parsed by `annotation_tools.get_selected_channels()` rather than `.items()`, which crashed when a saved tool config held a bare list (`[0]`) instead of the documented `{"0": True}` mapping. A value in any other shape is reported as an error rather than defaulting to some channel
 
 ### Model Behavior
 

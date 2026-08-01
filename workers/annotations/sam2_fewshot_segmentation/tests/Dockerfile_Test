@@ -1,8 +1,10 @@
 # Use the existing sam2_fewshot_segmentation worker as the base
 FROM annotations/sam2_fewshot_segmentation:latest AS test
 
-# Install test dependencies
-SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+# The worker image no longer ships the base conda install (only the built env,
+# which is already first on PATH), so drive python/pip directly rather than
+# through `conda run`. run_worker.sh locates the env by path and execs its
+# python, so it works as an arch-agnostic pytest launcher too.
 RUN pip install pytest pytest-mock
 
 # Copy test files
@@ -11,4 +13,4 @@ COPY ./workers/annotations/sam2_fewshot_segmentation/tests/*.py /tests
 WORKDIR /tests
 
 # Command to run tests
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"]
+ENTRYPOINT ["/usr/local/bin/run_worker.sh", "-m", "pytest", "-v"]

@@ -11,7 +11,6 @@ from annotation_client.utils import sendProgress, sendError
 import annotation_utilities.annotation_tools as annotation_tools
 
 
-
 from skimage.exposure import match_histograms
 
 
@@ -100,12 +99,17 @@ def compute(datasetId, apiUrl, token, params):
         reference_Time = 0
     else:
         reference_Time = int(workerInterface['Reference Time Coordinate']) - 1
-    allChannels = workerInterface['Channels to correct']
+    allChannels = workerInterface.get('Channels to correct')
 
     print("allChannels", allChannels)
-    # Output is allChannels {'1': True, '2': True}
-    # This means that channels 1 and 2 are being blurred
-    channels = [int(k) for k, v in allChannels.items() if v]
+    # The front end sends either {'1': True, '2': True} or [1, 2]; both mean
+    # channels 1 and 2 are being corrected.
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'Channels to correct')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
     print("channels", channels)
     if len(channels) == 0:
         sendError("No channels to correct")

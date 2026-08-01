@@ -41,9 +41,10 @@ user if the request is ambiguous):
    `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`,
    `notes`) does the user need, and what does each return? The type→return-type
    table lives in the project `CLAUDE.md`; the `tags` type returns a **plain
-   list of strings** (a common crash source), and `channelCheckboxes` returns a
-   `dict`. `workers/annotations/sample_interface/entrypoint.py` demonstrates
-   every type.
+   list of strings** (a common crash source), and `channelCheckboxes` returns
+   either a `dict` or a bare `list` of selected indices — read it with
+   `annotation_tools.get_selected_channels()` rather than `.items()`.
+   `workers/annotations/sample_interface/entrypoint.py` demonstrates every type.
 
 ## Step 2 — Write `entrypoint.py`
 

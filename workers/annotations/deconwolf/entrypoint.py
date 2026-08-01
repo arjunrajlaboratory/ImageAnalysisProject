@@ -360,8 +360,14 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
 
     # Parse channel selection
-    allChannels = workerInterface.get('Channels to deconvolve', {})
-    channels = [int(k) for k, v in allChannels.items() if v]
+    allChannels = workerInterface.get('Channels to deconvolve')
+    # The front end sends either {'1': True, '2': True} or [1, 2].
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'Channels to deconvolve')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
     print(f"Selected channels to deconvolve: {channels}")
 
     if len(channels) == 0:

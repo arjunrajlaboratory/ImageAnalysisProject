@@ -19,7 +19,7 @@ Demonstrates every available NimbusImage worker interface type, tooltip/display 
 | Sample select | select | "Option A" | Dropdown with `items` list: ["Option A", "Option B", "Option C"]. Returns `str`. |
 | Sample checkbox | checkbox | False | Boolean toggle. When checked, triggers an extra warning message. Returns `bool`. |
 | Sample channel | channel | -- | Single-channel selector. Returns `int` (channel index). |
-| Sample channel checkboxes | channelCheckboxes | -- | Multi-channel checkbox selector. Returns `dict` of `str` to `bool` (e.g., `{"0": True, "1": False}`). |
+| Sample channel checkboxes | channelCheckboxes | -- | Multi-channel checkbox selector. Returns `dict` of `str` to `bool` (e.g., `{"0": True, "1": False}`) — read it with `annotation_tools.get_selected_channels()`, never `.items()`, which crashes on the malformed list shape (`[0]`) seen in old saved configs. |
 | Sample tags | tags | -- | Tag selector. Returns `list` of `str` (e.g., `["DAPI blob"]`). |
 | Sample layer | layer | -- | Layer selector (`required: False`). Returns `str` (layer ID). |
 | Batch XY | text | -- | XY positions to iterate over (e.g., "1-3, 5-8") |

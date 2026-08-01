@@ -980,3 +980,70 @@ def test_compute_apply_xy_is_always_list():
             json.dumps(metadata)
         except TypeError as e:
             pytest.fail(f"Metadata should be JSON serializable, but got error: {e}")
+
+
+def test_compute_rejects_list_form_channel_selection():
+    """A list-shaped channelCheckboxes value is malformed and must be reported.
+
+    Regression test: reading the raw value with .items() raised
+    AttributeError: 'list' object has no attribute 'items'. The worker now
+    reports it via sendError instead of crashing, and does not guess which
+    channel [0] meant.
+    """
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Translation',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': [0],  # Malformed: expected {'0': True}
+            'Reference region tag': None,
+            'Control point tag': None
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('entrypoint.sendError') as mock_send_error:
+
+        client = mock_tile_client.return_value
+        client.tiles = {'IndexRange': {'IndexXY': 2, 'IndexT': 5}}
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        # Not "No channels to correct" — the shape is wrong, not the selection.
+        assert mock_send_error.call_args[0][0] == "Could not read the channel selection."
+
+
+def test_compute_rejects_unexpected_channel_selection():
+    """A channel selection we cannot interpret must fail loudly, not guess."""
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Translation',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': 'DAPI',
+            'Reference region tag': None,
+            'Control point tag': None
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('entrypoint.sendError') as mock_send_error:
+
+        client = mock_tile_client.return_value
+        client.tiles = {'IndexRange': {'IndexXY': 2, 'IndexT': 5}}
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        assert mock_send_error.call_args[0][0] == "Could not read the channel selection."

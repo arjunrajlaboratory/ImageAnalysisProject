@@ -593,3 +593,47 @@ def test_compute_single_channel_dataset_unselected_channel(mock_tile_client, moc
 
     mock_rolling_ball.assert_not_called()
     mock_large_image.addTile.assert_called_once()
+
+
+def test_channel_selection_rejects_list_form(mock_tile_client, mock_large_image, mock_rolling_ball):
+    """A list-shaped channelCheckboxes value is malformed and must be reported.
+
+    Regression test: reading the raw value with .items() raised
+    AttributeError: 'list' object has no attribute 'items'. The worker now
+    reports it via sendError instead of crashing, and does not guess which
+    channel [0] meant.
+    """
+    params = {
+        'workerInterface': {
+            'Radius': 15.0,
+            'Channels to correct': [0]  # Malformed: expected {'0': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert mock_rolling_ball.call_count == 0
+    mock_large_image.write.assert_not_called()
+
+
+def test_channel_selection_rejects_unexpected_form(mock_tile_client, mock_large_image, mock_rolling_ball):
+    """A channel selection we cannot interpret must fail loudly, not guess."""
+    params = {
+        'workerInterface': {
+            'Radius': 15.0,
+            'Channels to correct': 'DAPI'
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert mock_rolling_ball.call_count == 0
+    mock_large_image.write.assert_not_called()

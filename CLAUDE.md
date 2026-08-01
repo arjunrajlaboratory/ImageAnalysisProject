@@ -142,6 +142,42 @@ Each interface type returns a specific data type in `params['workerInterface']['
 | `tags` | **`list` of `str`** | `["DAPI blob"]`, `["cell", "nucleus"]` |
 | `layer` | `str` | `"layer_id"` |
 
+**Common pitfall with `channelCheckboxes`**: never call `.items()` on the raw
+value. A production `cellposesam` job received
+`{"Channel for Slot 1": [0]}` — a bare list instead of the documented mapping —
+and every worker that read it directly crashed with
+`AttributeError: 'list' object has no attribute 'items'`. Always parse with
+`annotation_tools.get_selected_channels()`, which returns a sorted list of `int`
+indices, returns `[]` when nothing is selected, and raises `ValueError` on any
+other shape rather than guessing a channel.
+
+The list shape is **rejected, not normalized.** The checkbox widget has never
+emitted it (it has been typed `Record<number, boolean>` since 2025-01-31), and
+the one upstream path that accepts arrays — the AI panel — normalizes them to the
+map before saving. So a list value means the config was written by something
+outside the UI, and since we cannot confirm what channel it intended, guessing
+that `[0]` meant channel 0 risks running the tool on data the user never
+selected. Affected configs need their channels re-selected — see
+`todo/channelcheckboxes-serialization.md`.
+
+```python
+import annotation_utilities.annotation_tools as annotation_tools
+
+# CORRECT - reports a malformed value instead of crashing on it:
+try:
+    channels = annotation_tools.get_selected_channels(
+        workerInterface.get('Channels to correct'), 'Channels to correct')
+except ValueError as exc:
+    sendError("Could not read the channel selection.", info=str(exc))
+    return
+if not channels:
+    sendError("No channels selected")
+    return
+
+# WRONG - crashes when the value is a list:
+channels = [int(k) for k, v in workerInterface['Channels to correct'].items() if v]
+```
+
 **Common pitfall with `tags`**: The `tags` type returns a **plain list of strings**, NOT a dict. Do not call `.get('tags')` on the result.
 
 ```python

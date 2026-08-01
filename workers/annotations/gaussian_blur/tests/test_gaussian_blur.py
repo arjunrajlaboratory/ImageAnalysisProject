@@ -525,3 +525,49 @@ def test_compute_single_channel_dataset_unselected_channel(mock_tile_client, moc
 
     mock_gaussian_filter.assert_not_called()
     mock_large_image.addTile.assert_called_once()
+
+
+def test_channel_selection_rejects_list_form(mock_tile_client, mock_large_image, mock_gaussian_filter):
+    """A list-shaped channelCheckboxes value is malformed and must be reported.
+
+    Regression test: reading the raw value with .items() raised
+    AttributeError: 'list' object has no attribute 'items'. The worker now
+    reports it via sendError instead of crashing, and does not guess which
+    channel [0] meant.
+    """
+    params = {
+        'workerInterface': {
+            'Sigma': 3.0,
+            'Channel': 0,
+            'All channels': [0]  # Malformed: expected {'0': True}
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert mock_gaussian_filter.call_count == 0
+    mock_large_image.write.assert_not_called()
+
+
+def test_channel_selection_rejects_unexpected_form(mock_tile_client, mock_large_image, mock_gaussian_filter):
+    """A channel selection we cannot interpret must fail loudly, not guess."""
+    params = {
+        'workerInterface': {
+            'Sigma': 3.0,
+            'Channel': 0,
+            'All channels': 'DAPI'
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert mock_gaussian_filter.call_count == 0
+    mock_large_image.write.assert_not_called()

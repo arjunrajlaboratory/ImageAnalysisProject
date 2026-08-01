@@ -6,6 +6,7 @@ import random
 
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress, sendWarning, sendError
+import annotation_utilities.annotation_tools as annotation_tools
 from worker_client import WorkerClient
 
 
@@ -128,6 +129,19 @@ def compute(datasetId, apiUrl, token, params):
     sample_text = worker.workerInterface.get('Sample text', '')
     sample_select = worker.workerInterface.get('Sample select', 'Option A')
     sample_checkbox = worker.workerInterface.get('Sample checkbox', False)
+
+    # channelCheckboxes values must go through get_selected_channels rather than
+    # .items(): the documented shape is {'0': True, '1': False}, and a raw
+    # .items() crashes on the malformed list shape ([0]) that get_selected_channels
+    # turns into a reportable ValueError.
+    try:
+        sample_channels = annotation_tools.get_selected_channels(
+            worker.workerInterface.get('Sample channel checkboxes'),
+            'Sample channel checkboxes')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
+    print("Selected channels:", sample_channels)
 
     tile_width = worker.datasetClient.tiles['tileWidth']
     tile_height = worker.datasetClient.tiles['tileHeight']

@@ -29,6 +29,8 @@ Uses the SAM1 ViT-H architecture (`vit_h`) with the `sam_vit_h_4b8939.pth` check
 
 Automatically uses CUDA if available, otherwise falls back to CPU. Note: there is a minor bug where `torch.cuda.is_available` (without parentheses) is used for the print statement, though the actual device selection correctly calls `torch.cuda.is_available()`.
 
+The image installs PyTorch's cu118 wheels, matching its CUDA 11.8 base. This matters: the worker previously took torch from conda-forge's `pytorch` package, which is a CPU-only build, so `torch.cuda.is_available()` always returned `False` and this GPU-labelled worker silently ran ViT-H inference on the CPU. Keep the wheel index and the base image CUDA version in step when either changes.
+
 ### Mask Generation
 
 The automatic mask generator uses 64 points per side as the grid density for generating candidate masks. This is hardcoded and not exposed as an interface parameter.

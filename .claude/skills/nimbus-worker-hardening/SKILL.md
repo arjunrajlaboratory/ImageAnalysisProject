@@ -104,21 +104,26 @@ a frame-loop test, use frames with **no** `IndexC` key (not `IndexC: 0`).
 
 **Symptom:** `AttributeError: 'list' object has no attribute 'items'`.
 `channelCheckboxes` is documented to return `{"0": True, "1": False}`, but a
-production client was observed sending a list (`[0]`), crashing before any
-validation.
+saved tool config held a list (`[0]`), crashing before any validation.
 
-**Fix:** don't call `.items()` on the raw value. **Reject** unexpected shapes
-loudly rather than guessing a channel — running a tool on the wrong channel is
-worse than failing. Use the shared `annotation_tools.get_selected_channels()`
-helper if present; otherwise inline:
+**Fix:** never call `.items()` on the raw value. Route it through the shared
+`annotation_tools.get_selected_channels(value, field_name)` helper, which parses
+the dict shape into a sorted list of `int` channel indices, returns `[]` for an
+unset field, and raises `ValueError` on any other shape rather than guessing a
+channel — running a tool on the wrong channel is worse than failing. The list
+shape is rejected, not normalized: the checkbox UI never emitted it and the AI
+panel normalizes arrays before saving, so a list value means the config came from
+somewhere outside the UI and must be re-saved rather than guessed at.
 ```python
-def selected_channels(value, field_name='channel selection'):
-    if value is None:
-        return []                                   # nothing selected
-    if isinstance(value, dict):
-        return sorted(int(k) for k, v in value.items() if v)
-    raise ValueError(f"'{field_name}' has an unexpected format "
-                     f"({type(value).__name__}: {value!r}); expected channel checkboxes.")
+try:
+    channels = annotation_tools.get_selected_channels(
+        workerInterface.get('Channels to correct'), 'Channels to correct')
+except ValueError as exc:
+    sendError("Could not read the channel selection.", info=str(exc))
+    return
+if not channels:
+    sendError("No channels selected")
+    return
 ```
 Catch the `ValueError` at the call site and `sendError` with an "interface out
 of date or misconfigured" message.
@@ -127,10 +132,13 @@ of date or misconfigured" message.
 ```bash
 grep -rln "channelCheckboxes\|\.items()" workers/   # then inspect for raw .items() on interface values
 ```
-Known consumers: cellposesam, registration, deconwolf, histogram_matching,
-gaussian_blur, rolling_ball. NOTE: the list form is undocumented — the
-NimbusImage front-end is the root-cause source of truth for what
-`channelCheckboxes` serializes.
+All known consumers now use the helper: cellposesam, cellposesam_train,
+registration, deconwolf, histogram_matching, gaussian_blur, rolling_ball,
+sample_interface. Regression coverage lives in
+`annotation_utilities/tests/test_selected_channels.py` (runs in CI). Configs that
+already hold list-shaped values now report a clear error until re-saved, and the
+submitter that wrote them is still unidentified — tracked in
+`todo/channelcheckboxes-serialization.md`.
 
 ### 3. Degenerate / MultiPolygon geometry
 

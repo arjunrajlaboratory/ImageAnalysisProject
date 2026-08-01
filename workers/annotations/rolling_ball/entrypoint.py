@@ -8,7 +8,9 @@ from operator import itemgetter
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendError
+
+import annotation_utilities.annotation_tools as annotation_tools
 
 import annotation_utilities.annotation_tools as annotation_tools
 
@@ -111,12 +113,19 @@ def compute(datasetId, apiUrl, token, params):
 
     workerInterface = params['workerInterface']
     radius = float(workerInterface['Radius'])
-    allChannels = workerInterface['Channels to correct']
+    allChannels = workerInterface.get('Channels to correct')
 
     print("allChannels", allChannels)
-    # Output is allChannels {'1': True, '2': True}
-    # This means that channels 1 and 2 are being blurred
-    channels = [int(k) for k, v in allChannels.items() if v]
+    # The front end sends either {'1': True, '2': True} or [1, 2]; both mean
+    # channels 1 and 2 are being corrected.
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'Channels to correct')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
+    # An empty selection is not an error here: the worker still writes out a
+    # copy of the dataset with no channel corrected.
     print("channels", channels)
 
     tile = params['tile']
