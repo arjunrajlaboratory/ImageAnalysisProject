@@ -1,8 +1,14 @@
-# TODO-003: SAM / SAM2 Worker Image Size
+# TODO-003: ML Worker Image Size
 
-**Status:** Partially resolved — Dockerfile changes landed, **not yet built or measured**
+**Status:** SAM/SAM2 wave merged (PR #160). Second wave (cellpose ×4, stardist,
+condensatenet, piscis ×2) — Dockerfile changes landed, **not yet built or
+measured**
 **Priority:** Medium
 **Related:** [TODO-001 — ML Worker Build Optimization](ml-worker-build-optimization.md)
+
+---
+
+# Wave 1 — SAM / SAM2 (merged, PR #160)
 
 ## Problem
 
@@ -131,4 +137,240 @@ measurement. Before merging:
   whatever is newest on PyPI, which is a size *and* reproducibility hazard.
 - **The same pattern applies to the other GPU workers** (cellpose, cellposesam,
   stardist, condensatenet, piscis, deconwolf), which share the `devel`-base and
-  `r-base` copy-paste lineage.
+  `r-base` copy-paste lineage. → done for all but `deconwolf`, see wave 2 below.
+
+---
+
+# Wave 2 — cellpose ×4, stardist, condensatenet, piscis ×2
+
+## Scope
+
+The eight remaining images built by `build_machine_learning_workers.sh`:
+
+| Worker | Image |
+|---|---|
+| `cellpose` | `annotations/cellpose_worker` |
+| `cellpose_train` | `annotations/cellpose_train_worker` |
+| `cellposesam` | `annotations/cellposesam_worker` |
+| `cellposesam_train` | `annotations/cellposesam_train_worker` |
+| `stardist` | `annotations/stardist_worker` |
+| `condensatenet` | `annotations/condensatenet` |
+| `piscis/predict` | `annotations/piscis_predict` |
+| `piscis/train` | `annotations/piscis_train` |
+
+All eight carried the exact lineage wave 1 diagnosed: a `*-devel` CUDA base, a
+no-op `FROM base as build`, no `PIP_NO_CACHE_DIR`, no `conda clean`, full-history
+git clones, and the copy-pasted `r-base` (listed **twice**) +
+`software-properties-common` + `python3` apt block that no worker uses.
+
+## What was done
+
+Same shape as wave 1, per worker:
+
+1. **Real multi-stage build.** The `build` stage keeps the `devel` image (it is
+   the only compiler available for any source-only pip dependency); the runtime
+   stage ships on `*-runtime` and copies over the finished conda env, the trees
+   that were `pip install -e`'d, and the baked-in model cache. Worker `.py`
+   files are copied into the runtime stage directly from the build context.
+2. **`ENV PIP_NO_CACHE_DIR=1`** and **`conda clean --all --yes`**.
+3. **Dropped `r-base` ×2, `software-properties-common`, `python3-software-properties`
+   and `python3`** — nothing in these workers uses R or the system interpreter
+   (`run_worker.sh` execs the conda env's python directly).
+4. **Shallow clones** (`--depth 1`) with `.git` removed.
+5. **Pruned the DeepTile checkout** (cellpose, cellposesam, stardist,
+   condensatenet). The clone is ~140 MB but the importable package is 160 KB:
+   the rest is `.git` (50 MB), sample `data` (56 MB) and `notebooks` (37 MB).
+   It is a `pip install -e`, so the tree has to survive into the runtime stage —
+   `data`/`notebooks`/`tests` are deleted right after the clone instead.
+   Verified safe: DeepTile pins a static `version = "2.0.10"` in
+   `pyproject.toml`, so nothing needs `.git` at install time. (Same check for
+   `zjniu/Piscis`, which pins `version = '1.1.0'`.)
+
+Unlike wave 1, **no `environment.yml` was touched**: none of these workers had
+a dependency that was provably unused, and the two cellpose pairs / the two
+piscis images intentionally differ.
+
+### Per-worker specifics
+
+- **cellpose, cellpose_train, cellposesam, cellposesam_train** — runtime base is
+  plain `nvidia/cuda:11.8.0-runtime-ubuntu22.04`, i.e. the `cudnn8` tag is
+  dropped as well. cellpose takes torch from PyPI, whose wheel bundles its own
+  cuDNN / cuBLAS / cuFFT / NCCL under `site-packages` and dlopens those, so the
+  image's copy was never loaded. Model cache: `/root/.cellpose` — both cellpose
+  3.x and 4.x resolve checkpoints from `~/.cellpose/models`
+  (`models.MODEL_DIR`), which is where `download_models.py` writes. The
+  `.cellposesam` directory the two Cellpose-SAM workers use for Girder-synced
+  custom models is created at runtime and is deliberately *not* baked in.
+- **stardist** — the one worker that **keeps** `cudnn8` on the runtime stage.
+  TensorFlow 2.11 predates the `tensorflow[and-cuda]` extra (added in 2.14), so
+  its wheel declares no `nvidia-*` dependencies and dlopens `libcudnn.so.8`,
+  `libcublas`, `libcufft` from the *image*. A plain `-runtime` tag would not
+  fail the build: TF logs "Could not load dynamic library libcudnn.so.8" and
+  silently falls back to CPU. Model cache: `/root/.keras` (csbdeep's
+  `from_pretrained` → `keras.utils.get_file` → `~/.keras/models`).
+- **condensatenet** — runtime base `nvidia/cuda:12.1.0-runtime-ubuntu22.04`
+  (torch, so no `cudnn` tag needed). Model cache: `/models`, which is
+  self-contained — `download_model()` calls `snapshot_download(...,
+  local_dir_use_symlinks=False)`, so those are real files, not links into
+  `~/.cache/huggingface`.
+- **piscis (predict + train)** — runtime base
+  `nvidia/cuda:12.4.1-runtime-ubuntu22.04`. Model cache: `/root/.piscis`
+  (`piscis.paths.MODELS_DIR`); both workers also write user/trained models there
+  at runtime. Two extra fixes here:
+  - Both images ran `git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/`
+    and installed `annotation_utilities` / `worker_client` **from that clone**,
+    so the build used whatever was on the default branch rather than the tree
+    being built — the same bug wave 1 fixed in `sam_automatic_mask_generator`.
+    They now `COPY ./annotation_utilities` and `./worker_client` like every
+    other worker.
+  - Miniconda → Miniforge, matching every other worker. That removes the
+    `conda tos accept --channel https://repo.anaconda.com/pkgs/{main,r}` calls
+    and the `defaults` channel entirely. Safe here because
+    `piscis/environment.yml` is only `python=3.11` + `pip`.
+  - **`libgl1 libglib2.0-0 libsm6 libice6 libx11-6 libxext6` are now installed
+    explicitly, in both stages.** See "The r-base trap" below.
+
+## The r-base trap (caught in review, applies to `deconwolf` next)
+
+Dropping the copy-pasted `r-base` is not purely cosmetic. `r-base-core`
+*depends on* `libglib2.0-0`, `libx11-6`, `libxt6` (→ `libsm6`, `libice6`),
+`libtk8.6` (→ `libxext6`), `libcairo2` (→ `libxcb1`) and `libgomp1` — so for
+four years every worker with `r-base` in its apt list has been getting those
+shared libraries by accident. Removing it removes them.
+
+That matters exactly once here: `piscis` depends on `opencv-python`, **not**
+`opencv-python-headless`, and `piscis/transforms.py` does `import cv2 as cv` at
+module scope. `cv2` links (via the Qt5 libs vendored in the wheel)
+`libGL.so.1`, `libglib-2.0.so.0`, `libgthread-2.0.so.0`, `libX11.so.6`,
+`libSM.so.6`, `libICE.so.6`, `libXext.so.6` and `libxcb.so.1`. Without them
+`import piscis` raises `ImportError` — in the **build** stage too, since
+`download_models.py` imports the package.
+
+Checked and cleared for the rest of the fleet by reading `DT_NEEDED` off every
+wheel's `.so` files against what the wheel vendors:
+
+| Wheel | Needs from the image |
+|---|---|
+| `opencv-python` (piscis) | libGL, libglib/libgthread, libX11, libSM, libICE, libXext, libxcb |
+| `opencv-python-headless` (cellpose ×4) | nothing beyond glibc/libstdc++ (`libz.so.1`, always present) |
+| `torch` | nothing — vendors its own libgomp and the whole CUDA stack |
+| `tensorflow==2.11.0` (stardist) | nothing linked; **dlopens** libcudnn.so.8 by name, hence the `cudnn8` runtime tag |
+| `stardist==0.9.1` | nothing beyond glibc/libstdc++ |
+| `rtree`, `shapely` | nothing — vendor libspatialindex / GEOS |
+
+`libgomp1` is safe to lose everywhere: conda-forge ships `libgomp` *inside* the
+env, and the torch wheels vendor their own.
+
+The lesson for `deconwolf`: it links fftw/gsl/png/tiff/OpenCL directly, so its
+runtime stage needs the non-`-dev` versions of those installed deliberately —
+`ldd /usr/bin/dw` in the build stage is the way to get the list, rather than
+assuming the base image carries them.
+
+## `ptxas` / `nvcc` are gone from the runtime stage (measured, accepted)
+
+The CUDA *devel* images ship the toolkit binaries under `/usr/local/cuda/bin`;
+the `*-runtime` images do not. So every worker in this wave loses `ptxas`,
+`nvcc`, `cuobjdump` and friends. Confirmed on the built images: `which ptxas`
+resolves in the old `stardist_worker`, and finds nothing in the new one.
+
+This is visible in exactly one place. **stardist** (TensorFlow) logs, on every
+run:
+
+```
+Couldn't get ptxas version string: INTERNAL: Couldn't invoke ptxas --version
+Failed to launch ptxas
+Relying on driver to perform ptx compilation.
+```
+
+TF wants `ptxas` to JIT-compile PTX and to run the redzone-checked autotuning
+pass when picking conv algorithms. Without it, it falls back to letting the
+driver compile PTX, which still works — a real segmentation on the RTX 3060
+returned the correct object count with cuDNN 8906 loaded and the GPU in use.
+The cost is the autotune redzone check being skipped and a possible first-call
+JIT slowdown, not wrong output. Accepted rather than fixed: pulling `cuda-nvcc`
+into the runtime stage would add back a few hundred MB to save log noise.
+
+**The seven torch workers are unaffected**, and not because they never JIT: the
+`triton` wheel bundles its own copy at
+`site-packages/triton/backends/nvidia/bin/ptxas`, so `torch.compile` finds one
+regardless of the base image. Anything that shells out to the *image's*
+`ptxas`, though, would now fail — worth remembering before adding a worker that
+compiles kernels at runtime.
+
+Note this interacts with the "`nvidia/cuda:*-base` for the torch workers" idea
+below: `-base` drops even more of the toolkit, so that change should be
+re-checked against this same question rather than assumed safe.
+
+## Verification (built and measured 2026-08-01)
+
+Built on x86_64 with an RTX 3060 (driver CUDA 13.0), against a live NimbusImage
+stack. Sizes are `docker image inspect .Size`, i.e. unpacked and base-10.
+
+| Worker | Before | After | Saved |
+|---|---:|---:|---:|
+| cellpose | 25.23 G | 8.87 G | −65% |
+| cellpose_train | 25.07 G | 8.88 G | −65% |
+| cellposesam | 23.21 G | 11.21 G | −52% |
+| cellposesam_train | 23.05 G | 11.22 G | −51% |
+| stardist | 20.44 G | 6.69 G | −67% |
+| condensatenet | 24.09 G | 8.28 G | −66% |
+| piscis/predict | 18.53 G | 8.71 G | −53% |
+| piscis/train | 18.87 G | 8.82 G | −53% |
+| **Fleet** | **178.5 G** | **72.7 G** | **−105.8 G (59%)** |
+
+The pre-change estimates in the PR that introduced this wave were written
+without a Docker daemon and overstated the baseline (they guessed a 215 G fleet
+and a 55% cut); the percentage was conservative, the absolute saving was not.
+Build times were 136–293 s per worker. **Compressed pull sizes were never
+measured** — every figure here is unpacked.
+
+Confirmed per worker:
+
+1. Model caches survived the stage copy, and no download happens on first run —
+   `/root/.cellpose/models` (`cyto*`/`nuclei*` for cellpose 3, `cpsam`+`cpsam_v2`
+   for cellpose 4), `/root/.keras/models/StarDist2D`, `/models/condensatenet-v1`,
+   `/root/.piscis/models` (four dated models + the `rajlab` collection).
+2. The GPU is genuinely used from the `runtime` base:
+   `torch.cuda.is_available()` is true for the seven torch workers, and stardist
+   reports `[PhysicalDevice('/physical_device:GPU:0')]` with `Loaded cuDNN
+   version 8906` and **no** "Could not load dynamic library libcudnn" line.
+3. `import cv2` succeeds inside both piscis images — the check that would have
+   caught the r-base trap above.
+4. Real jobs on a 5-channel dataset, all writing annotations back to Girder:
+   cellposesam (17 objects), stardist (17), cellpose (12), condensatenet (7976
+   condensates), piscis predict (spots on a synthetic field). cellposesam was
+   additionally run through the NimbusImage UI, whose job log shows
+   `runtime: nvidia` — so the `isGPUWorker` label still routes to the GPU queue
+   through girder_worker.
+5. Both training workers: GPU visible, checkpoints present, the copied model
+   directory is **writable**, and `from cellpose import train` imports.
+
+### Still not verified
+
+**An actual retrain.** Items above cover the preconditions (writable copied
+model dir, `train` importable) but no training run was executed, so nothing has
+yet written a real checkpoint into a directory that now arrives via
+`COPY --from`. This is the weakest point in the wave-2 verification and is worth
+doing the next time a training dataset is at hand.
+
+## Remaining opportunities (wave 2)
+
+- **`deconwolf` is the last GPU worker on this lineage** and was left out of
+  this pass: it is an image-processing worker rather than an ML one, and it is
+  the only one that compiles a native binary (`cmake` build of `elgw/deconwolf`
+  against fftw/gsl/png/tiff + the OpenCL loader). Splitting it needs the runtime
+  stage to install the non-`-dev` runtime libs and copy `/usr/bin/dw`, and its
+  `tests/Dockerfile_Test` still calls `conda run`, which would have to move to
+  `run_worker.sh` the way the two SAM test images did. It should be a bigger
+  win than most (it drops `cmake` + `build-essential` + six `-dev` packages),
+  and it does not need the CUDA *runtime* libs at all — it reaches the GPU via
+  `libnvidia-opencl.so.1`, which the Container Toolkit mounts from the host.
+- **`nvidia/cuda:*-base` for the torch workers.** None of them link against the
+  image's `libcudart` at all (torch loads its own), so unlike the SAM workers
+  there is no `_C.so` argument for keeping `-runtime`. Worth another ~1.5–2 GB
+  each, and it is a one-word change once wave 2 is measured.
+- **`condensatenet` has no `Dockerfile_M1`**, but
+  `build_machine_learning_workers.sh` passes `$DOCKERFILE` (= `Dockerfile_M1` on
+  arm64) for it. Pre-existing; an arm64 run of that script fails on this worker.
+- **Pin `torch` / `tensorflow`** in the cellpose and piscis environments for the
+  same reproducibility reason recorded in wave 1.
