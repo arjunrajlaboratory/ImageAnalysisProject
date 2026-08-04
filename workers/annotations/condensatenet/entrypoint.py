@@ -6,9 +6,7 @@ from functools import partial
 import annotation_client.workers as workers
 
 import numpy as np
-from shapely.geometry import Polygon
-
-from worker_client import WorkerClient, geometry_to_polygon_coords
+from worker_client import WorkerClient, clean_polygon_coords
 
 from annotation_client.utils import sendProgress
 
@@ -236,26 +234,21 @@ def run_model(image, condensatenet, tile_size, tile_overlap, padding, smoothing)
     polygons = condensatenet(tiles)
     polygons = stitch_polygons(polygons)
 
-    # Apply padding (dilation/erosion)
-    if padding != 0:
-        dilated_polygons = []
-        for polygon in polygons:
-            # A negative buffer (shrinking) can erode a small object away to an
-            # empty geometry or pinch it into a MultiPolygon, so normalize the
-            # result and drop anything that no longer forms a valid polygon.
-            dilated_polygon = Polygon(polygon).buffer(padding)
-            dilated_polygons.extend(geometry_to_polygon_coords(dilated_polygon))
-        polygons = dilated_polygons
-
-    # Apply smoothing
-    if smoothing > 0:
-        smoothed_polygons = []
-        for polygon in polygons:
-            smoothed_polygon = Polygon(polygon).simplify(smoothing, preserve_topology=True)
-            smoothed_polygons.extend(geometry_to_polygon_coords(smoothed_polygon))
-        return smoothed_polygons
-    else:
+    if padding == 0 and smoothing == 0:
         return polygons
+
+    # Apply padding (dilation/erosion) then smoothing. clean_polygon_coords drops
+    # whatever does not survive: a contour too short to form a ring, a non-finite
+    # coordinate, an object eroded away by negative padding, or a MultiPolygon
+    # from an object pinched in two (each piece becomes its own annotation). Any
+    # of those raised or produced empty coordinates before, which failed the
+    # *entire* batch upload -- hundreds of good objects lost to one bad mask.
+    cleaned_polygons = []
+    for polygon in polygons:
+        cleaned_polygons.extend(clean_polygon_coords(
+            polygon, padding=padding, smoothing=smoothing))
+
+    return cleaned_polygons
 
 
 def compute(datasetId, apiUrl, token, params):

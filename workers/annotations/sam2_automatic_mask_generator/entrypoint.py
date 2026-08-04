@@ -13,9 +13,7 @@ import annotation_utilities.annotation_tools as annotation_tools
 import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import numpy as np  # library for array manipulation
-from shapely.geometry import Polygon
 from skimage.measure import find_contours
-from shapely.geometry import Polygon
 
 
 from annotation_client.utils import sendProgress
@@ -137,8 +135,14 @@ def compute(datasetId, apiUrl, token, params):
         for mask_data in masks:
             mask = mask_data['segmentation']
             contours = find_contours(mask, 0.5)
-            polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
-            if polygon.is_valid and not polygon.is_empty:
+            if not contours:  # nothing traceable in this mask
+                continue
+            # Guarded construction: a contour too short to form a ring raises
+            # ValueError and a non-finite coordinate makes simplify() raise
+            # GEOSException, either of which would abort the whole run.
+            polygon = annotation_tools.safe_simplify(
+                annotation_tools.safe_polygon(contours[0]), smoothing)
+            if polygon is not None and polygon.is_valid and not polygon.is_empty:
                 temp_polygons.append(polygon)
 
         temp_annotations = annotation_tools.polygons_to_annotations(temp_polygons, datasetId, XY=XY, Time=Time, Z=Z, tags=tags, channel=channel)

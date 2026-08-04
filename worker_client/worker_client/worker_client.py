@@ -3,7 +3,6 @@ import numpy as np
 from itertools import product
 from math import prod
 from operator import itemgetter
-from shapely.geometry import Polygon
 from typing import Sequence
 
 import annotation_client.annotations as annotations
@@ -11,8 +10,10 @@ import annotation_client.tiles as tiles
 
 from annotation_client.utils import sendProgress
 from annotation_utilities import batch_argument_parser
-# Re-exported for workers that import it from worker_client (e.g. cellposesam).
-from annotation_utilities.annotation_tools import geometry_to_polygon_coords
+# Re-exported for workers that import them from worker_client (e.g. cellposesam).
+from annotation_utilities.annotation_tools import (
+    clean_polygon_coords, geometry_to_polygon_coords, safe_buffer, safe_polygon,
+    safe_simplify)
 
 
 class WorkerClient:
@@ -219,10 +220,10 @@ class WorkerClient:
         skipped = 0
 
         for polygon in polygons:
-            try:
-                geom = Polygon(polygon)
-            except (ValueError, TypeError):
-                # Fewer than the 3 distinct vertices a polygon requires.
+            # safe_polygon returns None for anything that cannot form a ring
+            # (fewer than 3 vertices, non-finite coordinates, ...).
+            geom = safe_polygon(polygon)
+            if geom is None:
                 skipped += 1
                 continue
             coord_lists = geometry_to_polygon_coords(geom)

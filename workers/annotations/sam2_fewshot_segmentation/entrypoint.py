@@ -13,7 +13,6 @@ import annotation_utilities.annotation_tools as annotation_tools
 import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 import numpy as np
-from shapely.geometry import Polygon
 from skimage.measure import find_contours
 
 from annotation_client.utils import sendProgress, sendError
@@ -377,8 +376,10 @@ def compute(datasetId, apiUrl, token, params):
         coords = annotation['coordinates']
         rows = [c['y'] for c in coords]
         cols = [c['x'] for c in coords]
-        poly = Polygon(zip(cols, rows))
-        if poly.is_valid:
+        # A degenerate training annotation (too few points) would raise here and
+        # abort the run before inference even starts; skip it instead.
+        poly = annotation_tools.safe_polygon(list(zip(cols, rows)))
+        if poly is not None and poly.is_valid:
             training_areas.append(poly.area)
 
     mean_area = np.mean(training_areas) if training_areas else None
@@ -452,8 +453,12 @@ def compute(datasetId, apiUrl, token, params):
                 contours = find_contours(mask, 0.5)
                 if len(contours) == 0:
                     continue
-                polygon = Polygon(contours[0]).simplify(smoothing, preserve_topology=True)
-                if polygon.is_valid and not polygon.is_empty:
+                # Guarded construction: a contour too short to form a ring
+                # raises ValueError and a non-finite coordinate makes simplify()
+                # raise GEOSException, either of which would abort the whole run.
+                polygon = annotation_tools.safe_simplify(
+                    annotation_tools.safe_polygon(contours[0]), smoothing)
+                if polygon is not None and polygon.is_valid and not polygon.is_empty:
                     filtered_polygons.append(polygon)
 
         print(f"Frame {i + 1}: {len(filtered_polygons)} masks passed similarity filter")

@@ -59,7 +59,9 @@ Uses DeepTile to split images into square tiles with configurable size and overl
 
 ### Polygon Post-processing
 
-Applied in order: padding (via Shapely `buffer()`), then smoothing (via Shapely `simplify()`).
+Applied in order: padding (via Shapely `buffer()`), then smoothing (via Shapely `simplify()`), through the shared `clean_polygon_coords()` helper.
+
+Degenerate outlines are dropped rather than uploaded, because a single bad polygon used to fail the *entire* batch upload (server 400: `data.coordinates must contain at least 1 items`). Dropped cases: a contour too short to form a ring (a one-pixel-wide mask), a non-finite coordinate, and an object eroded to nothing by negative padding. An object pinched in two by negative padding becomes a `MultiPolygon`, and each piece is uploaded as its own annotation — so a frame's annotation count is not necessarily equal to the mask count.
 
 ## Notes
 

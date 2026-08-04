@@ -165,3 +165,49 @@ def test_create_polygon_annotations_skips_invalid_polygon(monkeypatch):
 
     assert len(recorder.created) == 1
     assert len(recorder.created[0]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Guarded geometry construction, re-exported for the segmentation workers
+# ---------------------------------------------------------------------------
+
+def test_construction_helpers_are_reexported(monkeypatch):
+    """Workers import these from worker_client, not annotation_utilities."""
+    wc = _load_worker_client_module(monkeypatch)
+    assert wc.safe_polygon([(0, 0), (10, 0), (10, 10), (0, 10)]) is not None
+    assert wc.safe_polygon([(0, 0), (1, 1)]) is None
+    assert wc.clean_polygon_coords([(0, 0), (1, 1)], padding=-1, smoothing=0.7) == []
+    assert len(wc.clean_polygon_coords([(0, 0), (20, 0), (20, 20), (0, 20)],
+                                       padding=-1, smoothing=0.7)) == 1
+
+
+def test_create_polygon_annotations_skips_non_finite_polygon(monkeypatch):
+    """A NaN coordinate must not reach the server (nor crash on the way)."""
+    recorder = RecordingAnnotationClient()
+    wc = _load_worker_client_module(monkeypatch, recorder)
+    worker = wc.WorkerClient("ds", "http://api", "tok", _params())
+
+    valid = [(0, 0), (10, 0), (10, 10), (0, 10)]
+    nan_polygon = [(0, 0), (float("nan"), 5), (10, 10), (0, 10)]
+
+    worker.create_polygon_annotations((0, 0, 0, 0), [valid, nan_polygon])
+
+    assert len(recorder.created) == 1
+    assert len(recorder.created[0]) == 1
+    for point in recorder.created[0][0]["coordinates"]:
+        assert point["x"] == point["x"]  # not NaN
+
+
+def test_create_polygon_annotations_handles_three_column_coords(monkeypatch):
+    """A ring carrying a z column must not break (x, y) unpacking."""
+    recorder = RecordingAnnotationClient()
+    wc = _load_worker_client_module(monkeypatch, recorder)
+    worker = wc.WorkerClient("ds", "http://api", "tok", _params())
+
+    worker.create_polygon_annotations(
+        (0, 0, 0, 0), [[(0, 0, 3), (10, 0, 3), (10, 10, 3), (0, 10, 3)]])
+
+    assert len(recorder.created) == 1
+    uploaded = recorder.created[0][0]["coordinates"]
+    assert len(uploaded) >= 4
+    assert all(set(point) == {"x", "y", "z"} for point in uploaded)
