@@ -260,13 +260,32 @@ values = batch_argument_parser.process_range_list(
 `all_values` must already use the coordinate system required by the caller;
 conversion flags apply to numeric user input, not to `all_values`.
 
-**Sweep:**
+Do not hand-write the three Batch fields either -- build them with
+`batch_argument_parser.batch_interface_fields(display_order=N, verb='...')`.
+Copies drift: several workers ended up with no placeholder at all, and the
+`or all` text was missed everywhere when `all` support first landed.
+
+**A placeholder is a promise.** `BATCH_RANGE_PLACEHOLDER` ("ex. 1-3, 5-8, or
+all") may only appear on a field whose `process_range_list` call passes
+`all_values`. A non-standard range field (`Z planes`, `Apply to XY
+coordinates`) has to wire it explicitly before advertising `all`:
+```python
+values = batch_argument_parser.process_range_list(
+    raw_value, convert_one_to_zero_index=True,
+    all_values=range(index_range.get('IndexZ', 1)))
+```
+
+**Sweep:** find any field that advertises `all` without parser support:
 ```bash
 grep -rln "Batch XY\|Batch Z\|Batch Time" workers/
-grep -rln "process_range_list" workers/
+grep -rn "BATCH_RANGE_PLACEHOLDER\|or all" workers/ --include=entrypoint.py
 ```
-Inspect local parser copies separately; legacy one-indexed loops may need
-`range(1, size + 1)` before subtracting one inside the loop.
+then confirm each matching worker's `process_range_list` calls pass
+`all_values` (an AST scan is more reliable than grep for the multi-line calls).
+Inspect local parser copies separately: five unbuilt legacy workers
+(`cellori_segmentation`, `random_point*`, `test_multiple_annotation*`) use
+their own `utils.process_range_list` with one-indexed semantics and do **not**
+support `all` -- they must not use the shared fields until they are ported.
 
 ### 6. Build-time transitive dependency breakage
 

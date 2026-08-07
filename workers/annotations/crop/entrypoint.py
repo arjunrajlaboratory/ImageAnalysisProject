@@ -23,7 +23,7 @@ def interface(image, apiUrl, token):
         'XY Range': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Enter the XY positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
@@ -34,7 +34,7 @@ def interface(image, apiUrl, token):
         'Z Range': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Enter the Z positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
@@ -45,7 +45,7 @@ def interface(image, apiUrl, token):
         'Time Range': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Enter the Time positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,

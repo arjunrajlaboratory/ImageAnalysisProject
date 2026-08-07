@@ -43,21 +43,7 @@ def interface(image, apiUrl, token):
             'type': 'tags',
             'displayOrder': 0,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 1,
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 2,
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 3,
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=1),
         'Model': {
             'type': 'select',
             'items': models,

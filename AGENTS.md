@@ -266,7 +266,7 @@ annotations = annotationClient.getAnnotationsByDatasetId(
 
 **annotation_utilities** (local package in `annotation_utilities/`):
 - `annotation_tools`: Filter annotations by tags, convert to/from shapely geometries
-- `batch_argument_parser`: Parse numeric batch ranges like "1-3, 5-8" and expand dataset-aware `all` values
+- `batch_argument_parser`: Parse numeric batch ranges like "1-3, 5-8", expand dataset-aware `all` values, and build the standard Batch interface fields (`batch_interface_fields()`)
 - `progress`: `update_progress()` helper
 
 **worker_client** (local package in `worker_client/`):
@@ -278,6 +278,18 @@ annotations = annotationClient.getAnnotationsByDatasetId(
 - Prefer `WorkerClient` for annotation workers. Direct batching loops should call `batch_argument_parser.get_batch_ranges(tile, workerInterface, index_range)` rather than parsing each standard field independently.
 - A missing `IndexRange` or missing dimension key represents one available coordinate, `0`.
 - `get_batch_ranges` raises `ValueError` naming the offending field when a Batch value cannot be parsed. `WorkerClient` catches it, reports it with `sendError`, and re-raises so the job is recorded as failed.
+- **Do not hand-write the Batch fields.** Call `batch_argument_parser.batch_interface_fields(display_order=N, verb='...')` and splat it into the interface dict:
+
+```python
+interface = {
+    'My Notes': {'type': 'notes', 'displayOrder': 0},
+    **batch_argument_parser.batch_interface_fields(display_order=1),
+    'Model': {'type': 'select', ...},
+}
+```
+
+  It returns `Batch XY` / `Batch Z` / `Batch Time` with a consistent placeholder, label, and tooltip, numbered from `display_order`. Adjust the returned dict for worker-specific wording (see `sam2_propagate`) rather than copying the definition.
+- **The `or all` placeholder is a promise about the parser.** `batch_argument_parser.BATCH_RANGE_PLACEHOLDER` may only be used on a field whose `process_range_list` call passes `all_values`; without it, typing `all` raises. A non-standard range field (e.g. `Z planes`, `Apply to XY coordinates`) must wire `all_values=range(index_range.get('IndexZ', 1))` before advertising `all`.
 
 ### Coordinate Conventions (Critical)
 

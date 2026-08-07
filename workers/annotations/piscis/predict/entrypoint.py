@@ -3,6 +3,7 @@ from worker_client import WorkerClient
 import annotation_client.workers as workers
 from annotation_client.utils import sendError
 from annotation_utilities.annotation_tools import get_required_select
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 from functools import partial
 import argparse
 import json
@@ -28,36 +29,7 @@ def interface(image, apiUrl, token):
                      '<a href="https://docs.nimbusimage.com/documentation/analyzing-image-data-with-objects-connections-and-properties/tools-for-making-objects#piscis-for-automated-spot-finding" target="_blank">Learn more</a>',
             'displayOrder': 0,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the XY positions you want to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 1,
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the Z slices you want to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 2,
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the Time points you want to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 3,
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=1),
         'Model': {
             'type': 'select',
             'items': models,

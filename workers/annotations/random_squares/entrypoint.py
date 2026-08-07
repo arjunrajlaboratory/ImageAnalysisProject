@@ -5,6 +5,7 @@ import random
 
 import annotation_client.workers as workers
 from worker_client import WorkerClient
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 
 def interface(image, apiUrl, token):
@@ -36,36 +37,7 @@ def interface(image, apiUrl, token):
             'unit': 'annotations',
             'displayOrder': 2,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'XY positions to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 3,
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Z slices to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 4,
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Time points to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 5,
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=3),
     }
     client.setWorkerImageInterface(image, interface)
 

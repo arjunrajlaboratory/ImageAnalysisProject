@@ -30,6 +30,7 @@ import json
 import sys
 
 import annotation_client.workers as workers
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 from worker_client import WorkerClient
 
 
@@ -51,10 +52,9 @@ def interface(image, apiUrl, token):
             'type': 'number', 'min': 1, 'max': 100, 'default': 10,
             'unit': 'pixels', 'displayOrder': 2,
         },
-        # Batch fields accept 1-indexed ranges or `all`; include all three.
-        'Batch XY':   {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all', 'label': 'XY positions', 'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 3},
-        'Batch Z':    {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all', 'label': 'Z slices',    'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 4},
-        'Batch Time': {'type': 'text', 'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all', 'label': 'Time points', 'persistentPlaceholder': True, 'filled': True}, 'displayOrder': 5},
+        # The three Batch fields come from the shared helper -- never hand-write
+        # them. They accept 1-indexed ranges or `all`, numbered from display_order.
+        **batch_argument_parser.batch_interface_fields(display_order=3),
     }
     client.setWorkerImageInterface(image, interface)
 

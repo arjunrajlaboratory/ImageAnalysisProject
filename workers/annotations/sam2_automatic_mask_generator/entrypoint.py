@@ -43,21 +43,7 @@ def interface(image, apiUrl, token):
     default_model = 'sam2.1_hiera_small.pt' if 'sam2.1_hiera_small.pt' in models else models[0] if models else None
 
     interface = {
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 0
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 1
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 2
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=0),
         'Model': {
             'type': 'select',
             'items': models,

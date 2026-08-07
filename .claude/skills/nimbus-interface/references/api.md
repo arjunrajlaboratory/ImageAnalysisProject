@@ -65,6 +65,21 @@ Standard `Batch XY`, `Batch Z`, and `Batch Time` fields use 1-indexed numeric
 input such as `1-3, 5-8`. They also accept case-insensitive `all`; an empty field
 uses the current tile coordinate.
 
+Define the fields with the shared helper rather than by hand -- it keeps the
+placeholder, label, and tooltip consistent and in sync with the parser:
+
+```python
+import annotation_utilities.batch_argument_parser as batch_argument_parser
+
+interface = {
+    'My Notes': {'type': 'notes', 'displayOrder': 0},
+    **batch_argument_parser.batch_interface_fields(display_order=1),
+}
+```
+
+Only use `batch_argument_parser.BATCH_RANGE_PLACEHOLDER` on a custom range
+field if that field's parser is given `all_values`; otherwise `all` raises.
+
 Annotation workers should normally use `WorkerClient`, which reads dataset
 metadata and handles iteration:
 

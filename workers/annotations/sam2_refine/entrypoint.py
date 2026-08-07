@@ -51,39 +51,7 @@ def interface(image, apiUrl, token):
                      'and generates refined segmentation masks that better match the underlying image data.',
             'displayOrder': 0,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the XY positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter XY positions separated by commas, or all for every XY position.'
-            },
-            'displayOrder': 1
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the Z positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter Z positions separated by commas, or all for every Z position.'
-            },
-            'displayOrder': 2
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the Time positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter Time positions separated by commas, or all for every Time position.'
-            },
-            'displayOrder': 3
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=1, verb='process'),
         'Tag of objects to refine': {
             'type': 'tags',
             'displayOrder': 4

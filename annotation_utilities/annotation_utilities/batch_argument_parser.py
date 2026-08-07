@@ -1,5 +1,58 @@
 from itertools import chain
 
+# Placeholder for any range field whose parser is given `all_values`, so the
+# literal `all` really works. It lives next to the parser deliberately: the
+# text is a promise about process_range_list()'s behavior, and keeping the two
+# in one file is what stops them drifting apart. A range field that does NOT
+# pass `all_values` must not advertise this string -- typing `all` there raises.
+BATCH_RANGE_PLACEHOLDER = 'ex. 1-3, 5-8, or all'
+
+# The dimensions behind the standard Batch fields, in display order:
+# (field name, label noun, tooltip noun).
+_BATCH_DIMENSIONS = (
+    ('Batch XY', 'XY positions', 'XY'),
+    ('Batch Z', 'Z slices', 'Z'),
+    ('Batch Time', 'Time points', 'Time'),
+)
+
+
+def batch_interface_fields(display_order=1, verb='iterate over',
+                           tooltips=True):
+    """Return the standard `Batch XY` / `Batch Z` / `Batch Time` interface fields.
+
+    Every worker that batches over image coordinates exposes the same three
+    text fields, so define them once here rather than hand-copying the dict
+    into each entrypoint -- that copying is how several workers ended up with
+    no placeholder at all, and how the `or all` text was missed when `all`
+    support landed.
+
+    `display_order` is the order of `Batch XY`; Z and Time follow it. `verb`
+    tunes the label ("iterate over", "process", ...). Callers needing wording
+    specific to the worker should call this and then adjust the returned dict,
+    so the shared parts stay shared.
+
+    Pair with :func:`get_batch_ranges`, which parses exactly these fields.
+    """
+    fields = {}
+    for offset, (field_name, noun, dimension) in enumerate(_BATCH_DIMENSIONS):
+        vue_attrs = {
+            'placeholder': BATCH_RANGE_PLACEHOLDER,
+            'label': f'Enter the {noun} you want to {verb}',
+            'persistentPlaceholder': True,
+            'filled': True,
+        }
+        if tooltips:
+            vue_attrs['tooltip'] = (
+                f'Enter {dimension} positions separated by commas, or all for '
+                f'every {dimension} position. Leave blank to use only the '
+                f'current {dimension} position.')
+        fields[field_name] = {
+            'type': 'text',
+            'vueAttrs': vue_attrs,
+            'displayOrder': display_order + offset,
+        }
+    return fields
+
 
 def process_range_list(
         rl,

@@ -759,8 +759,62 @@ def test_xy_coordinate_parsing():
 
         compute('test_dataset', 'http://test-api', 'test-token', params)
 
-        # Verify range parsing was called correctly
-        mock_process_range.assert_called_with('1-2,4', convert_one_to_zero_index=True)
+        # Verify range parsing was called correctly. all_values must be the
+        # dataset's XY range: without it the parser rejects the literal `all`,
+        # which this field's placeholder advertises.
+        mock_process_range.assert_called_with(
+            '1-2,4', convert_one_to_zero_index=True, all_values=range(0, 5))
+
+
+def test_xy_coordinate_accepts_literal_all():
+    """The field advertises `all` in its placeholder, so it must parse it.
+
+    Before all_values was wired through, `all` raised
+    "'all' requires all_values" from the shared parser instead of selecting
+    every XY position.
+    """
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Translation',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': 'all',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': {'0': True},
+            'Reference region tag': None,
+            'Control point tag': None
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('large_image.new'), \
+            patch('pystackreg.StackReg'), \
+            patch('entrypoint.sendError') as mock_send_error, \
+            patch('entrypoint.sendProgress'):
+
+        client = mock_tile_client.return_value
+        client.tiles = {
+            'IndexRange': {'IndexXY': 3, 'IndexT': 2},
+            'frames': [
+                {'IndexXY': xy, 'IndexZ': 0, 'IndexT': t, 'IndexC': 0}
+                for xy in range(3) for t in range(2)
+            ],
+            'channels': ['DAPI'],
+            'mm_x': 1.0, 'mm_y': 1.0, 'magnification': 40
+        }
+        client.getRegion.return_value = np.zeros((100, 100))
+        client.coordinatesToFrameIndex.return_value = 0
+        client.client = MagicMock()
+        client.client.uploadFileToFolder.return_value = {'itemId': 'test'}
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        # 'all' must resolve to every XY position, not error out.
+        mock_send_error.assert_not_called()
 
 
 def test_compute_single_channel_dataset():

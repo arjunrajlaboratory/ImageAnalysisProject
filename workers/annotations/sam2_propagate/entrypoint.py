@@ -33,6 +33,22 @@ MODEL_TO_CFG = {
 }
 
 
+def _propagate_batch_fields():
+    """Standard Batch fields, with Z/Time reworded for propagation.
+
+    Unlike other workers, the Z and Time ranges here are not only which frames
+    to visit but the track the annotation is carried along, so say so.
+    """
+    fields = batch_argument_parser.batch_interface_fields(
+        display_order=1, verb='process')
+    for name in ('Batch Z', 'Batch Time'):
+        dimension = name.split()[1]
+        fields[name]['vueAttrs']['label'] = (
+            f'Enter the {dimension} positions you want to '
+            f'process/propagate through')
+    return fields
+
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -51,39 +67,9 @@ def interface(image, apiUrl, token):
                      'It is useful for e.g. time-lapse microscopy in cases where the objects change in character over time.',
             'displayOrder': 0,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the XY positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter XY positions separated by commas, or all for every XY position.'
-            },
-            'displayOrder': 1
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the Z positions you want to process/propagate through',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter Z positions separated by commas, or all for every Z position.'
-            },
-            'displayOrder': 2
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8, or all',
-                'label': 'Enter the Time positions you want to process/propagate through',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter Time positions separated by commas, or all for every Time position.'
-            },
-            'displayOrder': 3
-        },
+        # Shared definition, then the propagation-specific wording for the
+        # dimension this worker walks through.
+        **_propagate_batch_fields(),
         'Tag of objects to propagate': {
             'type': 'tags',
             'displayOrder': 6

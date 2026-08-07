@@ -3,6 +3,77 @@ import pytest
 from annotation_utilities import batch_argument_parser
 
 
+BATCH_FIELD_NAMES = ('Batch XY', 'Batch Z', 'Batch Time')
+
+
+def test_batch_interface_fields_returns_the_three_standard_fields():
+    fields = batch_argument_parser.batch_interface_fields()
+
+    assert tuple(fields) == BATCH_FIELD_NAMES
+    assert all(f['type'] == 'text' for f in fields.values())
+
+
+def test_batch_interface_fields_advertises_all_in_every_placeholder():
+    """The placeholder is a promise about process_range_list(); the two live in
+    one module so they cannot drift, and this pins the promise."""
+    fields = batch_argument_parser.batch_interface_fields()
+
+    for name in BATCH_FIELD_NAMES:
+        placeholder = fields[name]['vueAttrs']['placeholder']
+        assert placeholder == batch_argument_parser.BATCH_RANGE_PLACEHOLDER
+        assert 'or all' in placeholder
+
+
+def test_batch_interface_fields_numbers_display_order_from_the_start():
+    fields = batch_argument_parser.batch_interface_fields(display_order=9)
+
+    assert [fields[n]['displayOrder'] for n in BATCH_FIELD_NAMES] == [9, 10, 11]
+
+
+def test_batch_interface_fields_verb_reaches_every_label():
+    fields = batch_argument_parser.batch_interface_fields(verb='process')
+
+    labels = [fields[n]['vueAttrs']['label'] for n in BATCH_FIELD_NAMES]
+    assert labels == [
+        'Enter the XY positions you want to process',
+        'Enter the Z slices you want to process',
+        'Enter the Time points you want to process',
+    ]
+
+
+def test_batch_interface_fields_tooltips_can_be_omitted():
+    with_tips = batch_argument_parser.batch_interface_fields()
+    without = batch_argument_parser.batch_interface_fields(tooltips=False)
+
+    assert all('tooltip' in f['vueAttrs'] for f in with_tips.values())
+    assert not any('tooltip' in f['vueAttrs'] for f in without.values())
+
+
+def test_batch_interface_fields_returns_independent_dicts():
+    """Workers mutate the result (sam2_propagate rewords two labels), so a
+    shared/cached dict would leak one worker's wording into another's."""
+    first = batch_argument_parser.batch_interface_fields()
+    first['Batch Z']['vueAttrs']['label'] = 'mutated'
+
+    assert batch_argument_parser.batch_interface_fields(
+        )['Batch Z']['vueAttrs']['label'] != 'mutated'
+
+
+def test_batch_interface_fields_are_parseable_by_get_batch_ranges():
+    """The helper's field names must be exactly the ones get_batch_ranges reads;
+    a rename in one without the other silently stops batching."""
+    fields = batch_argument_parser.batch_interface_fields()
+    worker_interface = {name: 'all' for name in fields}
+
+    result = batch_argument_parser.get_batch_ranges(
+        tile={'XY': 0, 'Z': 0, 'Time': 0},
+        worker_interface=worker_interface,
+        index_range={'IndexXY': 2, 'IndexZ': 3, 'IndexT': 1},
+    )
+
+    assert result == ([0, 1], [0, 1, 2], [0])
+
+
 def test_process_range_list_expands_all_to_supplied_values():
     result = batch_argument_parser.process_range_list(
         "all",

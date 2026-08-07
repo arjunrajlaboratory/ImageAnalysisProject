@@ -43,21 +43,7 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 0
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 1
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'},
-            'displayOrder': 2
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=0),
         'Track across': {
             'type': 'select',
             'items': ['Time', 'Z'],
