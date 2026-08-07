@@ -43,18 +43,7 @@ def interface(image, apiUrl, token):
     default_model = 'sam2.1_hiera_small.pt' if 'sam2.1_hiera_small.pt' in models else models[0] if models else None
 
     interface = {
-        'Batch XY': {
-            'type': 'text',
-            'displayOrder': 0
-        },
-        'Batch Z': {
-            'type': 'text',
-            'displayOrder': 1
-        },
-        'Batch Time': {
-            'type': 'text',
-            'displayOrder': 2
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=0),
         'Model': {
             'type': 'select',
             'items': models,
@@ -98,24 +87,14 @@ def compute(datasetId, apiUrl, token, params):
         raise
     smoothing = float(params['workerInterface']['Smoothing'])
     points_per_side = int(params['workerInterface']['Points per side'])
-    batch_xy = params['workerInterface']['Batch XY']
-    batch_z = params['workerInterface']['Batch Z']
-    batch_time = params['workerInterface']['Batch Time']
-
-    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
-
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
-
-    if batch_xy is None:
-        batch_xy = [tile['XY']]
-    if batch_z is None:
-        batch_z = [tile['Z']]
-    if batch_time is None:
-        batch_time = [tile['Time']]
+    batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+        tile,
+        params['workerInterface'],
+        tileClient.tiles.get('IndexRange', {}),
+    )
 
     batches = list(product(batch_xy, batch_z, batch_time))
     total_batches = len(batches)

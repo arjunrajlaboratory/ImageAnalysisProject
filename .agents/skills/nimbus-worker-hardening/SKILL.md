@@ -42,7 +42,7 @@ over time, so **check the current tree before relying on one** rather than
 assuming:
 
 ```bash
-grep -rn "def geometry_to_polygon_coords\|def get_selected_channels\|def find_out_of_range\|def validate_coordinates" \
+grep -rn "def geometry_to_polygon_coords\|def get_selected_channels\|def get_batch_ranges\|def find_out_of_range\|def validate_coordinates" \
   annotation_utilities/ worker_client/
 ```
 
@@ -221,14 +221,73 @@ with a 1-indexed message matching the UI's Batch fields. Prefer
 helper if present; if not yet merged, guard inline against the dimension size
 (`index_range.get(key, 1)`) and report which coordinates are out of range.
 
-**Sweep:** the `WorkerClient.process()` path (≈6 workers) is the priority;
-~26 workers parse batch ranges directly and can adopt the shared validator as it
-rolls out. Find batch-range consumers:
+**Sweep:** the `WorkerClient.process()` path is the priority -- most annotation
+workers take it and inherit the validator for free. The remaining handful parse
+batch ranges in their own loop; they should adopt
+`batch_argument_parser.get_batch_ranges()` (see #5) rather than calling
+`process_range_list` per field. Find batch-range consumers:
 ```bash
 grep -rln "batch_argument_parser\|Batch XY\|coordinatesToFrameIndex" workers/
 ```
 
-### 5. Build-time transitive dependency breakage
+### 5. Literal `all` parsed without dataset context
+
+**Symptom:** entering `all` in a Batch XY/Z/Time field raises a numeric parsing
+error or `ValueError: 'all' requires all_values`, while numeric ranges still
+work. The range parser cannot infer a dataset dimension by itself.
+
+**Fix:** standard batch fields should go through the shared dataset-aware helper:
+```python
+index_range = datasetClient.tiles.get('IndexRange', {})
+batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+    params['tile'], params['workerInterface'], index_range)
+```
+This preserves 1-indexed numeric UI inputs, expands case-insensitive `all` to
+zero-indexed dataset coordinates, keeps the current tile for an empty field,
+and treats a missing dimension as coordinate `0`. It also raises a `ValueError`
+naming the offending field on malformed input, so callers can surface it with
+`sendError` instead of leaking a parser traceback. Annotation workers using
+`WorkerClient` inherit all of this automatically.
+
+For a non-standard range field, pass the final available coordinates explicitly:
+```python
+values = batch_argument_parser.process_range_list(
+    raw_value,
+    convert_one_to_zero_index=True,
+    all_values=range(index_range.get('IndexZ', 1)),
+)
+```
+`all_values` must already use the coordinate system required by the caller;
+conversion flags apply to numeric user input, not to `all_values`.
+
+Do not hand-write the three Batch fields either -- build them with
+`batch_argument_parser.batch_interface_fields(display_order=N, verb='...')`.
+Copies drift: several workers ended up with no placeholder at all, and the
+`or all` text was missed everywhere when `all` support first landed.
+
+**A placeholder is a promise.** `BATCH_RANGE_PLACEHOLDER` ("ex. 1-3, 5-8, or
+all") may only appear on a field whose `process_range_list` call passes
+`all_values`. A non-standard range field (`Z planes`, `Apply to XY
+coordinates`) has to wire it explicitly before advertising `all`:
+```python
+values = batch_argument_parser.process_range_list(
+    raw_value, convert_one_to_zero_index=True,
+    all_values=range(index_range.get('IndexZ', 1)))
+```
+
+**Sweep:** find any field that advertises `all` without parser support:
+```bash
+grep -rln "Batch XY\|Batch Z\|Batch Time" workers/
+grep -rn "BATCH_RANGE_PLACEHOLDER\|or all" workers/ --include=entrypoint.py
+```
+then confirm each matching worker's `process_range_list` calls pass
+`all_values` (an AST scan is more reliable than grep for the multi-line calls).
+Inspect local parser copies separately: five unbuilt legacy workers
+(`cellori_segmentation`, `random_point*`, `test_multiple_annotation*`) use
+their own `utils.process_range_list` with one-indexed semantics and do **not**
+support `all` -- they must not use the shared fields until they are ported.
+
+### 6. Build-time transitive dependency breakage
 
 **Symptom:** the image builds one day and a fresh deploy build later crashes at
 **import time** with e.g. `ModuleNotFoundError: No module named 'pkg_resources'`.
@@ -247,7 +306,7 @@ build — so when a worker imports a pinned-era library (`stardist`, older ML
 packages), check the pins proactively. Related: PRs that slimmed startup and
 deferred heavy imports; keep interface-path imports light.
 
-### 6. `tags` interface field treated as a dict
+### 7. `tags` interface field treated as a dict
 
 **Symptom:** `AttributeError: 'list' object has no attribute 'get'`. A `tags`
 **interface field** returns a plain list of strings, not a dict.
@@ -263,7 +322,7 @@ Don't confuse this with `params['tags']` used for **property filtering**, which
 `nimbus-interface` skill and `AGENTS.md` for the full interface type→return
 table.
 
-### 7. `groupby` on a DataFrame built from an empty list
+### 8. `groupby` on a DataFrame built from an empty list
 
 **Symptom:** `KeyError: '<column>'` from `pandas` deep inside `groupby`/column
 access, on a dataset where a filter step matched nothing. `pd.DataFrame([])`
@@ -304,7 +363,7 @@ tests mocked `pandas.DataFrame` entirely, which is how the crash survived —
 when adding tests for a pandas path, use real pandas with an **empty** input
 list; a mocked groupby chain can't catch this class of bug.
 
-### 8. Null / stale `select` value (Model) from a saved config
+### 9. Null / stale `select` value (Model) from a saved config
 
 **Symptom:** a cryptic crash deep inside a model loader, long after "Loading
 model" was reported — e.g. `FileNotFoundError: '/None.pth'` (sam_fewshot,

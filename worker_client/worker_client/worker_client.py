@@ -15,21 +15,6 @@ from annotation_utilities import batch_argument_parser
 from annotation_utilities.annotation_tools import geometry_to_polygon_coords
 
 
-def _parse_batch_values(worker_interface, field, fallback):
-    """Parse a 1-indexed Batch field and report malformed input clearly."""
-    raw_value = worker_interface.get(field, None)
-    try:
-        values = batch_argument_parser.process_range_list(
-            raw_value, convert_one_to_zero_index=True)
-        return [fallback] if values is None else list(values)
-    except (AttributeError, TypeError, ValueError) as exc:
-        detail = (
-            f"{field} must contain 1-based positions or ranges, for example "
-            f"'1-3, 5-8'. Could not parse {raw_value!r}: {exc}")
-        sendError("Could not read the batch range.", info=detail)
-        raise ValueError(detail) from exc
-
-
 class WorkerClient:
 
     def __init__(self, datasetId, apiUrl, token, params):
@@ -55,15 +40,6 @@ class WorkerClient:
         self.tile = tile
         self.workerInterface = workerInterface
 
-        # process_range_list returns one-shot generators. Materialize stable
-        # lists so validation and processing can inspect the same coordinates.
-        self.batch_xy = _parse_batch_values(
-            workerInterface, 'Batch XY', tile['XY'])
-        self.batch_z = _parse_batch_values(
-            workerInterface, 'Batch Z', tile['Z'])
-        self.batch_time = _parse_batch_values(
-            workerInterface, 'Batch Time', tile['Time'])
-
         annotationClient = annotations.UPennContrastAnnotationClient(
             apiUrl=apiUrl, token=token)
         datasetClient = tiles.UPennContrastDataset(
@@ -71,6 +47,21 @@ class WorkerClient:
 
         self.annotationClient = annotationClient
         self.datasetClient = datasetClient
+
+        # Batch parsing happens after datasetClient exists because 'all'
+        # expands from the dataset's IndexRange. get_batch_ranges materializes
+        # the one-shot generators into lists so validation and processing can
+        # inspect the same coordinates, and names the offending field when the
+        # input is malformed.
+        index_range = datasetClient.tiles.get('IndexRange', {})
+        try:
+            self.batch_xy, self.batch_z, self.batch_time = (
+                batch_argument_parser.get_batch_ranges(
+                    tile, workerInterface, index_range)
+            )
+        except ValueError as exc:
+            sendError("Could not read the batch range.", info=str(exc))
+            raise
 
     def get_image(self, xy=None, z=None, time=None, channel=None):
 

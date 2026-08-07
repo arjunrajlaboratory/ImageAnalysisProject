@@ -33,6 +33,22 @@ MODEL_TO_CFG = {
 }
 
 
+def _propagate_batch_fields():
+    """Standard Batch fields, with Z/Time reworded for propagation.
+
+    Unlike other workers, the Z and Time ranges here are not only which frames
+    to visit but the track the annotation is carried along, so say so.
+    """
+    fields = batch_argument_parser.batch_interface_fields(
+        display_order=1, verb='process')
+    for name in ('Batch Z', 'Batch Time'):
+        dimension = name.split()[1]
+        fields[name]['vueAttrs']['label'] = (
+            f'Enter the {dimension} positions you want to '
+            f'process/propagate through')
+    return fields
+
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -51,39 +67,9 @@ def interface(image, apiUrl, token):
                      'It is useful for e.g. time-lapse microscopy in cases where the objects change in character over time.',
             'displayOrder': 0,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the XY positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter the XY positions to process. Separate multiple groups with a comma.'
-            },
-            'displayOrder': 1
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Z positions you want to process/propagate through',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter the Z positions to process/propagate through. Separate multiple groups with a comma.'
-            },
-            'displayOrder': 2
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Time positions you want to process/propagate through',
-                'persistentPlaceholder': True,
-                'filled': True,
-                'tooltip': 'Enter the Time positions to process/propagate through. Separate multiple groups with a comma.'
-            },
-            'displayOrder': 3
-        },
+        # Shared definition, then the propagation-specific wording for the
+        # dimension this worker walks through.
+        **_propagate_batch_fields(),
         'Tag of objects to propagate': {
             'type': 'tags',
             'displayOrder': 6
@@ -300,32 +286,18 @@ def compute(datasetId, apiUrl, token, params):
     connect_sequentially = params['workerInterface']['Connect sequentially']
     propagate_across = params['workerInterface']['Propagate across']
     propagation_direction = params['workerInterface']['Propagation direction']
-    batch_xy = params['workerInterface']['Batch XY']
-    batch_z = params['workerInterface']['Batch Z']
-    batch_time = params['workerInterface']['Batch Time']
-
-    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
-
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
+    batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+        tile,
+        params['workerInterface'],
+        tileClient.tiles.get('IndexRange', {}),
+    )
 
     XY = tile['XY']
     Z = tile['Z']
     Time = tile['Time']
-
-    if batch_xy is None:
-        batch_xy = [tile['XY']]
-    if batch_z is None:
-        batch_z = [tile['Z']]
-    if batch_time is None:
-        batch_time = [tile['Time']]
-
-    batch_xy = list(batch_xy)
-    batch_z = list(batch_z)
-    batch_time = list(batch_time)
 
     # If the propagation_direction is forward, then we are fine.
     # If the propagation_direction is backward, then we need to reverse the variable specified by propagate_across.

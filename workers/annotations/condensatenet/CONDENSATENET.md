@@ -15,7 +15,7 @@ CondensateNet uses a Feature Pyramid Network (FPN) architecture with an Efficien
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | **Model Version** | Select the CondensateNet model version | condensatenet-v1 |
-| **Batch XY/Z/Time** | Ranges for batch processing (e.g., "1-3, 5-8") | Current tile |
+| **Batch XY/Z/Time** | Ranges for batch processing (e.g., "1-3, 5-8"), or `all` for every position | Current tile |
 | **Probability Threshold** | Minimum confidence for detection (0-1) | 0.15 |
 | **Min Size** | Minimum condensate size in pixels | 15 |
 | **Max Size** | Maximum condensate size in pixels | 600 |

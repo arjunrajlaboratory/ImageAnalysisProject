@@ -13,7 +13,7 @@ Registers time-lapse images to correct for drift and movement over time using th
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| **Apply to XY coordinates** | text | all | XY positions to register (e.g., "1-3, 5-7"). Default is all positions. |
+| **Apply to XY coordinates** | text | all | XY positions to register (e.g., "1-3, 5-7"), or `all`. Leave empty for all positions. |
 | **Reference Z Coordinate** | text | 1 (first Z) | Z plane used for computing registration (1-indexed). |
 | **Reference Time Coordinate** | text | 1 (first time) | Time point that remains unchanged; all other frames align to this (1-indexed). |
 | **Reference Channel** | channel | -- | Channel used for computing the registration transforms. |

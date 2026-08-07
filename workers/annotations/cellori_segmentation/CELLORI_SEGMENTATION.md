@@ -17,16 +17,16 @@ This worker uses [Cellori](https://github.com/zjniu/Cellori) for cell segmentati
 | **Nuclei Channel** | channel | -1 | Channel containing nuclear stain. Set to -1 to disable. |
 | **Cytoplasm Channel** | channel | -1 | Channel containing cytoplasm/membrane stain. Set to -1 to disable. |
 | **Diameter** | number | 10 | Expected cell diameter in pixels (0-200) |
-| **Batch XY** | text | (current tile) | XY positions to process, e.g. "1-3, 5-8" |
-| **Batch Z** | text | (current tile) | Z slices to process, e.g. "1-3, 5-8" |
-| **Batch Time** | text | (current tile) | Time points to process, e.g. "1-3, 5-8" |
+| **Batch XY** | text | (current tile) | XY positions to process, e.g. "1-3, 5-8", or `all` |
+| **Batch Z** | text | (current tile) | Z slices to process, e.g. "1-3, 5-8", or `all` |
+| **Batch Time** | text | (current tile) | Time points to process, e.g. "1-3, 5-8", or `all` |
 
 ## Implementation Details
 
 - **GPU Support**: Built on NVIDIA CUDA 11.8 base image. Cellori uses JAX with CUDA 11 for GPU-accelerated inference.
 - **Channel Stacking**: When both nuclei and cytoplasm channels are provided, the cytoplasm image is placed first in the stack (`np.stack((cytoplasm, nuclei))`), matching Cellori's expected input order.
 - **Model**: Always uses the `cyto` model with `batch_size=1`.
-- **Batch Processing**: Supports processing multiple XY/Z/Time positions via text-based range inputs (e.g., "1-3, 5-8"). Uses 1-based indexing in the interface, converted internally to 0-based. If no batch ranges are specified, processes only the current tile position.
+- **Batch Processing**: Supports processing multiple XY/Z/Time positions via text-based range inputs (e.g., "1-3, 5-8") or case-insensitive `all` for every available position. Numeric inputs use 1-based indexing in the interface and are converted internally to 0-based. If no batch ranges are specified, only the current tile position is processed.
 - **Single Annotation Upload**: Annotations are uploaded one at a time via `createAnnotation()` rather than in batch.
 
 ## Notes

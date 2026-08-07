@@ -37,9 +37,9 @@ For each image frame in the batch:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | Training Tag | tags | (required) | Tag identifying training annotation examples |
-| Batch XY | text | current | XY positions to process (e.g., "1-3, 5-8") |
-| Batch Z | text | current | Z slices to process |
-| Batch Time | text | current | Time points to process |
+| Batch XY | text | current | XY positions to process (e.g., "1-3, 5-8"), or `all` |
+| Batch Z | text | current | Z slices to process, or `all` |
+| Batch Time | text | current | Time points to process, or `all` |
 | Model | select | sam_vit_h_4b8939 | SAM1 checkpoint (ViT-H only) |
 | Similarity Threshold | number | 0.5 | Minimum cosine similarity to keep a mask (0.0-1.0) |
 | Target Occupancy | number | 0.20 | Fraction of crop area the object should occupy (0.05-0.80) |

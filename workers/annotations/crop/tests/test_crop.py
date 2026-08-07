@@ -97,7 +97,7 @@ def mock_batch_argument_parser():
     """Mock the batch_argument_parser.process_range_list"""
     with patch('annotation_utilities.batch_argument_parser.process_range_list') as mock_parser:
         # Default behavior - return what was passed in
-        mock_parser.side_effect = lambda x, convert_one_to_zero_index=False: [
+        mock_parser.side_effect = lambda x, convert_one_to_zero_index=False, all_values=None: [
             int(i) for i in x.split(',')]
         yield mock_parser
 
@@ -177,7 +177,7 @@ def test_interface(mock_worker_preview_client):
     assert xy_range['type'] == 'text'
     assert xy_range['displayOrder'] == 1
     assert 'placeholder' in xy_range['vueAttrs']
-    assert xy_range['vueAttrs']['placeholder'] == 'ex. 1-3, 5-8'
+    assert xy_range['vueAttrs']['placeholder'] == 'ex. 1-3, 5-8, or all'
 
     # Check Z Range interface
     z_range = interface_data['Z Range']
@@ -188,6 +188,10 @@ def test_interface(mock_worker_preview_client):
     time_range = interface_data['Time Range']
     assert time_range['type'] == 'text'
     assert time_range['displayOrder'] == 3
+
+    for range_field in ('XY Range', 'Z Range', 'Time Range'):
+        tooltip = interface_data[range_field]['vueAttrs']['tooltip']
+        assert 'all' in tooltip.lower()
 
     # Check Crop Rectangle interface
     crop_rect = interface_data['Crop Rectangle']
@@ -221,7 +225,7 @@ def test_compute_with_specific_ranges(mock_tile_client, mock_annotation_client, 
                                       mock_batch_argument_parser, sample_params_with_ranges):
     """Test compute with specific XY, Z, and Time ranges"""
     # Set up the parser to return specific ranges
-    mock_batch_argument_parser.side_effect = lambda x, convert_one_to_zero_index=False: [
+    mock_batch_argument_parser.side_effect = lambda x, convert_one_to_zero_index=False, all_values=None: [
         0, 1] if '0,1' in x else [0]
 
     # Run compute
@@ -229,6 +233,23 @@ def test_compute_with_specific_ranges(mock_tile_client, mock_annotation_client, 
 
     # Should process only matching frames
     assert mock_tile_client.getRegion.call_count > 0
+    mock_large_image.write.assert_called_once_with('/tmp/cropped.tiff')
+
+
+def test_compute_accepts_all_for_each_range(mock_tile_client, mock_annotation_client,
+                                            mock_large_image):
+    params = {
+        'workerInterface': {
+            'XY Range': 'all',
+            'Z Range': 'ALL',
+            'Time Range': ' all ',
+            'Crop Rectangle': None,
+        }
+    }
+
+    compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    assert mock_tile_client.getRegion.call_count == 4
     mock_large_image.write.assert_called_once_with('/tmp/cropped.tiff')
 
 
@@ -324,7 +345,7 @@ def test_range_parsing_with_gaps(mock_tile_client, mock_annotation_client, mock_
     }
 
     # Mock parser to return specific ranges
-    mock_batch_argument_parser.side_effect = lambda x, convert_one_to_zero_index=False: {
+    mock_batch_argument_parser.side_effect = lambda x, convert_one_to_zero_index=False, all_values=None: {
         '1-3,5-8': [0, 1, 2, 4, 5, 6, 7],  # Convert to 0-indexed
         '0,2': [0, 1],
         '1,3': [0, 2]
@@ -431,7 +452,7 @@ def test_frame_filtering_logic(mock_tile_client, mock_annotation_client, mock_la
         }
     }
 
-    mock_batch_argument_parser.side_effect = lambda x, convert_one_to_zero_index=False: [0]
+    mock_batch_argument_parser.side_effect = lambda x, convert_one_to_zero_index=False, all_values=None: [0]
 
     # Run compute
     compute('test_dataset', 'http://test-api', 'test-token', params)

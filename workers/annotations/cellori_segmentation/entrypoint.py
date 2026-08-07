@@ -38,13 +38,16 @@ def interface(image, apiUrl, token):
             'default': 10
         },
         'Batch XY': {
-            'type': 'text'
+            'type': 'text',
+            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'}
         },
         'Batch Z': {
-            'type': 'text'
+            'type': 'text',
+            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'}
         },
         'Batch Time': {
-            'type': 'text'
+            'type': 'text',
+            'vueAttrs': {'placeholder': 'ex. 1-3, 5-8, or all'}
         }
     }
     # Send the interface object to the server
@@ -83,9 +86,19 @@ def compute(datasetId, apiUrl, token, params):
     batch_z = workerInterface.get('Batch Z', None)
     batch_time = workerInterface.get('Batch Time', None)
 
-    batch_xy = utils.process_range_list(batch_xy)
-    batch_z = utils.process_range_list(batch_z)
-    batch_time = utils.process_range_list(batch_time)
+    # Setup helper classes with url and credentials
+    annotationClient = annotations.UPennContrastAnnotationClient(
+        apiUrl=apiUrl, token=token)
+    datasetClient = tiles.UPennContrastDataset(
+        apiUrl=apiUrl, token=token, datasetId=datasetId)
+    index_range = datasetClient.tiles.get('IndexRange', {})
+
+    batch_xy = utils.process_range_list(
+        batch_xy, all_values=range(1, index_range.get('IndexXY', 1) + 1))
+    batch_z = utils.process_range_list(
+        batch_z, all_values=range(1, index_range.get('IndexZ', 1) + 1))
+    batch_time = utils.process_range_list(
+        batch_time, all_values=range(1, index_range.get('IndexT', 1) + 1))
 
     if batch_xy is None:
         batch_xy = [tile['XY'] + 1]
@@ -93,12 +106,6 @@ def compute(datasetId, apiUrl, token, params):
         batch_z = [tile['Z'] + 1]
     if batch_time is None:
         batch_time = [tile['Time'] + 1]
-
-    # Setup helper classes with url and credentials
-    annotationClient = annotations.UPennContrastAnnotationClient(
-        apiUrl=apiUrl, token=token)
-    datasetClient = tiles.UPennContrastDataset(
-        apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     for xy, z, time in product(batch_xy, batch_z, batch_time):
 

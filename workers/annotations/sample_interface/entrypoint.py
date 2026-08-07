@@ -7,6 +7,7 @@ import random
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress, sendWarning, sendError
 import annotation_utilities.annotation_tools as annotation_tools
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 from worker_client import WorkerClient
 
 
@@ -87,36 +88,7 @@ def interface(image, apiUrl, token):
             'displayOrder': 8,
         },
         # --- Batch fields (standard pattern from cellposesam) ---
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'XY positions to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 9,
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Z slices to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 10,
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Time points to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 11,
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=9),
     }
     client.setWorkerImageInterface(image, interface)
 

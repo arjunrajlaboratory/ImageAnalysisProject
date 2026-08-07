@@ -15,6 +15,7 @@ from worker_client import WorkerClient
 
 from functools import partial
 from skimage import feature, filters, measure
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 
 def preview(datasetId, apiUrl, token, params, bimage):
@@ -69,36 +70,7 @@ def interface(image, apiUrl, token):
                      'It can work in 2D (current z-slice) or 3D (z-stack).',
             'displayOrder': 0,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the XY positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 1,
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Z positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 2,
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Time positions you want to process',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 3,
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=1, verb='process'),
         'Mode': {
             'type': 'select',
             'items': ['Current Z', 'Z-Stack'],

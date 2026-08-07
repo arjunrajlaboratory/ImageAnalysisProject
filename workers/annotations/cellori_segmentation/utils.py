@@ -1,7 +1,15 @@
 from itertools import chain
 
 
-def process_range_list(rl):
+def process_range_list(rl, all_values=None):
+
+    if rl is None or rl == '':
+        return None
+
+    if isinstance(rl, str) and rl.strip().lower() == 'all':
+        if all_values is None:
+            raise ValueError("'all' requires all_values to define the available coordinates.")
+        return iter(all_values)
 
     g = parse_range_list(rl)
     first, g = peek_generator(g)

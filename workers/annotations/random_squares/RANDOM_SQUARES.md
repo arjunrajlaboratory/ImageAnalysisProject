@@ -16,9 +16,9 @@ Generates random square polygon annotations within image bounds. This is the rec
 | Random Squares | notes | -- | Informational text about the worker |
 | Square size | number | 10 | Side length of each square in pixels (1--200) |
 | Number of squares | number | 100 | How many squares to generate per tile position (1--300,000) |
-| Batch XY | text | -- | XY positions to iterate over (e.g., "1-3, 5-8") |
-| Batch Z | text | -- | Z slices to iterate over (e.g., "1-3, 5-8") |
-| Batch Time | text | -- | Time points to iterate over (e.g., "1-3, 5-8") |
+| Batch XY | text | -- | XY positions to iterate over (e.g., "1-3, 5-8"), or `all` |
+| Batch Z | text | -- | Z slices to iterate over (e.g., "1-3, 5-8"), or `all` |
+| Batch Time | text | -- | Time points to iterate over (e.g., "1-3, 5-8"), or `all` |
 
 ## How It Works
 

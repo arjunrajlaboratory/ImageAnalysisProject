@@ -38,11 +38,11 @@ def interface(image, apiUrl, token):
         'Z planes': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Z positions to compute intensities for (empty to use annotation plane)',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Z positions to compute intensities for. Leave blank to use the plane the annotations are on.'
+                'tooltip': 'Enter the Z positions to compute intensities for, or all for every Z position. Leave blank to use the plane the annotations are on.'
             },
             'displayOrder': 2
         },
@@ -126,8 +126,10 @@ def compute(datasetId, apiUrl, token, params):
     # Old workers may not have this key, so we use get() with a default of None
     z_planes = params['workerInterface'].get('Z planes', None)
     if z_planes is not None and z_planes.strip():
+        # all_values makes the literal `all` work here as it does in the
+        # standard Batch fields; without it the parser rejects `all`.
         z_planes = list(batch_argument_parser.process_range_list(
-            z_planes, convert_one_to_zero_index=True))
+            z_planes, convert_one_to_zero_index=True, all_values=range_z))
         # Find which planes are out of range
         invalid_planes = [x+1 for x in z_planes if x not in range_z]
         if invalid_planes:

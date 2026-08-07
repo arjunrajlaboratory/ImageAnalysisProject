@@ -15,9 +15,9 @@ This worker runs [Cellpose](https://www.cellpose.org/) models to segment cells o
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **Cellpose** | notes | -- | Informational text with documentation link |
-| **Batch XY** | text | -- | XY positions to iterate over (e.g., "1-3, 5-8") |
-| **Batch Z** | text | -- | Z slices to iterate over |
-| **Batch Time** | text | -- | Time points to iterate over |
+| **Batch XY** | text | -- | XY positions to iterate over (e.g., "1-3, 5-8"), or `all` |
+| **Batch Z** | text | -- | Z slices to iterate over, or `all` |
+| **Batch Time** | text | -- | Time points to iterate over, or `all` |
 | **Model** | select | cyto3 | Cellpose model to use. Includes built-in models and user-trained models from Girder |
 | **Primary Channel** | channel | -- | Main segmentation channel. Use cytoplasm channel for cyto models, nucleus channel for nuclei model |
 | **Secondary Channel** | channel | -1 (none) | Optional secondary channel. Use nucleus channel when segmenting cytoplasm with cyto models |

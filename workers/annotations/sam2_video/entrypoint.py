@@ -43,18 +43,7 @@ def interface(image, apiUrl, token):
 
     # Available types: number, text, tags, layer
     interface = {
-        'Batch XY': {
-            'type': 'text',
-            'displayOrder': 0
-        },
-        'Batch Z': {
-            'type': 'text',
-            'displayOrder': 1
-        },
-        'Batch Time': {
-            'type': 'text',
-            'displayOrder': 2
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=0),
         'Track across': {
             'type': 'select',
             'items': ['Time', 'Z'],
@@ -204,9 +193,6 @@ def compute(datasetId, apiUrl, token, params):
     track_tags = params['workerInterface']['Tag of objects to track']
     track_across = params['workerInterface']['Track across']
     track_direction = params['workerInterface']['Track direction']
-    batch_xy = params['workerInterface']['Batch XY']
-    batch_z = params['workerInterface']['Batch Z']
-    batch_time = params['workerInterface']['Batch Time']
 
     # Here's some code to set up the model and predictor.
     # use bfloat16 for computation
@@ -228,28 +214,18 @@ def compute(datasetId, apiUrl, token, params):
     # sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = build_sam2_video_predictor(model_cfg, checkpoint_path, device="cuda")  # device="cuda" for GPU
 
-    batch_xy = batch_argument_parser.process_range_list(batch_xy, convert_one_to_zero_index=True)
-    batch_z = batch_argument_parser.process_range_list(batch_z, convert_one_to_zero_index=True)
-    batch_time = batch_argument_parser.process_range_list(batch_time, convert_one_to_zero_index=True)
-
     tile = params['tile']
     channel = params['channel']
     tags = params['tags']
+    batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+        tile,
+        params['workerInterface'],
+        tileClient.tiles.get('IndexRange', {}),
+    )
 
     XY = tile['XY']
     Z = tile['Z']
     Time = tile['Time']
-
-    if batch_xy is None:
-        batch_xy = [tile['XY']]
-    if batch_z is None:
-        batch_z = [tile['Z']]
-    if batch_time is None:
-        batch_time = [tile['Time']]
-
-    batch_xy = list(batch_xy)
-    batch_z = list(batch_z)
-    batch_time = list(batch_time)
 
     # If the propagation_direction is forward, then we are fine.
     # If the propagation_direction is backward, then we need to reverse the variable specified by track_across.

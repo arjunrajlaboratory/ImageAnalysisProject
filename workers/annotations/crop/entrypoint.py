@@ -23,33 +23,33 @@ def interface(image, apiUrl, token):
         'XY Range': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Enter the XY positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the XY positions to retain. Separate multiple groups with a comma.'
+                'tooltip': 'Enter XY positions separated by commas, or all to retain every XY position.'
             },
             'displayOrder': 1
         },
         'Z Range': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Enter the Z positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Z positions to retain. Separate multiple groups with a comma.'
+                'tooltip': 'Enter Z positions separated by commas, or all to retain every Z position.'
             },
             'displayOrder': 2
         },
         'Time Range': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Enter the Time positions you want to retain (default is all)',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the Time positions to retain. Separate multiple groups with a comma.'
+                'tooltip': 'Enter Time positions separated by commas, or all to retain every Time position.'
             },
             'displayOrder': 3
         },
@@ -141,21 +141,27 @@ def compute(datasetId, apiUrl, token, params):
     # Check strings and then convert from iterators to lists
     if batch_xy is not None and batch_xy.strip():
         batch_xy = list(batch_argument_parser.process_range_list(
-            batch_xy, convert_one_to_zero_index=True))
+            batch_xy,
+            convert_one_to_zero_index=True,
+            all_values=range_xy))
         batch_xy = [x for x in batch_xy if x in range_xy]
     else:
         batch_xy = range_xy
 
     if batch_z is not None and batch_z.strip():
         batch_z = list(batch_argument_parser.process_range_list(
-            batch_z, convert_one_to_zero_index=True))
+            batch_z,
+            convert_one_to_zero_index=True,
+            all_values=range_z))
         batch_z = [x for x in batch_z if x in range_z]
     else:
         batch_z = range_z
 
     if batch_time is not None and batch_time.strip():
         batch_time = list(batch_argument_parser.process_range_list(
-            batch_time, convert_one_to_zero_index=True))
+            batch_time,
+            convert_one_to_zero_index=True,
+            all_values=range_time))
         batch_time = [x for x in batch_time if x in range_time]
     else:
         batch_time = range_time

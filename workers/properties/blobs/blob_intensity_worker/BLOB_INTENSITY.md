@@ -7,7 +7,7 @@ Computes pixel intensity statistics for polygon annotations in a specified chann
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **Channel** | channel | (required) | Channel to compute pixel intensities in. Does not need to match the annotation layer. |
-| **Z planes** | text | (empty) | Z positions to compute intensities for (e.g., "1-3, 5-8"). Leave empty to use the annotation's own Z plane. |
+| **Z planes** | text | (empty) | Z positions to compute intensities for (e.g., "1-3, 5-8"), or `all` for every Z plane in the dataset. Leave empty to use the annotation's own Z plane. |
 | **Additional percentiles** | text | (empty) | Comma-separated percentile values to compute (e.g., "10, 45, 90"). Leave empty for default 25th/75th only. |
 
 ## Computed Properties

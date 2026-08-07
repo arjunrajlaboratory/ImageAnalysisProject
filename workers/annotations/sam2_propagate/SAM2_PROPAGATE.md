@@ -19,9 +19,9 @@ This worker uses SAM2's image predictor to propagate existing annotations throug
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **SAM2 Propagate** | notes | -- | Description of the tool's purpose |
-| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8") |
-| **Batch Z** | text | Current tile | Z positions to process/propagate through |
-| **Batch Time** | text | Current tile | Time positions to process/propagate through |
+| **Batch XY** | text | Current tile | XY positions to process (e.g., "1-3, 5-8"), or `all` |
+| **Batch Z** | text | Current tile | Z positions to process/propagate through, or `all` |
+| **Batch Time** | text | Current tile | Time positions to process/propagate through, or `all` |
 | **Propagate across** | select | Time | Dimension to propagate along: "Time" or "Z" |
 | **Propagation direction** | select | Forward | Direction of propagation: "Forward" or "Backward" |
 | **Tag of objects to propagate** | tags | -- | Tag(s) identifying source annotations to propagate |

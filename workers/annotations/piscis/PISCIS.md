@@ -30,9 +30,9 @@ In **Z-Stack mode**, all Z slices are passed to the model at once for 3D detecti
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **Piscis** | notes | -- | Informational text with documentation link. |
-| **Batch XY** | text | (none) | XY positions to iterate over (e.g., "1-3, 5-8"). |
-| **Batch Z** | text | (none) | Z slices to iterate over (e.g., "1-3, 5-8"). Ignored in Z-Stack mode. |
-| **Batch Time** | text | (none) | Time points to iterate over (e.g., "1-3, 5-8"). |
+| **Batch XY** | text | (none) | XY positions to iterate over (e.g., "1-3, 5-8"), or `all`. |
+| **Batch Z** | text | (none) | Z slices to iterate over (e.g., "1-3, 5-8"), or `all`. Ignored in Z-Stack mode. |
+| **Batch Time** | text | (none) | Time points to iterate over (e.g., "1-3, 5-8"), or `all`. |
 | **Model** | select | `20251212` | Pre-trained or user-trained model to use. Dynamically lists local and Girder-hosted models. |
 | **Mode** | select | `Current Z` | `Current Z` segments each Z slice independently; `Z-Stack` segments all Z slices together in 3D. |
 | **Scale** | number | `1` | Multiplier on detected object size (range 0-5). |

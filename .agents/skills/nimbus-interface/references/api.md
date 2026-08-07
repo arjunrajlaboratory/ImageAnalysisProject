@@ -2,6 +2,7 @@
 
 ## Table of Contents
 - [Image Access](#image-access)
+- [Batch Coordinate Ranges](#batch-coordinate-ranges)
 - [Annotations](#annotations)
 - [Property Values](#property-values)
 - [Writing Images to Girder](#writing-images-to-girder)
@@ -55,6 +56,66 @@ merged = annotation_tools.process_and_merge_channels(images, layers)
 # Returns: (H, W, 3) float64, values 0-255
 ```
 Merge modes: `'lighten'` (max, default), `'add'` (sum), `'screen'`.
+
+---
+
+## Batch Coordinate Ranges
+
+Standard `Batch XY`, `Batch Z`, and `Batch Time` fields use 1-indexed numeric
+input such as `1-3, 5-8`. They also accept case-insensitive `all`; an empty field
+uses the current tile coordinate.
+
+Define the fields with the shared helper rather than by hand -- it keeps the
+placeholder, label, and tooltip consistent and in sync with the parser:
+
+```python
+import annotation_utilities.batch_argument_parser as batch_argument_parser
+
+interface = {
+    'My Notes': {'type': 'notes', 'displayOrder': 0},
+    **batch_argument_parser.batch_interface_fields(display_order=1),
+}
+```
+
+Only use `batch_argument_parser.BATCH_RANGE_PLACEHOLDER` on a custom range
+field if that field's parser is given `all_values`; otherwise `all` raises.
+
+Annotation workers should normally use `WorkerClient`, which reads dataset
+metadata and handles iteration:
+
+```python
+from worker_client import WorkerClient
+
+worker = WorkerClient(datasetId, apiUrl, token, params)
+worker.process(process_image, f_annotation='polygon', stack_channels=[channel])
+```
+
+For a direct processing loop, use the shared dataset-aware helper rather than
+parsing each field independently:
+
+```python
+from annotation_utilities import batch_argument_parser
+
+index_range = tileClient.tiles.get('IndexRange', {})
+batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+    params['tile'], params['workerInterface'], index_range)
+```
+
+The returned lists are zero-indexed. `all` expands from `IndexXY`, `IndexZ`, and
+`IndexT`; a missing `IndexRange` or dimension key means the sole coordinate `0`.
+
+For a custom range field, supply the already-zero-indexed available values:
+
+```python
+z_values = batch_argument_parser.process_range_list(
+    params['workerInterface'].get('Z planes'),
+    convert_one_to_zero_index=True,
+    all_values=range(index_range.get('IndexZ', 1)),
+)
+```
+
+Conversion flags apply to numeric user input; `all_values` must already be in
+the coordinate system required by the caller.
 
 ---
 
@@ -195,7 +256,7 @@ gc.addMetadataToItem(item['itemId'], {'tool': 'YourWorker'})
 | Type | Returns | Example |
 |------|---------|---------|
 | `number` | `int`/`float` | `32`, `0.5` |
-| `text` | `str` | `"1-3, 5-8"` |
+| `text` | `str` | `"1-3, 5-8"`, `"all"`, `""` |
 | `select` | `str` | `"model_name.pt"` |
 | `checkbox` | `bool` | `True` |
 | `channel` | `int` | `0` |

@@ -28,11 +28,11 @@ def interface(image, apiUrl, token):
         'Apply to XY coordinates': {
             'type': 'text',
             'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-7; default is all',
+                'placeholder': batch_argument_parser.BATCH_RANGE_PLACEHOLDER,
                 'label': 'Apply to XY coordinates.',
                 'persistentPlaceholder': True,
                 'filled': True,
-                'tooltip': 'Enter the XY coordinates to apply the histogram matching to. Separate multiple groups with a comma. Default is all.'
+                'tooltip': 'Enter the XY coordinates to apply the registration to. Separate multiple groups with a comma. Enter all, or leave blank, for every XY position.'
             },
             'displayOrder': 1
         },
@@ -174,8 +174,12 @@ def compute(datasetId, apiUrl, token, params):
     if workerInterface['Apply to XY coordinates'] == "":
         apply_XY = list(range_xy)
     else:
+        # all_values makes the literal `all` work here as it does in the
+        # standard Batch fields; without it the parser rejects `all`.
         apply_XY = batch_argument_parser.process_range_list(
-            workerInterface['Apply to XY coordinates'], convert_one_to_zero_index=True)
+            workerInterface['Apply to XY coordinates'],
+            convert_one_to_zero_index=True,
+            all_values=range_xy)
         apply_XY = sorted(set(apply_XY) & set(range_xy))
         if not apply_XY:
             sendError(f"None of the requested XY coordinates "

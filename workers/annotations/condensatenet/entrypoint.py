@@ -11,6 +11,7 @@ from shapely.geometry import Polygon
 from worker_client import WorkerClient, geometry_to_polygon_coords
 
 from annotation_client.utils import sendProgress
+import annotation_utilities.batch_argument_parser as batch_argument_parser
 
 
 def interface(image, apiUrl, token):
@@ -24,36 +25,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'Select the CondensateNet model version to use',
             'displayOrder': 0,
         },
-        'Batch XY': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the XY positions you want to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 1
-        },
-        'Batch Z': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Z slices you want to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 2
-        },
-        'Batch Time': {
-            'type': 'text',
-            'vueAttrs': {
-                'placeholder': 'ex. 1-3, 5-8',
-                'label': 'Enter the Time points you want to iterate over',
-                'persistentPlaceholder': True,
-                'filled': True,
-            },
-            'displayOrder': 3
-        },
+        **batch_argument_parser.batch_interface_fields(display_order=1),
         'Probability Threshold': {
             'type': 'number',
             'min': 0.0,
