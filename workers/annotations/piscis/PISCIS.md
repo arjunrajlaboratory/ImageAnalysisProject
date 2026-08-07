@@ -56,6 +56,7 @@ In **Z-Stack mode**, all Z slices are passed to the model at once for 3D detecti
 ## Implementation Details
 
 - Models are stored on the Girder server in `Private/.piscis/models/` (with legacy fallback to `Public/.piscis/models/`). The predict worker downloads models on demand; the train worker uploads new models after training.
+- Models baked into the worker from the Raj Lab Hugging Face collection must be PyTorch `.pt` checkpoints. Legacy extensionless JAX checkpoints are converted once before publication; the build fails instead of shipping a model that would require Flax at runtime.
 - The predict worker uses `WorkerClient` for batch processing, which handles iteration over XY/Z/Time dimensions automatically.
 - Training validates that annotation tags, region tags, annotations, and regions are all non-empty before proceeding, sending user-facing error messages via `sendError()` for each failure case.
 - Training uses a warmup fraction of 0.1 (10% of epochs) and splits the random seed into two child seeds -- one for dataset generation and one for model training.
