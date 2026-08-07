@@ -227,7 +227,12 @@ def compute(datasetId, apiUrl, token, params):
     worker = WorkerClient(datasetId, apiUrl, token, params)
 
     # Get the model and post-processing parameters from interface values
-    model = worker.workerInterface['Model']
+    try:
+        model = annotation_tools.get_required_select(
+            worker.workerInterface.get('Model'), 'Model')
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
     tile_size = int(worker.workerInterface['Tile Size'])
     tile_overlap = float(worker.workerInterface['Tile Overlap'])
     padding = float(worker.workerInterface['Padding'])

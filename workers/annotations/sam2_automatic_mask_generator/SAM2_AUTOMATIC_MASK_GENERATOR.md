@@ -45,6 +45,20 @@ Unlike the SAM1 worker which manually combines two channels, this worker uses th
 
 Controls the density of the point grid used to prompt the automatic mask generator. Higher values detect more/smaller objects but increase computation time. The default of 32 means a 32x32 grid (1024 points) is used to seed mask generation.
 
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a checkpoint
+that no longer exists in the current image. Previously a `null` or stale model
+name crashed with `KeyError` in the model→config mapping or `FileNotFoundError`
+in the checkpoint loader. Invalid selections now fail fast with `sendError` and
+re-raise, so the job is recorded as failed rather than silently succeeding; the
+fix is to re-select the model in the tool settings and save the tool again. The
+selection is validated against the `MODEL_TO_CFG` mapping and the checkpoint
+file's presence in the image is verified before `build_sam2` runs.
+
 ## Notes
 
 - For best results, adjust the layer contrast settings in NimbusImage before running this worker, since the merged channel image is what SAM2 sees.

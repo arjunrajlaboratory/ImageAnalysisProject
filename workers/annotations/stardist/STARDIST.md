@@ -29,6 +29,19 @@ This worker uses [StarDist](https://github.com/stardist/stardist) to segment nuc
 - **Polygon Conversion**: Uses `rasterio.features.shapes()` with a transform that maps pixel coordinates directly to image space. Falls back to default transform if the explicit one fails.
 - **No Tiling**: The worker processes the entire image in a single pass (no tile-based processing). Very large images may require significant GPU memory.
 
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a model that
+is no longer offered. Previously a `null` model was passed straight to
+`StarDist2D.from_pretrained()`. Invalid selections now fail fast with
+`sendError` and re-raise, so the job is recorded as failed rather than silently
+succeeding; the fix is to re-select the model in the tool settings and save the
+tool again. The selection is validated against the static pretrained-model list
+(`MODELS`).
+
 ## Notes
 
 - The `2D_versatile_fluo` model works well for fluorescence microscopy nuclei (e.g., DAPI). The `2D_versatile_he` model is designed for H&E-stained histology images.

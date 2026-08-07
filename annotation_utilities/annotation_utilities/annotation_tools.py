@@ -399,6 +399,62 @@ def get_selected_channels(value, field_name='channel selection'):
     return sorted(set(selected))
 
 
+def get_required_select(value, field_name, allowed_values=None):
+    """
+    Validate a required ``select`` interface value and return it as a string.
+
+    A saved tool configuration can hold ``null`` for a ``select`` field even
+    though the interface defines a default — the config stores whatever was
+    serialized when the tool was saved, not what the interface would show
+    today. Read unvalidated, that ``None`` surfaces as a cryptic crash far
+    from the cause: the sam_fewshot_segmentation worker built the checkpoint
+    path ``/None.pth`` from it and died inside SAM's model loader with
+    ``FileNotFoundError`` after already reporting "Loading model".
+
+    Missing and stale values are rejected rather than silently replaced with
+    the interface default: the saved value is what the user believes the tool
+    will run with, and substituting a different model changes the output.
+    Callers catch the ``ValueError`` and ``sendError`` so the user learns to
+    re-select the field and save the tool.
+
+    Args:
+    - value: the raw ``params['workerInterface'][field_name]`` value
+    - field_name: name of the interface field, used in error messages
+    - allowed_values: optional container of valid options (e.g. the same list
+      the interface offers, or the checkpoints present in the image). When
+      given, a value outside it is rejected — this catches configs saved
+      against an older worker image whose model list has since changed.
+
+    Returns:
+    - the validated value, unchanged
+
+    Raises:
+    - ValueError: when the value is None, empty, not a string, or not one of
+      ``allowed_values``.
+    """
+    fix_hint = (f"Re-select '{field_name}' in the tool settings and save the "
+                f"tool again.")
+
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise ValueError(
+            f"The '{field_name}' setting has no value. The saved tool "
+            f"configuration may predate the current interface or be "
+            f"misconfigured. {fix_hint}")
+
+    if not isinstance(value, str):
+        raise ValueError(
+            f"The '{field_name}' setting has an unexpected format "
+            f"({type(value).__name__}: {value!r}). {fix_hint}")
+
+    if allowed_values is not None and value not in allowed_values:
+        raise ValueError(
+            f"The '{field_name}' setting is {value!r}, which is not one of "
+            f"the available options: {sorted(allowed_values)}. The saved "
+            f"tool configuration may be out of date. {fix_hint}")
+
+    return value
+
+
 def split_channel_selection(selected_channels, num_channels):
     """
     Split a channel selection into the channels a dataset has and the ones it lacks.

@@ -9,6 +9,7 @@ from shapely.geometry import Polygon
 import annotation_client.workers as workers
 
 from annotation_client.utils import sendError
+from annotation_utilities.annotation_tools import get_required_select
 
 from annotation_utilities.point_in_polygon import point_in_polygon
 
@@ -108,7 +109,12 @@ def compute(datasetId, apiUrl, token, params):
 
     # Get the Gaussian sigma and threshold from interface values
     workerInterface = params['workerInterface']
-    initial_model_name = workerInterface['Initial Model Name']
+    try:
+        initial_model_name = get_required_select(
+            workerInterface.get('Initial Model Name'), 'Initial Model Name')
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
     learning_rate = float(workerInterface['Learning Rate'])
     weight_decay = float(workerInterface['Weight Decay'])
     epochs = int(workerInterface['Epochs'])

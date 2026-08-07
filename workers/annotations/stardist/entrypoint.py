@@ -6,11 +6,16 @@ import timeit
 import annotation_client.workers as workers
 import annotation_client.tiles as tiles
 import annotation_client.annotations as annotations
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendError
 
 import numpy as np
 from shapely.geometry import Polygon
-from annotation_utilities.annotation_tools import geometry_to_polygon_coords
+from annotation_utilities.annotation_tools import geometry_to_polygon_coords, get_required_select
+
+
+# The pretrained StarDist models this worker can run. interface() offers
+# these and compute() validates the saved selection against them.
+MODELS = ['2D_versatile_fluo', '2D_versatile_he']
 
 
 def interface(image, apiUrl, token):
@@ -19,7 +24,7 @@ def interface(image, apiUrl, token):
     interface = {
         'Model': {
             'type': 'select',
-            'items': ['2D_versatile_fluo', '2D_versatile_he'],
+            'items': MODELS,
             'default': '2D_versatile_fluo',
             'displayOrder': 1
         },
@@ -116,7 +121,13 @@ def compute(datasetId, apiUrl, token, params):
     datasetClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
     annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
 
-    model_name = params['workerInterface']['Model']
+    try:
+        model_name = get_required_select(
+            params['workerInterface'].get('Model'), 'Model',
+            allowed_values=MODELS)
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
     channel = params['workerInterface']['Channel']
     prob_thresh = float(params['workerInterface']['Probability Threshold'])
     nms_thresh = float(params['workerInterface']['NMS Threshold'])

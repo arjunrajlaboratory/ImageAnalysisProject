@@ -304,6 +304,56 @@ tests mocked `pandas.DataFrame` entirely, which is how the crash survived —
 when adding tests for a pandas path, use real pandas with an **empty** input
 list; a mocked groupby chain can't catch this class of bug.
 
+### 8. Null / stale `select` value (Model) from a saved config
+
+**Symptom:** a cryptic crash deep inside a model loader, long after "Loading
+model" was reported — e.g. `FileNotFoundError: '/None.pth'` (sam_fewshot,
+May 2026 production), `KeyError: None` from a model→config mapping, or a
+`download_girder_model(client, None)` failure. A saved tool config can hold
+``null`` for a `select` field even though the interface defines a default —
+the config stores whatever was serialized when the tool was saved. A config
+saved against an older worker image can also name a model/checkpoint that no
+longer exists in the current image.
+
+**Fix:** never build a checkpoint path or model name from a raw
+`workerInterface` select value. Route it through
+`annotation_tools.get_required_select(value, field_name, allowed_values=None)`,
+which raises `ValueError` on null/empty/non-string values (and, when
+`allowed_values` is given, on options that no longer exist) instead of letting
+the job die downstream. Catch it at the call site and `sendError`; where the
+checkpoint path is deterministic, also check `os.path.exists(checkpoint_path)`
+before loading. `sendError` only prints a message for the frontend -- it does
+not fail the job, so re-`raise` after it rather than `return`ing; a job that
+returns cleanly is recorded as SUCCESS, and a misconfigured run reported as
+successful is worse than a crash. Missing values are rejected, not defaulted: the saved value is
+what the user believes the tool runs with, and silently substituting a model
+changes the output. Validate **before** the heavy torch/model imports so the
+job fails in milliseconds, not after GPU setup.
+
+```python
+try:
+    model_name = annotation_tools.get_required_select(
+        params['workerInterface'].get('Model'), 'Model', allowed_values=MODELS)
+except ValueError as exc:
+    sendError("Could not read the model selection.", info=str(exc))
+    raise
+```
+
+**Sweep:**
+```bash
+grep -rn "workerInterface\[.\?'Model'\]\|workerInterface\.get('Model')" workers/
+grep -rn "checkpoint_path = f\"" workers/            # paths built from interface values
+```
+Done for: sam_fewshot_segmentation, the five sam2_* workers (which also hoist
+the shared `MODEL_TO_CFG` mapping and check checkpoint existence), stardist,
+cellpose, cellposesam, piscis predict/train, cellpose_train, cellposesam_train.
+Workers whose models come from Girder (cellpose family, piscis) validate shape
+only — no static `allowed_values` exists for custom models.
+`sam_automatic_mask_generator` reads Model but never uses it, so it was left
+alone. Regression coverage: `annotation_utilities/tests/test_required_select.py`
+(CI) plus compute-level tests in sam_fewshot_segmentation and
+sam2_fewshot_segmentation.
+
 ## After fixing
 
 - Run the relevant package tests (`annotation_utilities`, `worker_client`) and

@@ -75,6 +75,20 @@ We use `SAM2ImagePredictor.set_image()` rather than calling `forward_image` dire
 
 The `image_embed` from `predictor._features["image_embed"]` gives a `(1, 256, 64, 64)` feature map -- the lowest-resolution, highest-semantic features from SAM2's FPN neck.
 
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a checkpoint
+that no longer exists in the current image. Previously a `null` or stale model
+name crashed with `KeyError` in the model→config mapping or `FileNotFoundError`
+in the checkpoint loader. Invalid selections now fail fast with `sendError` and
+re-raise, so the job is recorded as failed rather than silently succeeding; the
+fix is to re-select the model in the tool settings and save the tool again. The
+selection is validated against the `MODEL_TO_CFG` mapping and the checkpoint
+file's presence in the image is verified before `build_sam2` runs.
+
 ## Tuning Guide
 
 ### Similarity Threshold

@@ -86,6 +86,19 @@ The base-model labels map to cellpose built-in checkpoints in `models_config.py`
 
 The worker checks for GPU availability via `cellpose.core.use_gpu()` and instantiates the model with that result; cellpose falls back to CPU if no GPU is available.
 
+### Model selection validation
+
+`compute()` validates the saved `Base Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default. Previously a `null` model was passed straight to the Girder model
+downloader, failing with a confusing error. Invalid selections now fail fast
+with `sendError` and re-raise, so the job is recorded as failed rather than
+silently succeeding; the fix is to re-select the model in the tool settings and
+save the tool again. Because models can be user-trained and downloaded from
+Girder, there is no static option list — validation checks only that the
+selection is a non-empty string.
+
 ## Testing
 
 `tests/test_models_config.py` unit-tests the base-model mapping (`models_config.py`) in isolation — it has no heavy imports, so it runs in the lightweight local venv:

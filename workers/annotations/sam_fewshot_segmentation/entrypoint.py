@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 
 from itertools import product
@@ -16,6 +17,10 @@ from shapely.geometry import Polygon
 from skimage.measure import find_contours
 
 from annotation_client.utils import sendProgress, sendError
+
+# SAM1 checkpoints baked into the worker image at /<name>.pth. interface()
+# offers these and compute() validates the saved selection against them.
+MODELS = ['sam_vit_h_4b8939']
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +48,7 @@ def _patch_torchvision_nms():
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
-    models = ['sam_vit_h_4b8939']
+    models = MODELS
 
     interface = {
         'Training Tag': {
@@ -264,6 +269,25 @@ def annotation_to_mask(annotation, image_shape):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Validate the saved Model selection before the heavy imports and model
+    # load below: a saved tool config can hold null for a select field, which
+    # otherwise surfaces as FileNotFoundError('/None.pth') deep inside SAM's
+    # checkpoint loader, long after "Loading model" was already reported.
+    try:
+        model_name = annotation_tools.get_required_select(
+            params['workerInterface'].get('Model'), 'Model', allowed_values=MODELS)
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
+
+    checkpoint_path = f"/{model_name}.pth"
+    if not os.path.exists(checkpoint_path):
+        sendError("Model checkpoint is missing from the worker image.",
+                  info=f"Expected the checkpoint at {checkpoint_path}. "
+                       f"The worker image may need to be rebuilt.")
+        raise FileNotFoundError(
+            f"Model checkpoint not found at {checkpoint_path}")
+
     # Lazy import: keeps torch off the interface/startup path (~seconds). See todo/worker-startup-latency.md
     import torch
     import torch.nn.functional as F
@@ -279,7 +303,6 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     # Parse parameters
-    model_name = params['workerInterface']['Model']
     similarity_threshold = float(params['workerInterface']['Similarity Threshold'])
     target_occupancy = float(params['workerInterface']['Target Occupancy'])
     points_per_side = int(params['workerInterface']['Points per side'])
@@ -323,7 +346,6 @@ def compute(datasetId, apiUrl, token, params):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    checkpoint_path = f"/{model_name}.pth"
     sam_model = sam_model_registry["vit_h"](checkpoint=checkpoint_path)
     sam_model.to(device)
     predictor = SamPredictor(sam_model)
