@@ -34,6 +34,7 @@ Create new annotations by segmenting images or connecting existing annotations.
 | Crop | Crops images, allowing you to drop particular slices of data and crop to blobs or recta... |  | Yes | [docs](workers/annotations/crop/CROP.md) |
 | Deconwolf Deconvolution | Deconvolves images using Richardson-Lucy algorithm with Born-Wolf PSF model (GPU-accele... | Yes | Yes | [docs](workers/annotations/deconwolf/DECONWOLF.md) |
 | Deepcell |  | Yes |  | [docs](workers/annotations/deepcell/DEEPCELL.md) |
+| Error generator | Generates various error conditions for testing frontend error reporting. Check the boxe... |  |  | [docs](workers/annotations/error_generator/ERROR_GENERATOR.md) |
 | Gaussian Blur | Applies Gaussian blur to images |  | Yes | [docs](workers/annotations/gaussian_blur/GAUSSIAN_BLUR.md) |
 | H&E Deconvolution | Deconvolves H&E stains |  | Yes | [docs](workers/annotations/h_and_e_deconvolution/H_AND_E_DECONVOLUTION.md) |
 | Histogram Matching | Corrects images using histogram matching |  | Yes | [docs](workers/annotations/histogram_matching/HISTOGRAM_MATCHING.md) |
