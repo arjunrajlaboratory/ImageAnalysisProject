@@ -435,79 +435,125 @@ def test_parent_with_no_children(mock_worker_client, mock_annotation_client, sam
                     pass
 
 
-def test_empty_tag_filters(mock_worker_client, mock_annotation_client):
-    """Test behavior when no child tags are specified"""
-    # Create parameters with empty child tags
+def test_empty_child_tags_sends_error(mock_worker_client, mock_annotation_client):
+    """Regression test: empty 'Child Tags' must sendError, not crash.
+
+    A production job ran with 'Child Tags': []. An empty tag set matches no
+    annotations, so filtered_connections was empty and
+    pd.DataFrame([]).groupby('parentId') raised KeyError: 'parentId'. The
+    worker must now report a clear error instead.
+    """
+    # The exact workerInterface from the failed production job
     empty_tag_params = {
         'id': 'test_property_id',
-        'name': 'Children Count',
+        'name': 'DAPI blob Count connected objects',
         'image': 'properties/children_count:latest',
         'tags': {'exclusive': False, 'tags': ['nucleus']},
         'shape': 'polygon',
         'workerInterface': {
-            'Child Tags': [],  # Empty tag list
-            'Child Tags Exclusive': 'No'
+            'Child Tags': [],
+            'Child Tags Exclusive': 'No',
+            'Count connected objects': ''
         }
     }
 
-    # Create parent and child annotations
     parent = {
         '_id': 'parent_1',
         'coordinates': [{'x': 0, 'y': 0}, {'x': 0, 'y': 10}, {'x': 10, 'y': 10},
                         {'x': 10, 'y': 0}, {'x': 0, 'y': 0}],
         'tags': ['nucleus']
     }
-
     child1 = {'_id': 'child_1', 'coordinates': [{'x': 5, 'y': 5}], 'tags': ['spot']}
-    child2 = {'_id': 'child_2', 'coordinates': [{'x': 8, 'y': 8}], 'tags': ['other']}
 
-    # Set up mock to return our annotations
-    mock_worker_client.get_annotation_list_by_shape.return_value = [parent, child1, child2]
-
-    # Create connections
-    connections = [
-        {'parentId': 'parent_1', 'childId': 'child_1', 'dataset': 'test_dataset'},
-        {'parentId': 'parent_1', 'childId': 'child_2', 'dataset': 'test_dataset'}
+    mock_worker_client.get_annotation_list_by_shape.return_value = [parent, child1]
+    mock_annotation_client.getAnnotationConnections.return_value = [
+        {'parentId': 'parent_1', 'childId': 'child_1', 'dataset': 'test_dataset'}
     ]
 
-    # Set up mock to return our connections
-    mock_annotation_client.getAnnotationConnections.return_value = connections
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', empty_tag_params)
 
-    # Mock sendProgress to avoid errors
-    with patch('annotation_client.utils.sendProgress'):
-        # Mock pandas to avoid recursion issues
-        with patch('pandas.DataFrame') as mock_df:
-            # Create a mock DataFrame that will be returned by the DataFrame constructor
-            mock_df_instance = MagicMock()
-            mock_df.return_value = mock_df_instance
+        # The worker must report the misconfiguration to the user...
+        mock_send_error.assert_called_once()
+        assert 'No child tag selected' in mock_send_error.call_args[0][0]
 
-            # Mock the groupby chain to return a DataFrame with our expected count
-            # With empty tag filter, all children should be counted
-            mock_count_df = MagicMock()
-            mock_df_instance.groupby.return_value.size.return_value.reset_index.return_value = mock_count_df
+        # ...and must not upload any property values
+        mock_worker_client.add_multiple_annotation_property_values.assert_not_called()
 
-            # Set up the mock DataFrame to behave like a dictionary when accessed with __getitem__
-            mock_count_df.__getitem__.side_effect = lambda key: [
-                'parent_1'] if key == 'parentId' else [2]
 
-            # Set up the mock DataFrame to behave like a list when iterated
-            mock_count_df.__iter__.return_value = [{'parentId': 'parent_1', 'count': 2}]
+def test_missing_child_tags_field_sends_error(mock_worker_client, mock_annotation_client):
+    """An interface missing the 'Child Tags' key entirely must also sendError."""
+    params = {
+        'id': 'test_property_id',
+        'name': 'Children Count',
+        'image': 'properties/children_count:latest',
+        'tags': {'exclusive': False, 'tags': ['nucleus']},
+        'shape': 'polygon',
+        'workerInterface': {}  # no 'Child Tags', no 'Child Tags Exclusive'
+    }
 
-            # Set up the zip function to return a list of tuples
-            with patch('builtins.zip') as mock_zip:
-                mock_zip.return_value = [('parent_1', 2)]
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
 
-                # Run computation with empty tag filter
-                compute('test_dataset', 'http://test-api', 'test-token', empty_tag_params)
+        mock_send_error.assert_called_once()
+        mock_worker_client.add_multiple_annotation_property_values.assert_not_called()
 
-                # Verify that add_multiple_annotation_property_values was called
-                mock_worker_client.add_multiple_annotation_property_values.assert_called_once()
 
-                # Get the property values that were sent to the server
-                property_values = mock_worker_client.add_multiple_annotation_property_values.call_args[
-                    0][0]
-                assert 'test_dataset' in property_values
+def test_no_connections_uploads_zero_counts(mock_worker_client, mock_annotation_client,
+                                            sample_params):
+    """Valid tags but zero matching connections: every parent gets 0, no crash.
 
-                # Check that the parent annotation has a count of 2 (all children should be counted)
-                assert 'parent_1' in property_values['test_dataset']
-                assert property_values['test_dataset']['parent_1'] == 2
+    Uses the real (unmocked) code path: with no connections the worker must
+    skip the pandas groupby (an empty DataFrame has no 'parentId' column) and
+    warn the user that all counts are 0.
+    """
+    parent = {
+        '_id': 'parent_1',
+        'coordinates': [{'x': 0, 'y': 0}, {'x': 0, 'y': 10}, {'x': 10, 'y': 10},
+                        {'x': 10, 'y': 0}, {'x': 0, 'y': 0}],
+        'tags': ['nucleus']
+    }
+    child1 = {'_id': 'child_1', 'coordinates': [{'x': 5, 'y': 5}], 'tags': ['spot']}
+
+    mock_worker_client.get_annotation_list_by_shape.return_value = [parent, child1]
+    mock_annotation_client.getAnnotationConnections.return_value = []
+
+    with patch('entrypoint.sendWarning') as mock_send_warning:
+        compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+        # The user is told why every count is 0
+        warning_titles = [call.args[0] for call in mock_send_warning.call_args_list]
+        assert 'No connections found' in warning_titles
+
+        # Zero counts are still uploaded — a parent with no children is valid data
+        mock_worker_client.add_multiple_annotation_property_values.assert_called_once()
+        property_values = mock_worker_client.add_multiple_annotation_property_values.call_args[0][0]
+        assert property_values['test_dataset']['parent_1'] == 0
+
+
+def test_no_matching_child_annotations_warns_and_uploads_zeros(
+        mock_worker_client, mock_annotation_client, sample_params):
+    """Child tags that match no annotations: warn and upload zeros, no crash."""
+    parent = {
+        '_id': 'parent_1',
+        'coordinates': [{'x': 0, 'y': 0}, {'x': 0, 'y': 10}, {'x': 10, 'y': 10},
+                        {'x': 10, 'y': 0}, {'x': 0, 'y': 0}],
+        'tags': ['nucleus']
+    }
+    # The only other annotation does NOT carry the 'spot' child tag
+    other = {'_id': 'other_1', 'coordinates': [{'x': 5, 'y': 5}], 'tags': ['other']}
+
+    mock_worker_client.get_annotation_list_by_shape.return_value = [parent, other]
+    mock_annotation_client.getAnnotationConnections.return_value = [
+        {'parentId': 'parent_1', 'childId': 'other_1', 'dataset': 'test_dataset'}
+    ]
+
+    with patch('entrypoint.sendWarning') as mock_send_warning:
+        compute('test_dataset', 'http://test-api', 'test-token', sample_params)
+
+        warning_titles = [call.args[0] for call in mock_send_warning.call_args_list]
+        assert 'No child annotations found' in warning_titles
+
+        mock_worker_client.add_multiple_annotation_property_values.assert_called_once()
+        property_values = mock_worker_client.add_multiple_annotation_property_values.call_args[0][0]
+        assert property_values['test_dataset']['parent_1'] == 0

@@ -263,6 +263,94 @@ Don't confuse this with `params['tags']` used for **property filtering**, which
 `nimbus-interface` skill and `AGENTS.md` for the full interface type→return
 table.
 
+### 7. `groupby` on a DataFrame built from an empty list
+
+**Symptom:** `KeyError: '<column>'` from `pandas` deep inside `groupby`/column
+access, on a dataset where a filter step matched nothing. `pd.DataFrame([])`
+has **no columns at all**, so `df.groupby('parentId')` raises `KeyError:
+'parentId'` instead of returning an empty result. The June 2026 production case
+was children_count_worker run with `'Child Tags': []` — an empty tag set
+intersects with nothing, so `filtered_connections` was `[]`.
+
+**Two fixes, both needed:**
+1. Validate the required selection early and `sendError` (an empty required
+   `tags` field is a misconfiguration — same validation pattern as catalog #6):
+   ```python
+   if not child_tags:
+       sendError("No child tag selected", info="Select at least one tag ...")
+       return
+   ```
+2. Guard the groupby — an empty *result* (valid tags, zero matches) is
+   legitimate data, so skip pandas and report counts of 0 with a `sendWarning`:
+   ```python
+   if filtered_connections:
+       df = pd.DataFrame(filtered_connections)
+       counts = df.groupby('parentId').size().reset_index(name='count')
+   else:
+       counts_dict = {}   # every parent gets 0; sendWarning explains why
+   ```
+Pre-declaring columns also works when a DataFrame must exist either way:
+`pd.DataFrame(connections, columns=['parentId', 'childId'])` — this is why
+connect_to_nearest/connect_sequential (which initialize
+`pd.DataFrame(columns=[...])`) never crashed.
+
+**Sweep:**
+```bash
+grep -rn "pd\.DataFrame(" workers/ | grep -v "columns="   # then check each for a possibly-empty list feeding a groupby/column access
+```
+Swept 2026-08: children_count_worker was the only worker with the pattern
+(fixed; regression tests in its `tests/test_children_count.py`). Note its old
+tests mocked `pandas.DataFrame` entirely, which is how the crash survived —
+when adding tests for a pandas path, use real pandas with an **empty** input
+list; a mocked groupby chain can't catch this class of bug.
+
+### 8. Null / stale `select` value (Model) from a saved config
+
+**Symptom:** a cryptic crash deep inside a model loader, long after "Loading
+model" was reported — e.g. `FileNotFoundError: '/None.pth'` (sam_fewshot,
+May 2026 production), `KeyError: None` from a model→config mapping, or a
+`download_girder_model(client, None)` failure. A saved tool config can hold
+``null`` for a `select` field even though the interface defines a default —
+the config stores whatever was serialized when the tool was saved. A config
+saved against an older worker image can also name a model/checkpoint that no
+longer exists in the current image.
+
+**Fix:** never build a checkpoint path or model name from a raw
+`workerInterface` select value. Route it through
+`annotation_tools.get_required_select(value, field_name, allowed_values=None)`,
+which raises `ValueError` on null/empty/non-string values (and, when
+`allowed_values` is given, on options that no longer exist) instead of letting
+the job die downstream. Catch it at the call site and `sendError`; where the
+checkpoint path is deterministic, also check `os.path.exists(checkpoint_path)`
+before loading. Missing values are rejected, not defaulted: the saved value is
+what the user believes the tool runs with, and silently substituting a model
+changes the output. Validate **before** the heavy torch/model imports so the
+job fails in milliseconds, not after GPU setup.
+
+```python
+try:
+    model_name = annotation_tools.get_required_select(
+        params['workerInterface'].get('Model'), 'Model', allowed_values=MODELS)
+except ValueError as exc:
+    sendError("Could not read the model selection.", info=str(exc))
+    return
+```
+
+**Sweep:**
+```bash
+grep -rn "workerInterface\[.\?'Model'\]\|workerInterface\.get('Model')" workers/
+grep -rn "checkpoint_path = f\"" workers/            # paths built from interface values
+```
+Done for: sam_fewshot_segmentation, the five sam2_* workers (which also hoist
+the shared `MODEL_TO_CFG` mapping and check checkpoint existence), stardist,
+cellpose, cellposesam, piscis predict/train, cellpose_train, cellposesam_train.
+Workers whose models come from Girder (cellpose family, piscis) validate shape
+only — no static `allowed_values` exists for custom models.
+`sam_automatic_mask_generator` reads Model but never uses it, so it was left
+alone. Regression coverage: `annotation_utilities/tests/test_required_select.py`
+(CI) plus compute-level tests in sam_fewshot_segmentation and
+sam2_fewshot_segmentation.
+
 ## After fixing
 
 - Run the relevant package tests (`annotation_utilities`, `worker_client`) and
