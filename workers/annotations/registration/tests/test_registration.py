@@ -763,6 +763,228 @@ def test_xy_coordinate_parsing():
         mock_process_range.assert_called_with('1-2,4', convert_one_to_zero_index=True)
 
 
+def test_compute_single_channel_dataset():
+    """A single-channel time lapse must register without a KeyError.
+
+    Girder omits an index key from the frames entirely for any dimension of size
+    one, so a single-channel dataset has no 'IndexC' key (and, with one XY
+    position, no 'IndexXY' either). Frame dictionaries below are copied from a
+    real dataset that crashed on frame['IndexC'].
+    """
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Rigid',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '1',
+            'Reference Channel': 0,
+            'Channels to correct': {'0': True},
+            'Reference region tag': [],
+            'Control point tag': []
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('large_image.new') as mock_sink, \
+            patch('entrypoint.StackReg') as mock_stackreg, \
+            patch('entrypoint.sendError') as mock_send_error, \
+            patch('entrypoint.sendProgress'):
+
+        client = mock_tile_client.return_value
+        client.tiles = {
+            'IndexRange': {'IndexT': 3},
+            'IndexStride': {'IndexT': 1},
+            'frames': [
+                {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+                {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1},
+                {'Channel': 'Default', 'Frame': 2, 'Index': 2, 'IndexT': 2}
+            ],
+            'channels': ['Default'],
+            'mm_x': None, 'mm_y': None, 'magnification': None
+        }
+        client.getRegion.return_value = np.zeros((100, 100), dtype=np.uint16)
+        client.coordinatesToFrameIndex.return_value = 0
+        client.client = MagicMock()
+        client.client.uploadFileToFolder.return_value = {'itemId': 'test'}
+
+        sr = mock_stackreg.return_value
+        sr.register.return_value = np.eye(3)
+        sr.transform.return_value = np.zeros((100, 100))
+
+        sink = mock_sink.return_value
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        mock_send_error.assert_not_called()
+
+        # Channel 0 is selected and XY 0 is the only position, so every frame is
+        # registered and written out.
+        assert sr.transform.call_count == 3
+        assert sink.addTile.call_count == 3
+
+        # Only the dimensions the dataset actually has are passed to addTile.
+        assert [call.kwargs for call in sink.addTile.call_args_list] == [
+            {'t': 0}, {'t': 1}, {'t': 2}]
+        sink.write.assert_called_with('/tmp/registered.tiff')
+
+
+def test_compute_channel_selection_outside_dataset_range():
+    """Selecting only a channel the dataset lacks must be reported, not ignored.
+
+    A saved config selecting channel 1, run against a single-channel dataset,
+    parses cleanly and then matches no frame in the output loop: the worker would
+    compute the whole registration and then upload an unregistered copy of the
+    input while reporting success.
+    """
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Rigid',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': {'0': False, '1': True},
+            'Reference region tag': [],
+            'Control point tag': []
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('large_image.new') as mock_sink, \
+            patch('entrypoint.StackReg') as mock_stackreg, \
+            patch('entrypoint.sendError') as mock_send_error, \
+            patch('entrypoint.sendProgress'):
+
+        client = mock_tile_client.return_value
+        client.tiles = {
+            'IndexRange': {'IndexT': 2},
+            'frames': [
+                {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+                {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1}
+            ],
+            'channels': ['Default'],
+            'mm_x': None, 'mm_y': None, 'magnification': None
+        }
+        client.getRegion.return_value = np.zeros((100, 100), dtype=np.uint16)
+        client.coordinatesToFrameIndex.return_value = 0
+        client.client = MagicMock()
+        client.client.uploadFileToFolder.return_value = {'itemId': 'test'}
+
+        sr = mock_stackreg.return_value
+        sr.register.return_value = np.eye(3)
+        sr.transform.return_value = np.zeros((100, 100))
+
+        sink = mock_sink.return_value
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        mock_send_error.assert_called_once()
+        # Reported before any registration work, not after.
+        sr.register.assert_not_called()
+        sr.transform.assert_not_called()
+        sink.addTile.assert_not_called()
+        sink.write.assert_not_called()
+        client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_compute_channel_selection_partially_outside_range_warns():
+    """A selection that is only partly out of range warns and registers the rest."""
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Rigid',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            # The dataset below has a single channel, so index 5 does not exist.
+            'Channels to correct': {'0': True, '5': True},
+            'Reference region tag': [],
+            'Control point tag': []
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('large_image.new') as mock_sink, \
+            patch('entrypoint.StackReg') as mock_stackreg, \
+            patch('entrypoint.sendWarning') as mock_send_warning, \
+            patch('entrypoint.sendError') as mock_send_error, \
+            patch('entrypoint.sendProgress'):
+
+        client = mock_tile_client.return_value
+        client.tiles = {
+            'IndexRange': {'IndexT': 2},
+            'frames': [
+                {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+                {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1}
+            ],
+            'channels': ['Default'],
+            'mm_x': None, 'mm_y': None, 'magnification': None
+        }
+        client.getRegion.return_value = np.zeros((100, 100), dtype=np.uint16)
+        client.coordinatesToFrameIndex.return_value = 0
+        client.client = MagicMock()
+        client.client.uploadFileToFolder.return_value = {'itemId': 'test'}
+
+        sr = mock_stackreg.return_value
+        sr.register.return_value = np.eye(3)
+        sr.transform.return_value = np.zeros((100, 100))
+
+        sink = mock_sink.return_value
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        mock_send_warning.assert_called_once()
+        assert '5' in mock_send_warning.call_args.kwargs['info']
+        mock_send_error.assert_not_called()
+        # Channel 0 is still registered and written out.
+        assert sr.transform.call_count == 2
+        assert sink.addTile.call_count == 2
+        sink.write.assert_called_with('/tmp/registered.tiff')
+
+
+def test_compute_no_matching_xy_coordinates_error():
+    """An XY selection that matches no position in the dataset must be reported."""
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Rigid',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '5',  # dataset has a single XY position
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': {'0': True},
+            'Reference region tag': [],
+            'Control point tag': []
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('entrypoint.sendError') as mock_send_error:
+
+        client = mock_tile_client.return_value
+        client.tiles = {'IndexRange': {'IndexT': 3}}
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        mock_send_error.assert_called_once()
+        assert 'XY' in mock_send_error.call_args[0][0]
+
+
 def test_compute_apply_xy_is_always_list():
     """Test that apply_XY is always converted to a list for JSON serialization"""
     params = {
@@ -828,3 +1050,70 @@ def test_compute_apply_xy_is_always_list():
             json.dumps(metadata)
         except TypeError as e:
             pytest.fail(f"Metadata should be JSON serializable, but got error: {e}")
+
+
+def test_compute_rejects_list_form_channel_selection():
+    """A list-shaped channelCheckboxes value is malformed and must be reported.
+
+    Regression test: reading the raw value with .items() raised
+    AttributeError: 'list' object has no attribute 'items'. The worker now
+    reports it via sendError instead of crashing, and does not guess which
+    channel [0] meant.
+    """
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Translation',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': [0],  # Malformed: expected {'0': True}
+            'Reference region tag': None,
+            'Control point tag': None
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('entrypoint.sendError') as mock_send_error:
+
+        client = mock_tile_client.return_value
+        client.tiles = {'IndexRange': {'IndexXY': 2, 'IndexT': 5}}
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        # Not "No channels to correct" — the shape is wrong, not the selection.
+        assert mock_send_error.call_args[0][0] == "Could not read the channel selection."
+
+
+def test_compute_rejects_unexpected_channel_selection():
+    """A channel selection we cannot interpret must fail loudly, not guess."""
+    params = {
+        'workerInterface': {
+            'Algorithm': 'Translation',
+            'Apply algorithm after control points': False,
+            'Apply to XY coordinates': '',
+            'Reference Z Coordinate': '',
+            'Reference Time Coordinate': '',
+            'Reference Channel': 0,
+            'Channels to correct': 'DAPI',
+            'Reference region tag': None,
+            'Control point tag': None
+        },
+        'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+        'channel': 0
+    }
+
+    with patch('annotation_client.tiles.UPennContrastDataset') as mock_tile_client, \
+            patch('annotation_client.annotations.UPennContrastAnnotationClient'), \
+            patch('entrypoint.sendError') as mock_send_error:
+
+        client = mock_tile_client.return_value
+        client.tiles = {'IndexRange': {'IndexXY': 2, 'IndexT': 5}}
+
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+        assert mock_send_error.call_args[0][0] == "Could not read the channel selection."

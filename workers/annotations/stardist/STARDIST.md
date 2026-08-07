@@ -24,10 +24,23 @@ This worker uses [StarDist](https://github.com/stardist/stardist) to segment nuc
 
 ## Implementation Details
 
-- **GPU Support**: Built on NVIDIA CUDA 11.8 base image. StarDist uses TensorFlow for GPU-accelerated inference.
+- **GPU Support**: Built on NVIDIA CUDA 11.8 base image. StarDist uses TensorFlow for GPU-accelerated inference. The runtime stage must keep a `cudnn8` tag: TensorFlow 2.11 predates the `tensorflow[and-cuda]` extra (2.14), so its wheel bundles no `nvidia-*` packages and dlopens `libcudnn.so.8` from the image itself. Dropping to a plain `-runtime` tag would not fail the build — TF would log "Could not load dynamic library libcudnn.so.8" and silently fall back to CPU. (The torch-based ML workers are the opposite: their wheels ship their own cuDNN, so they use the plain `-runtime` tag.)
 - **Model Pre-download**: Both pretrained models (`2D_versatile_fluo` and `2D_versatile_he`) are downloaded and cached during Docker build via `download_models.py`, so no network access is needed at runtime.
 - **Polygon Conversion**: Uses `rasterio.features.shapes()` with a transform that maps pixel coordinates directly to image space. Falls back to default transform if the explicit one fails.
 - **No Tiling**: The worker processes the entire image in a single pass (no tile-based processing). Very large images may require significant GPU memory.
+
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a model that
+is no longer offered. Previously a `null` model was passed straight to
+`StarDist2D.from_pretrained()`. Invalid selections now fail fast with
+`sendError` and re-raise, so the job is recorded as failed rather than silently
+succeeding; the fix is to re-select the model in the tool settings and save the
+tool again. The selection is validated against the static pretrained-model list
+(`MODELS`).
 
 ## Notes
 

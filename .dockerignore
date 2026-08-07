@@ -1,0 +1,24 @@
+# Keep the build context small. Every `docker build` sends the whole context to
+# the daemon before running a single instruction, and every worker here builds
+# from the repo root (`docker build .`), so anything large sitting anywhere in
+# the tree is paid for by all 107 Dockerfiles.
+#
+# Nothing listed below is referenced by any COPY/ADD in the repo -- verified by
+# grepping every Dockerfile. Worker COPY lines name specific files
+# (entrypoint.py, environment.yml, ...) rather than whole directories, and the
+# directories that are copied wholesale (annotation_utilities, worker_client)
+# only lose their stale __pycache__.
+
+.git
+.github
+
+# Local development scratch: per-worker virtualenvs and downloaded model
+# checkpoints. These are gitignored, never copied into an image, and are by far
+# the biggest thing in the context -- on a working checkout they can add ~11 GB
+# (e.g. a 2.6 GB sam_vit_h checkpoint plus several torch/CUDA venvs).
+**/local_tests
+**/.venv
+
+# Compiled bytecode: stale, platform-specific, and regenerated inside the image.
+**/__pycache__
+**/*.py[cod]

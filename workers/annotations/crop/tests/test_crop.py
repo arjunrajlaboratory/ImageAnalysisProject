@@ -504,3 +504,93 @@ def test_mixed_annotation_types(mock_tile_client, mock_annotation_client, mock_l
     assert 'rectangle' in shapes_requested
 
     mock_large_image.write.assert_called_once_with('/tmp/cropped.tiff')
+
+
+def test_compute_out_of_range_dimension_on_size_one_dataset(mock_tile_client, mock_annotation_client, mock_large_image):
+    """A range naming a coordinate that does not exist must be reported, not ignored.
+
+    A dataset with one Z plane omits 'IndexZ' from its frames, so a per-frame
+    check keyed on that absent index silently passes and the worker would crop
+    every frame despite the user asking for a Z plane the dataset lacks.
+    """
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+            {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1},
+        ],
+        'IndexRange': {'IndexT': 2},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20
+    }
+
+    params = {
+        'workerInterface': {
+            'XY Range': '',
+            'Z Range': '3',  # dataset has a single Z plane
+            'Time Range': '',
+            'Crop Rectangle': None
+        }
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert 'Z' in mock_send_error.call_args[0][0]
+    mock_large_image.addTile.assert_not_called()
+    mock_large_image.write.assert_not_called()
+
+
+def test_compute_out_of_range_dimension_on_stack(mock_tile_client, mock_annotation_client, mock_large_image):
+    """An out-of-range request must not upload an empty image."""
+    params = {
+        'workerInterface': {
+            'XY Range': '',
+            'Z Range': '9',  # fixture dataset has 2 Z planes
+            'Time Range': '',
+            'Crop Rectangle': None
+        }
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_called_once()
+    assert 'Z' in mock_send_error.call_args[0][0]
+    mock_large_image.write.assert_not_called()
+    mock_tile_client.client.uploadFileToFolder.assert_not_called()
+
+
+def test_compute_size_one_dimensions_default_to_all_frames(mock_tile_client, mock_annotation_client, mock_large_image):
+    """With no ranges given, a dataset missing several index keys still copies every frame."""
+    mock_tile_client.tiles = {
+        'frames': [
+            {'Channel': 'Default', 'Frame': 0, 'Index': 0, 'IndexT': 0},
+            {'Channel': 'Default', 'Frame': 1, 'Index': 1, 'IndexT': 1},
+        ],
+        'IndexRange': {'IndexT': 2},
+        'channels': ['Default'],
+        'mm_x': 0.65,
+        'mm_y': 0.65,
+        'magnification': 20
+    }
+
+    params = {
+        'workerInterface': {
+            'XY Range': '',
+            'Z Range': '',
+            'Time Range': '',
+            'Crop Rectangle': None
+        }
+    }
+
+    with patch('entrypoint.sendError') as mock_send_error:
+        compute('test_dataset', 'http://test-api', 'test-token', params)
+
+    mock_send_error.assert_not_called()
+    # Only the dimension the dataset actually has is passed through to addTile.
+    assert [call.kwargs for call in mock_large_image.addTile.call_args_list] == [
+        {'t': 0}, {'t': 1}]
+    mock_large_image.write.assert_called_once_with('/tmp/cropped.tiff')

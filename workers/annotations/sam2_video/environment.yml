@@ -9,10 +9,12 @@ dependencies:
   - rasterio
   - shapely
   - pillow
-  - opencv
-  - matplotlib
   - scikit-image
   - pip:
-    - pycocotools
-    - onnxruntime
-    - onnx
+    # Unlike upstream sam2 (which imports cv2 lazily inside remove_small_regions),
+    # the segment-anything-2-nimbus fork imports cv2 at module scope in
+    # sam2/utils/misc.py and calls cv2.resize in the video predictor's frame
+    # merging, so this is a hard runtime dependency for this worker only -- hence
+    # the one intentional difference from the other sam2_*/environment.yml files.
+    # Headless build: a worker image needs no GUI libraries.
+    - opencv-python-headless

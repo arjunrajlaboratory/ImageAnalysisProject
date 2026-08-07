@@ -56,10 +56,25 @@ In **Z-Stack mode**, all Z slices are passed to the model at once for 3D detecti
 ## Implementation Details
 
 - Models are stored on the Girder server in `Private/.piscis/models/` (with legacy fallback to `Public/.piscis/models/`). The predict worker downloads models on demand; the train worker uploads new models after training.
+- Models baked into the worker from the Raj Lab Hugging Face collection must be PyTorch `.pt` checkpoints. Legacy extensionless JAX checkpoints are converted once before publication; the build fails instead of shipping a model that would require Flax at runtime.
 - The predict worker uses `WorkerClient` for batch processing, which handles iteration over XY/Z/Time dimensions automatically.
 - Training validates that annotation tags, region tags, annotations, and regions are all non-empty before proceeding, sending user-facing error messages via `sendError()` for each failure case.
 - Training uses a warmup fraction of 0.1 (10% of epochs) and splits the random seed into two child seeds -- one for dataset generation and one for model training.
 - Both predict and train automatically use CUDA if a GPU is available, falling back to CPU otherwise.
+- Both images must install `libgl1`, `libglib2.0-0`, `libsm6`, `libice6`, `libx11-6` and `libxext6`. `piscis` depends on `opencv-python` (not `opencv-python-headless`) and imports `cv2` at module scope in `piscis/transforms.py`, so `import piscis` fails without them — at build time as well, since `download_models.py` imports the package. They are listed explicitly in both Dockerfile stages; before the multi-stage rewrite they arrived by accident through `r-base`'s dependency tree. Do not remove them without first switching the worker to `opencv-python-headless`, which needs nothing beyond glibc.
+
+### Model selection validation
+
+`compute()` validates the saved `Model` (predict) / `Initial Model Name` (train)
+selection with `annotation_tools.get_required_select()` before loading the
+model. A saved tool config can hold `null` for a `select` field even though the
+interface defines a default. Previously a `null` model was passed straight to
+the Girder model downloader, failing with a confusing error. Invalid selections
+now fail fast with `sendError` and re-raise, so the job is recorded as failed
+rather than silently succeeding; the fix is to re-select the model in the tool
+settings and save the tool again. Because models can be user-trained and
+downloaded from Girder, there is no static option list — validation checks only
+that the selection is a non-empty string.
 
 ## Notes
 

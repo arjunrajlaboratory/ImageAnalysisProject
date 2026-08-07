@@ -29,6 +29,12 @@ Parent annotations are filtered using the standard tag selector in the property 
 5. Assigns a count of 0 to any parent annotation that has no matching children.
 6. Uploads all property values in a single batch.
 
+## Error Handling
+
+- **Empty "Child Tags"** (nothing selected): the worker stops with an error asking the user to select at least one child tag. An empty tag set matches no annotations, so running would silently produce all-zero counts (and previously crashed with `KeyError: 'parentId'` on the empty-DataFrame groupby).
+- **No annotations match the parent or child tags**: the worker sends a warning naming the unmatched tags and continues; every parent gets a count of 0.
+- **No connections between matching parents and children**: the worker sends a warning suggesting a connection tool (e.g. "Connect to nearest") be run first, and uploads counts of 0 — a parent with no children is valid data.
+
 ## Notes
 
 - Tag filtering supports both exclusive mode (annotations must have exactly the specified tags) and inclusive mode (annotations must have at least one matching tag).

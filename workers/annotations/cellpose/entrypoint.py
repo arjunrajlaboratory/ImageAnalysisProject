@@ -13,6 +13,7 @@ from girder_utils import MODELS_DIR
 from shapely.geometry import Polygon
 
 from worker_client import WorkerClient, geometry_to_polygon_coords
+from annotation_utilities.annotation_tools import get_required_select
 
 BASE_MODELS = ['cyto', 'cyto2', 'cyto3', 'nuclei']
 
@@ -203,7 +204,12 @@ def compute(datasetId, apiUrl, token, params):
     worker = WorkerClient(datasetId, apiUrl, token, params)
 
     # Get the model and diameter from interface values
-    model = worker.workerInterface['Model']
+    try:
+        model = get_required_select(
+            worker.workerInterface.get('Model'), 'Model')
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
     primary_channel = worker.workerInterface.get('Primary Channel', None)
     secondary_channel = worker.workerInterface.get('Secondary Channel', None)
     diameter = float(worker.workerInterface['Diameter'])

@@ -6,8 +6,9 @@ import sys
 import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 
-from annotation_client.utils import sendProgress, sendError
+from annotation_client.utils import sendProgress, sendError, sendWarning
 
+import annotation_utilities.annotation_tools as annotation_tools
 
 
 from skimage.exposure import match_histograms
@@ -98,16 +99,38 @@ def compute(datasetId, apiUrl, token, params):
         reference_Time = 0
     else:
         reference_Time = int(workerInterface['Reference Time Coordinate']) - 1
-    allChannels = workerInterface['Channels to correct']
+    allChannels = workerInterface.get('Channels to correct')
 
     print("allChannels", allChannels)
-    # Output is allChannels {'1': True, '2': True}
-    # This means that channels 1 and 2 are being blurred
-    channels = [int(k) for k, v in allChannels.items() if v]
+    # The front end sends {'1': True, '2': True}, meaning channels 1 and 2 are
+    # being corrected. Any other shape is malformed and is rejected below.
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'Channels to correct')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
     print("channels", channels)
     if len(channels) == 0:
         sendError("No channels to correct")
         return
+
+    # A selection naming channels the dataset does not have would match no frame
+    # below, so the worker would upload an untouched copy of the input while
+    # reporting success. Dropping them here also keeps the reference-image lookup
+    # from asking for a channel that does not exist.
+    num_channels = tileClient.tiles.get('IndexRange', {}).get('IndexC', 1)
+    channels, missing_channels = annotation_tools.split_channel_selection(
+        channels, num_channels)
+    if missing_channels:
+        detail = (f"Selected channel indices {missing_channels} do not exist in "
+                  f"this dataset, which has {num_channels} channel(s) "
+                  f"(indices 0-{num_channels - 1}).")
+        if not channels:
+            sendError("None of the selected channels exist in this dataset.",
+                      info=detail)
+            return
+        sendWarning("Ignoring channels this dataset does not have.", info=detail)
 
     # Get reference images for each channel
     reference_images = {}
@@ -123,16 +146,17 @@ def compute(datasetId, apiUrl, token, params):
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
-            # Create a parameters dictionary with only the indices that exist in frame
-            # The len(k) > 5 is to avoid the 'Index' key that has no postfix to it
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items(
-            ) if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
 
             image = tileClient.getRegion(datasetId, frame=i).squeeze()
-            if frame['IndexC'] in channels:
+            # A single-channel dataset omits IndexC from the frame entirely; channel
+            # 0 is then the only channel there is.
+            frame_channel = annotation_tools.get_frame_index(frame, 'IndexC')
+            if frame_channel in channels:
                 # Only process the channel that is being processed
                 image = match_histograms(
-                    image, reference_images[frame['IndexC']])
+                    image, reference_images[frame_channel])
 
             sink.addTile(image, 0, 0, **large_image_params)
 

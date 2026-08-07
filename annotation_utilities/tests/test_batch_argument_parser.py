@@ -1,3 +1,5 @@
+import pytest
+
 from annotation_utilities import batch_argument_parser
 
 
@@ -69,3 +71,38 @@ def test_get_batch_ranges_preserves_numeric_ranges_and_current_tile_defaults():
     )
 
     assert result == ([0, 1], [2], [6])
+
+
+def test_get_batch_ranges_names_the_field_that_failed_to_parse():
+    """Direct batching loops (the SAM workers) surface this message, so it has
+    to identify the offending field rather than leak a bare parser traceback."""
+    with pytest.raises(ValueError) as excinfo:
+        batch_argument_parser.get_batch_ranges(
+            tile={"XY": 0, "Z": 0, "Time": 0},
+            worker_interface={
+                "Batch XY": "",
+                "Batch Z": "first-third",
+                "Batch Time": "",
+            },
+            index_range={"IndexZ": 3},
+        )
+
+    message = str(excinfo.value)
+    assert message.startswith("Batch Z must contain 1-based")
+    assert "'1-3, 5-8'" in message
+    assert "'all'" in message
+    assert "'first-third'" in message
+
+
+def test_get_batch_ranges_returns_reiterable_lists():
+    """process_range_list yields one-shot generators; callers such as
+    WorkerClient.validate_coordinates read the coordinates before processing
+    them, so an exhausted generator would silently process nothing."""
+    batch_xy, _, _ = batch_argument_parser.get_batch_ranges(
+        tile={"XY": 0, "Z": 0, "Time": 0},
+        worker_interface={"Batch XY": "all"},
+        index_range={"IndexXY": 3},
+    )
+
+    assert list(batch_xy) == [0, 1, 2]
+    assert list(batch_xy) == [0, 1, 2]

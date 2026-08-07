@@ -248,3 +248,11 @@ gc.addMetadataToItem(item['itemId'], {'tool': 'YourWorker'})
 | `channelCheckboxes` | `dict[str, bool]` | `{"0": True, "1": False}` |
 | `tags` | `list[str]` | `["DAPI blob"]` |
 | `layer` | `str` | `"layer_id"` |
+
+Never call `.items()` on a raw `channelCheckboxes` value. Parse it with
+`annotation_tools.get_selected_channels(value, field_name)`, which returns a
+sorted `list[int]`, `[]` for an unset field, and raises `ValueError` on any other
+shape (catch it and `sendError`). A bare list of indices (`[0]`) is rejected as
+malformed rather than normalized: the checkbox widget never emits it, so its
+provenance is unknown and guessing the intended channel risks processing data the
+user never selected.

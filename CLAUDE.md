@@ -46,6 +46,16 @@ When it was active, the `PostToolUse` hook (`.claude/hooks/update-worker-docs.sh
 
 ### Documentation Conventions
 
+- **Documentation updates ship with the change.** Any change to a worker's
+  interface, behavior, outputs, or error handling must update the affected
+  `WORKERNAME.md` (including shared docs such as `PISCIS.md`) in the same PR,
+  and `REGISTRY.md` when workers are added, removed, or renamed. Changes to
+  the shared packages (`annotation_utilities`, `worker_client`) that alter
+  worker-facing behavior should also be reflected in CLAUDE.md / AGENTS.md
+  (e.g. the interface pitfall sections). Since the automated doc hooks are
+  disabled, this is a manual step — treat a PR as incomplete until the docs
+  match the code.
+
 - Each worker's doc file is named `WORKERNAME.md` (uppercase, matching the worker name) and lives in the worker's directory.
 - These docs are **hand-maintained**. `generate_worker_docs.py` only creates a
   stub for a worker that has **no** doc file yet (existing docs are preserved, per
@@ -142,6 +152,78 @@ Each interface type returns a specific data type in `params['workerInterface']['
 | `tags` | **`list` of `str`** | `["DAPI blob"]`, `["cell", "nucleus"]` |
 | `layer` | `str` | `"layer_id"` |
 
+**Common pitfall with `channelCheckboxes`**: never call `.items()` on the raw
+value. A production `cellposesam` job received
+`{"Channel for Slot 1": [0]}` — a bare list instead of the documented mapping —
+and every worker that read it directly crashed with
+`AttributeError: 'list' object has no attribute 'items'`. Always parse with
+`annotation_tools.get_selected_channels()`, which returns a sorted list of `int`
+indices, returns `[]` when nothing is selected, and raises `ValueError` on any
+other shape rather than guessing a channel.
+
+The list shape is **rejected, not normalized.** The checkbox widget has never
+emitted it (it has been typed `Record<number, boolean>` since 2025-01-31), and
+the one upstream path that accepts arrays — the AI panel — normalizes them to the
+map before saving. So a list value means the config was written by something
+outside the UI, and since we cannot confirm what channel it intended, guessing
+that `[0]` meant channel 0 risks running the tool on data the user never
+selected. Affected configs need their channels re-selected — see
+`todo/channelcheckboxes-serialization.md`.
+
+```python
+import annotation_utilities.annotation_tools as annotation_tools
+
+# CORRECT - reports a malformed value instead of crashing on it:
+try:
+    channels = annotation_tools.get_selected_channels(
+        workerInterface.get('Channels to correct'), 'Channels to correct')
+except ValueError as exc:
+    sendError("Could not read the channel selection.", info=str(exc))
+    return
+if not channels:
+    sendError("No channels selected")
+    return
+
+# WRONG - crashes when the value is a list:
+channels = [int(k) for k, v in workerInterface['Channels to correct'].items() if v]
+```
+
+**Common pitfall with `select`**: a saved tool config can hold `null` for a
+`select` field even though the interface defines a default — the config stores
+whatever was serialized when the tool was saved, and a config saved against an
+older worker image can also name an option (e.g. a model checkpoint) that no
+longer exists. A production `sam_fewshot_segmentation` job received
+`"Model": null` and crashed with `FileNotFoundError: '/None.pth'` deep inside
+SAM's checkpoint loader. Never build a checkpoint path or model name from the
+raw value; validate it with `annotation_tools.get_required_select()` first and
+`sendError` on `ValueError`:
+
+```python
+# CORRECT - rejects null/stale selections with a clear message:
+try:
+    model_name = annotation_tools.get_required_select(
+        workerInterface.get('Model'), 'Model', allowed_values=MODELS)
+except ValueError as exc:
+    sendError("Could not read the model selection.", info=str(exc))
+    raise
+
+# WRONG - a null Model becomes the checkpoint path '/None.pth':
+model_name = workerInterface['Model']
+checkpoint_path = f"/{model_name}.pth"
+```
+
+Missing values are rejected, not silently replaced with the interface default:
+the saved value is what the user believes the tool runs with, and substituting
+a different model changes the output. Validate before any heavy imports or GPU
+model loading so the job fails fast with feedback instead of after setup.
+
+`sendError` only prints a message for the frontend to display -- it does not
+fail the job. Re-`raise` after it (rather than `return`) so the Girder job is
+recorded as ERROR: a job that returns cleanly is recorded as SUCCESS, and a
+misconfigured run that silently reports success is worse than a crash because
+nobody goes looking for it. Verified in the browser: with `return`, the tool
+showed the error banner but the job status was SUCCESS.
+
 **Common pitfall with `tags`**: The `tags` type returns a **plain list of strings**, NOT a dict. Do not call `.get('tags')` on the result.
 
 ```python
@@ -195,6 +277,7 @@ annotations = annotationClient.getAnnotationsByDatasetId(
 - The case-insensitive value `all` expands to every coordinate in the corresponding dataset dimension. An empty field processes only the current tile coordinate.
 - Prefer `WorkerClient` for annotation workers. Direct batching loops should call `batch_argument_parser.get_batch_ranges(tile, workerInterface, index_range)` rather than parsing each standard field independently.
 - A missing `IndexRange` or missing dimension key represents one available coordinate, `0`.
+- `get_batch_ranges` raises `ValueError` naming the offending field when a Batch value cannot be parsed. `WorkerClient` catches it, reports it with `sendError`, and re-raises so the job is recorded as failed.
 
 ### Coordinate Conventions (Critical)
 

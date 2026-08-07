@@ -56,10 +56,25 @@ Uses checkpoints from `/code/segment-anything-2-nimbus/checkpoints/` (note: diff
 
 ### GPU Handling
 
-Requires CUDA GPU. Enables bfloat16 autocast and TF32 on Ampere GPUs.
+Requires CUDA GPU. Enables bfloat16 autocast and TF32 on Ampere GPUs. The image ships CUDA 13.0 with PyTorch's cu130 wheel, which requires an NVIDIA driver of r580 or newer on the host.
+
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a checkpoint
+that no longer exists in the current image. Previously a `null` or stale model
+name crashed with `KeyError` in the model→config mapping or `FileNotFoundError`
+in the checkpoint loader. Invalid selections now fail fast with `sendError` and
+re-raise, so the job is recorded as failed rather than silently succeeding; the
+fix is to re-select the model in the tool settings and save the tool again. The
+selection is validated against the `MODEL_TO_CFG` mapping and the checkpoint
+file's presence in the image is verified before `build_sam2` runs.
 
 ## Notes
 
+- This worker is the only one built on the `segment-anything-2-nimbus` fork rather than upstream `facebookresearch/sam2`, and the fork carries two dependencies upstream does not. It imports `cv2` at module scope in `sam2/utils/misc.py` (upstream imports it lazily inside `remove_small_regions`), so `opencv-python-headless` is required in `environment.yml` even though no worker code imports cv2 directly. It also needs the compiled `sam2/_C` CUDA extension, because this worker leaves `apply_postprocessing` at its default `True`, which sets `fill_hole_area=8` and routes mask cleanup through `_C`. Both failures surface only when `compute()` constructs the predictor, not at import time, so a broken image looks healthy until it runs.
 - This worker uses `propagate_in_video()` which processes the entire frame sequence at once. For very long sequences, this may require significant GPU memory. Consider using `sam2_propagate` for memory-constrained situations.
 - Connections are always created (using the `SAM2_VIDEO` tag) when `Connect sequentially` is enabled. The `connect_sequentially` parameter from the interface controls this.
 - Multiple annotations at different frames can be provided as prompts simultaneously -- each gets its own `obj_id` and is tracked independently through the video.

@@ -39,6 +39,14 @@ def get_batch_ranges(tile, worker_interface, index_range=None):
     Empty fields retain the current tile coordinate. The case-insensitive value
     ``all`` expands to every coordinate available in the corresponding dataset
     dimension. A missing IndexRange dimension represents a single coordinate.
+
+    ``process_range_list`` returns one-shot generators; the coordinates are
+    materialized into lists here so callers can inspect them more than once
+    (e.g. WorkerClient validates them before iterating).
+
+    Raises ValueError naming the offending field when a Batch field cannot be
+    parsed, so the caller can surface it with sendError rather than leaking a
+    bare parser traceback.
     """
     index_range = index_range or {}
     dimensions = (
@@ -49,12 +57,19 @@ def get_batch_ranges(tile, worker_interface, index_range=None):
     batches = []
 
     for field_name, tile_key, index_key in dimensions:
+        raw_value = worker_interface.get(field_name)
         available = range(index_range.get(index_key, 1))
-        values = process_range_list(
-            worker_interface.get(field_name),
-            convert_one_to_zero_index=True,
-            all_values=available,
-        )
+        try:
+            values = process_range_list(
+                raw_value,
+                convert_one_to_zero_index=True,
+                all_values=available,
+            )
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{field_name} must contain 1-based positions or ranges, for "
+                f"example '1-3, 5-8', or 'all' to cover every coordinate. "
+                f"Could not parse {raw_value!r}: {exc}") from exc
         batches.append([tile[tile_key]] if values is None else list(values))
 
     return tuple(batches)

@@ -39,7 +39,7 @@ In addition to polygon annotations, the worker also attempts to fetch and refine
 
 ### GPU Handling
 
-Detects CUDA availability at runtime and falls back to CPU if no GPU is available. When CUDA is present, enables bfloat16 autocast and TF32 on Ampere GPUs. This is the only SAM2 worker with explicit CPU fallback.
+Detects CUDA availability at runtime and falls back to CPU if no GPU is available. When CUDA is present, enables bfloat16 autocast and TF32 on Ampere GPUs. This is the only SAM2 worker with explicit CPU fallback. The image ships CUDA 13.0 with PyTorch's cu130 wheel, which requires an NVIDIA driver of r580 or newer on the host.
 
 ### Error Handling
 
@@ -52,6 +52,20 @@ Annotations are grouped by (XY, Z, Time) location before processing. The image f
 ### Model Selection
 
 Same SAM2.1 Hiera variants as other SAM2 workers: tiny, small (default), base_plus, and large. Checkpoints are auto-detected from `/code/sam2/checkpoints/`.
+
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a checkpoint
+that no longer exists in the current image. Previously a `null` or stale model
+name crashed with `KeyError` in the model→config mapping or `FileNotFoundError`
+in the checkpoint loader. Invalid selections now fail fast with `sendError` and
+re-raise, so the job is recorded as failed rather than silently succeeding; the
+fix is to re-select the model in the tool settings and save the tool again. The
+selection is validated against the `MODEL_TO_CFG` mapping and the checkpoint
+file's presence in the image is verified before `build_sam2` runs.
 
 ## Notes
 

@@ -1,49 +1,75 @@
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 as base
-LABEL com.nvidia.volumes.needed="nvidia_driver"
+# ---------------------------------------------------------------------------
+# Multi-stage build (see todo/ml-worker-image-size.md).
+#
+# Nothing in this worker compiles a CUDA extension -- piscis 1.x is pure Python
+# on top of PyTorch -- so the CUDA *devel* image only serves to give the build
+# stage a compiler for any source-only pip dependency. The runtime stage ships on
+# the much smaller CUDA *runtime* image and copies over just the finished conda
+# env, the trees that are pip-installed in editable mode, and the model cache.
+#
+# The previous `FROM base as build` was a no-op: nothing was ever copied between
+# stages, so the toolchain, the conda installer, the pip wheel cache and the
+# conda package cache all stayed in the shipped image.
+#
+# PyTorch never uses the base image's CUDA libraries: it loads the cuDNN /
+# cuBLAS / cuFFT / NCCL shipped inside its own `nvidia-*` pip wheels under
+# site-packages.
+#
+# Miniconda was also swapped for Miniforge here, matching every other worker.
+# That drops the `defaults` channel and with it the `conda tos accept` dance;
+# this worker's environment.yml is only `python=3.11` + `pip`, all of which
+# conda-forge provides.
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS build
 
-ENV NVIDIA_VISIBLE_DEVICES all
-ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+# pip's wheel cache is a full second copy of the torch + nvidia-* wheels
+# (~4 GB) and is worthless inside an image.
+ENV PIP_NO_CACHE_DIR=1
 
-LABEL isUPennContrastWorker=True
-LABEL isAnnotationWorker=True
-LABEL interfaceName="Piscis (Predict)"
-LABEL interfaceCategory="Piscis"
-
+# Build-time toolchain, plus the opencv runtime libs (see below) -- only the
+# latter are repeated in the runtime stage.
+#
+# `r-base` (listed twice) and `software-properties-common` were never used
+# *directly*, but r-base-core's dependency tree was silently supplying the
+# shared libraries `opencv-python` needs: libglib2.0-0, libx11-6, libsm6 and
+# libice6 (via libxt6) and libxext6 (via libtk8.6). piscis depends on
+# `opencv-python` -- not `-headless` -- and imports cv2 at module scope in
+# piscis/transforms.py, so `import piscis` needs them here as well: the
+# `python /download_models.py` step below imports the package. libgl1 is listed
+# explicitly rather than left to whatever the CUDA base happens to carry.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy tzdata && \
-  apt-get install -qy software-properties-common python3-software-properties && \
-  apt-get update && apt-get install -qy \
+  apt-get install -qy \
   build-essential \
   wget \
-  python3 \
-  r-base \
+  git \
   libffi-dev \
   libssl-dev \
   libjpeg-dev \
   zlib1g-dev \
-  r-base \
-  git \
-  libpython3-dev && \
+  libpython3-dev \
+  libgl1 \
+  libglib2.0-0 \
+  libsm6 \
+  libice6 \
+  libx11-6 \
+  libxext6 && \
   apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/root/miniconda3/bin:$PATH"
-ARG PATH="/root/miniconda3/bin:$PATH"
+ENV PATH="/root/miniforge3/bin:$PATH"
+ARG PATH="/root/miniforge3/bin:$PATH"
 
 RUN wget \
-    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
     && mkdir /root/.conda \
-    && bash Miniconda3-latest-Linux-x86_64.sh -b \
-    && rm -f Miniconda3-latest-Linux-x86_64.sh
-
-FROM base as build
-
-RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    && bash Miniforge3-Linux-x86_64.sh -b \
+    && rm -f Miniforge3-Linux-x86_64.sh
 
 COPY ./workers/annotations/piscis/environment.yml /
 RUN conda env create --file /environment.yml
 SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
 
-RUN git clone https://github.com/Kitware/UPennContrast/
+# Shallow clone: full history is dead weight in an image.
+RUN git clone --depth 1 https://github.com/Kitware/UPennContrast/ && rm -rf /UPennContrast/.git
 
 RUN pip install -r /UPennContrast/devops/girder/annotation_client/requirements.txt
 RUN pip install -e /UPennContrast/devops/girder/annotation_client/
@@ -51,12 +77,59 @@ RUN pip install -e /UPennContrast/devops/girder/annotation_client/
 RUN pip install piscis==1.0.0
 
 WORKDIR /
-RUN git clone https://github.com/arjunrajlaboratory/ImageAnalysisProject/
-RUN pip install /ImageAnalysisProject/annotation_utilities
-RUN pip install /ImageAnalysisProject/worker_client
+# Install the local annotation_utilities / worker_client, not a fresh clone of
+# ImageAnalysisProject from GitHub: cloning built the image against whatever was
+# on the default branch instead of the tree being built.
+COPY ./annotation_utilities /annotation_utilities
+RUN pip install /annotation_utilities
 
+COPY ./worker_client /worker_client
+RUN pip install /worker_client
+
+# Bakes the pretrained models into ~/.piscis/models so the first run does not
+# have to download them. That directory is copied into the runtime stage.
 COPY ./workers/annotations/piscis/download_models.py /
 RUN python /download_models.py
+
+# Drop conda's package cache / tarballs -- another full copy of the env.
+RUN conda clean --all --yes
+
+# ---------------------------------------------------------------------------
+# Runtime stage
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+LABEL isUPennContrastWorker=True
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+
+# libgl1 .. libxext6 are what `opencv-python` links against; piscis imports cv2
+# at module scope, so the worker cannot start without them. See the build stage.
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -qy \
+  tzdata \
+  ca-certificates \
+  libgl1 \
+  libglib2.0-0 \
+  libsm6 \
+  libice6 \
+  libx11-6 \
+  libxext6 && \
+  apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/miniforge3/envs/worker/bin:$PATH"
+
+# The finished conda env, plus every tree that was pip-installed with `-e` and
+# therefore has to stay at its build-time path. Only the annotation_client
+# subtree is needed from the UPennContrast checkout, not the whole repo. Note
+# that `conda` itself is deliberately not copied -- run_worker.sh activates the
+# env by path, so the base conda install is build-time only.
+COPY --from=build /root/miniforge3/envs/worker /root/miniforge3/envs/worker
+COPY --from=build /UPennContrast/devops/girder/annotation_client /UPennContrast/devops/girder/annotation_client
+# piscis.paths.MODELS_DIR is ~/.piscis/models; utils.download_girder_model also
+# writes user models there at runtime.
+COPY --from=build /root/.piscis /root/.piscis
 
 COPY ./workers/annotations/piscis/utils.py /
 COPY ./workers/annotations/piscis/predict/entrypoint.py /

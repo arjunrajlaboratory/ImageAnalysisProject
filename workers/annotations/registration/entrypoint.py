@@ -176,7 +176,12 @@ def compute(datasetId, apiUrl, token, params):
     else:
         apply_XY = batch_argument_parser.process_range_list(
             workerInterface['Apply to XY coordinates'], convert_one_to_zero_index=True)
-        apply_XY = list(set(apply_XY) & set(range_xy))
+        apply_XY = sorted(set(apply_XY) & set(range_xy))
+        if not apply_XY:
+            sendError(f"None of the requested XY coordinates "
+                      f"({workerInterface['Apply to XY coordinates']}) exist in this "
+                      f"dataset, which has {len(range_xy)} XY position(s).")
+            return
 
     if workerInterface['Reference Z Coordinate'] == "":
         reference_Z = 0
@@ -211,16 +216,38 @@ def compute(datasetId, apiUrl, token, params):
     if reference_channel == "" or reference_channel == -1:
         reference_channel = 0
 
-    allChannels = workerInterface['Channels to correct']
+    allChannels = workerInterface.get('Channels to correct')
 
     print("allChannels", allChannels)
-    # Output is allChannels {'1': True, '2': True}
-    # This means that channels 1 and 2 are being blurred
-    channels = [int(k) for k, v in allChannels.items() if v]
+    # The front end sends {'1': True, '2': True}, meaning channels 1 and 2 are
+    # being corrected. Any other shape is malformed and is rejected below.
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'Channels to correct')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
     print("channels", channels)
     if len(channels) == 0:
         sendError("No channels to correct")
         return
+
+    # A selection naming channels the dataset does not have would match no frame in
+    # the output loop, so the worker would spend the whole registration and then
+    # upload an unregistered copy of the input while reporting success. This is the
+    # channel twin of the "Apply to XY coordinates" check above.
+    num_channels = tileInfo['IndexRange'].get('IndexC', 1)
+    channels, missing_channels = annotation_tools.split_channel_selection(
+        channels, num_channels)
+    if missing_channels:
+        detail = (f"Selected channel indices {missing_channels} do not exist in "
+                  f"this dataset, which has {num_channels} channel(s) "
+                  f"(indices 0-{num_channels - 1}).")
+        if not channels:
+            sendError("None of the selected channels exist in this dataset.",
+                      info=detail)
+            return
+        sendWarning("Ignoring channels this dataset does not have.", info=detail)
 
     # Okay, now let's get the crop rectangle (could also be a blob)
     should_use_reference_region = params['workerInterface'][
@@ -399,23 +426,19 @@ def compute(datasetId, apiUrl, token, params):
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
-            # Create a parameters dictionary with only the indices that exist in frame
-            # The len(k) > 5 is to avoid the 'Index' key that has no postfix to it
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items(
-            ) if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
 
             image = tileClient.getRegion(datasetId, frame=i).squeeze()
-            if frame['IndexC'] in channels:
-                # First check if frame even has a "IndexXY" key
-                if 'IndexXY' in frame:
-                    if frame['IndexXY'] in apply_XY:
-                        transformed_image = sr.transform(
-                            image, tmat=registration_matrices[(frame['IndexXY'], frame['IndexT'])])
-                        image = safe_astype(transformed_image, image.dtype)
-                else:
-                    transformed_image = sr.transform(
-                        image, tmat=registration_matrices[(0, frame['IndexT'])])
-                    image = safe_astype(transformed_image, image.dtype)
+            # A dimension of size one is omitted from the frame entirely, in which
+            # case coordinate 0 is the only one there is.
+            frame_channel = annotation_tools.get_frame_index(frame, 'IndexC')
+            frame_xy = annotation_tools.get_frame_index(frame, 'IndexXY')
+            if frame_channel in channels and frame_xy in apply_XY:
+                frame_time = annotation_tools.get_frame_index(frame, 'IndexT')
+                transformed_image = sr.transform(
+                    image, tmat=registration_matrices[(frame_xy, frame_time)])
+                image = safe_astype(transformed_image, image.dtype)
 
             sink.addTile(image, 0, 0, **large_image_params)
 

@@ -83,6 +83,22 @@ Same as SAM2 worker. SAM models were trained on images where objects occupy a re
 
 Same as SAM2 worker. Binary masks focus feature pooling on actual object pixels rather than background.
 
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a checkpoint
+that no longer exists in the current image. Previously a `null` model built the
+checkpoint path `/None.pth` and crashed with `FileNotFoundError` deep inside
+SAM's loader (seen in production, May 2026). Invalid selections now fail fast
+with `sendError` and re-raise, so the job is recorded as failed rather than
+silently succeeding; the fix is to re-select the model in the tool settings and
+save the tool again. The selection is validated against the worker's model list
+and the checkpoint file's presence in the image is verified before the heavy
+torch/SAM imports, so a bad config fails in milliseconds instead of after GPU
+setup.
+
 ## Tuning Guide
 
 ### Similarity Threshold

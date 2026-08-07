@@ -41,9 +41,10 @@ user if the request is ambiguous):
    `select`, `checkbox`, `channel`, `channelCheckboxes`, `tags`, `layer`,
    `notes`) does the user need, and what does each return? The type→return-type
    table lives in the project `CLAUDE.md`; the `tags` type returns a **plain
-   list of strings** (a common crash source), and `channelCheckboxes` returns a
-   `dict`. `workers/annotations/sample_interface/entrypoint.py` demonstrates
-   every type.
+   list of strings** (a common crash source), and `channelCheckboxes` returns
+   either a `dict` or a bare `list` of selected indices — read it with
+   `annotation_tools.get_selected_channels()` rather than `.items()`.
+   `workers/annotations/sample_interface/entrypoint.py` demonstrates every type.
 
 ## Step 2 — Write `entrypoint.py`
 
@@ -56,7 +57,9 @@ matches Step 1:
   `displayOrder`; add a `notes` field at `displayOrder: 0` describing the tool.
 - **`compute(datasetId, apiUrl, token, params)`** — the work.
   - Annotation workers should use `WorkerClient` (`worker.process(f, f_annotation=...)`),
-    which handles Batch XY/Z/Time iteration and upload for you. Model on
+    which handles Batch XY/Z/Time iteration and upload for you. Numeric batch
+    inputs are 1-indexed, case-insensitive `all` expands from dataset metadata,
+    and an empty field uses the current tile. Model on
     `workers/annotations/random_squares/entrypoint.py`.
   - Property workers build `{annotation_id: {prop: value}}`, wrap as
     `{datasetId: property_value_dict}`, and call
@@ -127,6 +130,10 @@ Mock `UPennContrastWorkerPreviewClient`, `tiles.UPennContrastDataset`, and
 `references/templates.md`; model on
 `workers/annotations/random_squares/tests/`.
 
+For a worker exposing standard Batch XY/Z/Time fields, also test that `all`
+expands a mocked multi-position `IndexRange` and that a missing `IndexRange`
+falls back to coordinate `0`.
+
 Per the project's test-first convention, write these tests **before** the
 implementation when practical, and make sure they fail before they pass.
 
@@ -163,7 +170,9 @@ drifts. Do all of these:
    parameter table, computed properties (property workers), implementation
    notes, and GPU/limitations. Model on `random_squares/RANDOM_SQUARES.md`
    (concise) or `deconwolf/DECONWOLF.md` (comprehensive). Keep the labels in the
-   Dockerfile and the doc consistent.
+   Dockerfile and the doc consistent. If the worker exposes standard batch
+   fields, document numeric ranges, the literal `all`, and the empty-field
+   current-tile behavior.
 
 3. **`REGISTRY.md`** — add the worker to the correct category table. This is the
    master index and must be updated on every add/remove/rename.

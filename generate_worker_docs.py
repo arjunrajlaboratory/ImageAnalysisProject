@@ -49,6 +49,7 @@ ML_WORKER_NAMES = {
     "cellpose",
     "cellpose_train",
     "cellposesam",
+    "cellposesam_train",
     "condensatenet",
     "deepcell",
     "piscis",

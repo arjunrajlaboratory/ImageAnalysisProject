@@ -57,6 +57,32 @@ def get_annotations_with_tags(elements, tags, exclusive=False):
     return result
 
 
+def filter_usable_training_samples(training_images, label_images):
+    """Drop empty image/label pairs and samples without labeled objects.
+
+    Cellpose removes samples with fewer than ``min_train_masks`` objects inside
+    ``train_seg``. If every region is empty, that leaves an empty training set
+    and the upstream code fails later with an opaque divide-by-zero. Filtering
+    here lets workers report a useful error before starting model training.
+
+    Returns the filtered image list, filtered label list, and number dropped.
+    """
+    if len(training_images) != len(label_images):
+        raise ValueError("Training images and labels must have the same length.")
+
+    usable_images = []
+    usable_labels = []
+    dropped = 0
+    for image, labels in zip(training_images, label_images):
+        if image.size == 0 or labels.size == 0 or not np.any(labels > 0):
+            dropped += 1
+            continue
+        usable_images.append(image)
+        usable_labels.append(labels)
+
+    return usable_images, usable_labels, dropped
+
+
 def get_annotations_with_tag(elements, tag, exclusive=False):
     result = []
     for element in elements:
@@ -261,6 +287,214 @@ def points_to_annotations(points, datasetId, XY=0, Time=0, Z=0, tags=None, chann
         annotations.append(annotation)
 
     return annotations
+
+
+# The index keys Girder puts on each frame in tileClient.tiles['frames']. A key is
+# omitted entirely when the dataset has only one position along that dimension.
+FRAME_INDEX_KEYS = ('IndexXY', 'IndexZ', 'IndexT', 'IndexC')
+
+
+def get_frame_index(frame, dimension, default=0):
+    """
+    Read one index out of a frame from tileClient.tiles['frames'].
+
+    Girder omits an index key from the frame dictionaries whenever the dataset has a
+    single position along that dimension: a single-channel dataset has no 'IndexC'
+    key at all, a dataset with no time series has no 'IndexT', and so on. A missing
+    key therefore means "coordinate 0 along that dimension", so subscripting the
+    frame directly (frame['IndexC']) raises KeyError on perfectly valid datasets.
+
+    Args:
+    frame (dict): One entry of tileClient.tiles['frames'].
+    dimension (str): 'IndexC' or 'C' (likewise XY, Z, T).
+    default (int): Value for an absent dimension. Default is 0, the only valid
+        coordinate along a dimension the dataset does not have.
+
+    Raises:
+    ValueError: If dimension is not one of the known frame index keys, so that a
+        typo fails loudly instead of silently reporting coordinate 0.
+    """
+    key = dimension if dimension.startswith('Index') else f'Index{dimension}'
+    if key not in FRAME_INDEX_KEYS:
+        raise ValueError(f"Unknown frame dimension {dimension!r}; "
+                         f"expected one of {FRAME_INDEX_KEYS}.")
+    return frame.get(key, default)
+
+
+def frame_to_large_image_params(frame):
+    """
+    Convert a frame into the keyword arguments for a large_image sink's addTile().
+
+    Girder frames carry keys such as 'IndexXY'/'IndexZ'/'IndexT'/'IndexC', which
+    large_image expects as 'xy'/'z'/'t'/'c'. Dimensions the dataset does not use are
+    absent from the frame and are likewise absent from the result. Any other 'Index*'
+    axis is passed through the same way rather than dropped, so that an unusual axis
+    still lands in its own plane instead of colliding with another frame. The bare
+    'Index' key (the flat frame number) is skipped, as are non-index keys like
+    'Channel'; the length test is what excludes 'Index' itself.
+
+    Args:
+    frame (dict): One entry of tileClient.tiles['frames'].
+    """
+    return {key.lower()[5:]: value for key, value in frame.items()
+            if key.startswith('Index') and len(key) > 5}
+
+
+def get_selected_channels(value, field_name='channel selection'):
+    """
+    Parse a `channelCheckboxes` interface value into a sorted list of channel indices.
+
+    The only valid shape is the documented mapping of channel index to checked
+    state, e.g. ``{'0': True, '1': False, '2': True}`` -> ``[0, 2]``. An unset
+    field (``None``, ``''``, ``{}``) returns an empty list, which callers must
+    treat as "nothing selected" and handle with their own required-field logic.
+
+    Anything else raises ``ValueError`` rather than guessing a channel, since
+    running a tool on the wrong channel is worse than failing outright.
+
+    In particular, a bare list of channel indices (``[0]``) is rejected. The
+    NimbusImage checkbox widget has never emitted that shape, and the one
+    upstream path that accepts arrays (the AI panel) normalizes them to the map
+    before saving, so a list value means the tool config was written by something
+    outside the UI. Because we cannot confirm which channel it meant, it raises
+    here rather than being read as "channel 0"; the config needs its channels
+    re-selected (see todo/channelcheckboxes-serialization.md).
+
+    Args:
+    - value: the raw ``params['workerInterface'][field_name]`` value
+    - field_name: name of the interface field, used in error messages
+
+    Returns:
+    - a sorted list of unique non-negative int channel indices
+    """
+    def bad(detail):
+        return ValueError(
+            f"'{field_name}' has an unexpected format ({detail}). The worker "
+            f"interface may be out of date or misconfigured.")
+
+    if value is None or value == '':
+        return []
+
+    if isinstance(value, (list, tuple)):
+        raise bad(
+            f"got a list of channel indices ({value!r}) instead of a mapping of "
+            f"channel index to on/off")
+
+    if not isinstance(value, dict):
+        raise bad(f"{type(value).__name__}: {value!r}")
+
+    selected = []
+    for key, checked in value.items():
+        if not checked:
+            continue
+        try:
+            index = int(key)
+        except (TypeError, ValueError):
+            raise bad(f"channel key {key!r} is not an integer")
+        selected.append(index)
+
+    if any(index < 0 for index in selected):
+        raise bad(f"negative channel index in {value!r}")
+
+    return sorted(set(selected))
+
+
+def get_required_select(value, field_name, allowed_values=None):
+    """
+    Validate a required ``select`` interface value and return it as a string.
+
+    A saved tool configuration can hold ``null`` for a ``select`` field even
+    though the interface defines a default — the config stores whatever was
+    serialized when the tool was saved, not what the interface would show
+    today. Read unvalidated, that ``None`` surfaces as a cryptic crash far
+    from the cause: the sam_fewshot_segmentation worker built the checkpoint
+    path ``/None.pth`` from it and died inside SAM's model loader with
+    ``FileNotFoundError`` after already reporting "Loading model".
+
+    Missing and stale values are rejected rather than silently replaced with
+    the interface default: the saved value is what the user believes the tool
+    will run with, and substituting a different model changes the output.
+    Callers catch the ``ValueError`` and ``sendError`` so the user learns to
+    re-select the field and save the tool.
+
+    Args:
+    - value: the raw ``params['workerInterface'][field_name]`` value
+    - field_name: name of the interface field, used in error messages
+    - allowed_values: optional container of valid options (e.g. the same list
+      the interface offers, or the checkpoints present in the image). When
+      given, a value outside it is rejected — this catches configs saved
+      against an older worker image whose model list has since changed.
+
+    Returns:
+    - the validated value, unchanged
+
+    Raises:
+    - ValueError: when the value is None, empty, not a string, or not one of
+      ``allowed_values``.
+    """
+    fix_hint = (f"Re-select '{field_name}' in the tool settings and save the "
+                f"tool again.")
+
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise ValueError(
+            f"The '{field_name}' setting has no value. The saved tool "
+            f"configuration may predate the current interface or be "
+            f"misconfigured. {fix_hint}")
+
+    if not isinstance(value, str):
+        raise ValueError(
+            f"The '{field_name}' setting has an unexpected format "
+            f"({type(value).__name__}: {value!r}). {fix_hint}")
+
+    if allowed_values is not None and value not in allowed_values:
+        raise ValueError(
+            f"The '{field_name}' setting is {value!r}, which is not one of "
+            f"the available options: {sorted(allowed_values)}. The saved "
+            f"tool configuration may be out of date. {fix_hint}")
+
+    return value
+
+
+def split_channel_selection(selected_channels, num_channels):
+    """
+    Split a channel selection into the channels a dataset has and the ones it lacks.
+
+    `get_selected_channels` validates the *shape* of a `channelCheckboxes` value but
+    cannot know how many channels the dataset actually has, so a saved tool config
+    legitimately parses to something like [1] when it is run against a
+    single-channel dataset. Left unchecked, the per-frame channel filter then
+    matches no frame at all and the worker uploads an untouched copy of its input
+    while reporting success. Callers use the `missing` half to report that instead:
+    an error when nothing is left to process, a warning when only part of the
+    selection is unusable.
+
+    Args:
+    selected_channels (iterable of int): Channel indices, typically the return of
+        get_selected_channels().
+    num_channels (int): How many channels the dataset has, i.e.
+        tileClient.tiles.get('IndexRange', {}).get('IndexC', 1). A dataset with a
+        single channel omits 'IndexC' from IndexRange entirely, which is why the
+        default of 1 matters.
+
+    Returns:
+    (present, missing): two sorted lists of unique ints. `present` holds the
+        selected indices that fall inside range(num_channels), `missing` the rest.
+        An empty selection yields two empty lists, so "nothing selected" stays
+        distinguishable from "nothing selected exists".
+
+    Raises:
+    ValueError: If num_channels is not a positive integer. Every dataset has at
+        least one channel, so a zero or negative count is a caller bug that would
+        otherwise silently reject every channel.
+    """
+    if not isinstance(num_channels, int) or num_channels < 1:
+        raise ValueError(
+            f"num_channels must be a positive integer, got {num_channels!r}.")
+
+    unique = sorted(set(selected_channels))
+    present = [channel for channel in unique if 0 <= channel < num_channels]
+    missing = [channel for channel in unique if not 0 <= channel < num_channels]
+    return present, missing
 
 
 def get_images_for_all_channels(tileClient, datasetId, XY, Z, Time):

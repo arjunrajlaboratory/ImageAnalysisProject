@@ -9,7 +9,7 @@ from typing import Sequence
 import annotation_client.annotations as annotations
 import annotation_client.tiles as tiles
 
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendError, sendProgress
 from annotation_utilities import batch_argument_parser
 # Re-exported for workers that import it from worker_client (e.g. cellposesam).
 from annotation_utilities.annotation_tools import geometry_to_polygon_coords
@@ -48,11 +48,20 @@ class WorkerClient:
         self.annotationClient = annotationClient
         self.datasetClient = datasetClient
 
+        # Batch parsing happens after datasetClient exists because 'all'
+        # expands from the dataset's IndexRange. get_batch_ranges materializes
+        # the one-shot generators into lists so validation and processing can
+        # inspect the same coordinates, and names the offending field when the
+        # input is malformed.
         index_range = datasetClient.tiles.get('IndexRange', {})
-        self.batch_xy, self.batch_z, self.batch_time = (
-            batch_argument_parser.get_batch_ranges(
-                tile, workerInterface, index_range)
-        )
+        try:
+            self.batch_xy, self.batch_z, self.batch_time = (
+                batch_argument_parser.get_batch_ranges(
+                    tile, workerInterface, index_range)
+            )
+        except ValueError as exc:
+            sendError("Could not read the batch range.", info=str(exc))
+            raise
 
     def get_image(self, xy=None, z=None, time=None, channel=None):
 
@@ -71,6 +80,84 @@ class WorkerClient:
             self.datasetId, frame=frame).squeeze()
 
         return image
+
+    def validate_coordinates(self, stack_xys=None, stack_zs=None,
+                             stack_times=None, stack_channels=None):
+        """Reject image coordinates that do not exist in the dataset.
+
+        Batch fields are 1-indexed in the UI but are stored on this client as
+        zero-indexed coordinates. Stack selections and channels are already
+        zero-indexed. A stacked dimension supersedes its corresponding Batch
+        field, matching :meth:`process` and :meth:`get_image_stack`.
+        """
+        index_range = self.datasetClient.tiles.get('IndexRange', {})
+
+        dimensions = (
+            ('Batch XY', 'XY', 'IndexXY', self.batch_xy,
+             stack_xys, self.tile['XY']),
+            ('Batch Z', 'Z', 'IndexZ', self.batch_z,
+             stack_zs, self.tile['Z']),
+            ('Batch Time', 'Time', 'IndexT', self.batch_time,
+             stack_times, self.tile['Time']),
+        )
+        errors = []
+
+        for field, label, index_key, batch_values, stack_values, tile_value in dimensions:
+            if stack_values == 'all':
+                continue
+            if (isinstance(stack_values, Sequence)
+                    and not isinstance(stack_values, (str, bytes))
+                    and len(stack_values)):
+                values = stack_values
+            elif stack_values is None:
+                values = batch_values
+            else:
+                # Empty stack selections fall back to the current tile in
+                # get_image_stack().
+                values = [tile_value]
+
+            size = index_range.get(index_key, 1)
+            invalid = sorted(set(value for value in values
+                                 if value < 0 or value >= size))
+            if invalid:
+                positions = [value + 1 for value in invalid]
+                position_word = 'position' if len(positions) == 1 else 'positions'
+                dataset_word = 'position' if size == 1 else 'positions'
+                errors.append(
+                    f"{field} contains invalid {position_word} "
+                    f"{', '.join(str(value) for value in positions)}. Batch "
+                    f"positions start at 1; this dataset has {size} {label} "
+                    f"{dataset_word}, so its valid range is 1-{size}.")
+
+        if errors:
+            detail = ' '.join(errors)
+            sendError("Batch range is out of bounds.", info=detail)
+            raise ValueError(detail)
+
+        if stack_channels == 'all':
+            return
+        if (isinstance(stack_channels, Sequence)
+                and not isinstance(stack_channels, (str, bytes))
+                and len(stack_channels)):
+            channels = stack_channels
+        else:
+            channels = [self.channel]
+
+        num_channels = index_range.get('IndexC', 1)
+        invalid_channels = sorted(set(
+            channel for channel in channels
+            if channel < 0 or channel >= num_channels))
+        if invalid_channels:
+            index_word = 'index' if len(invalid_channels) == 1 else 'indices'
+            channel_word = 'channel' if num_channels == 1 else 'channels'
+            detail = (
+                f"The selected channel {index_word} "
+                f"{', '.join(str(channel) for channel in invalid_channels)} "
+                f"{'does' if len(invalid_channels) == 1 else 'do'} not exist in "
+                f"this dataset, which has {num_channels} {channel_word} "
+                f"(valid indices: 0-{num_channels - 1}).")
+            sendError("Selected channels are outside this dataset.", info=detail)
+            raise ValueError(detail)
 
     def get_image_stack(self, location, stack_xys=None, stack_zs=None, stack_times=None, stack_channels=None):
 
@@ -236,6 +323,9 @@ class WorkerClient:
 
     def process(self, f_process, f_annotation, stack_xys=None, stack_zs=None, stack_times=None, stack_channels=None,
                 progress_text='Running Worker'):
+
+        self.validate_coordinates(stack_xys, stack_zs,
+                                  stack_times, stack_channels)
 
         if f_annotation == 'point':
             f_annotation = self.create_point_annotations

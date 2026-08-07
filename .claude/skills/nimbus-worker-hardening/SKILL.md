@@ -42,7 +42,7 @@ over time, so **check the current tree before relying on one** rather than
 assuming:
 
 ```bash
-grep -rn "def geometry_to_polygon_coords\|def get_selected_channels\|def find_out_of_range\|def validate_coordinates" \
+grep -rn "def geometry_to_polygon_coords\|def get_selected_channels\|def get_batch_ranges\|def find_out_of_range\|def validate_coordinates" \
   annotation_utilities/ worker_client/
 ```
 
@@ -75,25 +75,55 @@ The shared helper `annotation_tools.get_images_for_all_channels` already handles
 this; workers that read channel counts by hand should mirror the `.get(...)`
 pattern.
 
+**The same omission happens per-frame**, and this form is easy to miss because it
+does not mention `IndexRange` at all. Every entry of `tileClient.tiles['frames']`
+omits the index key for any dimension of size one, so a single-channel dataset's
+frames are `{'Channel': 'Default', 'Frame': 3, 'Index': 3, 'IndexT': 3}` — no
+`IndexC` whatsoever. This crashed time lapse registration in July 2026 at
+`if frame['IndexC'] in channels`, after ~20 minutes of successful work.
+
+```python
+if frame['IndexC'] in channels:                                    # crashes
+if annotation_tools.get_frame_index(frame, 'IndexC') in channels:   # coordinate 0
+```
+`get_frame_index(frame, dimension, default=0)` (on master in
+`annotation_utilities.annotation_tools`) defaults an absent dimension to 0 and
+raises `ValueError` on an unknown dimension name so typos don't silently read as
+channel 0. Its companion `frame_to_large_image_params(frame)` replaces the
+`{f'{k.lower()[5:]}': v for k, v in frame.items() if k.startswith('Index') and
+len(k) > 5}` comprehension that used to be copy-pasted into seven workers.
+
+```bash
+grep -rn "frame\['Index" workers/                   # per-frame subscripts
+grep -rn "len(k) > 5" workers/                      # the copy-pasted comprehension
+```
+Note that a frame-index bug is invisible on multi-channel test data; when adding
+a frame-loop test, use frames with **no** `IndexC` key (not `IndexC: 0`).
+
 ### 2. Malformed `channelCheckboxes` (arrives as a non-dict)
 
 **Symptom:** `AttributeError: 'list' object has no attribute 'items'`.
 `channelCheckboxes` is documented to return `{"0": True, "1": False}`, but a
-production client was observed sending a list (`[0]`), crashing before any
-validation.
+saved tool config held a list (`[0]`), crashing before any validation.
 
-**Fix:** don't call `.items()` on the raw value. **Reject** unexpected shapes
-loudly rather than guessing a channel — running a tool on the wrong channel is
-worse than failing. Use the shared `annotation_tools.get_selected_channels()`
-helper if present; otherwise inline:
+**Fix:** never call `.items()` on the raw value. Route it through the shared
+`annotation_tools.get_selected_channels(value, field_name)` helper, which parses
+the dict shape into a sorted list of `int` channel indices, returns `[]` for an
+unset field, and raises `ValueError` on any other shape rather than guessing a
+channel — running a tool on the wrong channel is worse than failing. The list
+shape is rejected, not normalized: the checkbox UI never emitted it and the AI
+panel normalizes arrays before saving, so a list value means the config came from
+somewhere outside the UI and must be re-saved rather than guessed at.
 ```python
-def selected_channels(value, field_name='channel selection'):
-    if value is None:
-        return []                                   # nothing selected
-    if isinstance(value, dict):
-        return sorted(int(k) for k, v in value.items() if v)
-    raise ValueError(f"'{field_name}' has an unexpected format "
-                     f"({type(value).__name__}: {value!r}); expected channel checkboxes.")
+try:
+    channels = annotation_tools.get_selected_channels(
+        workerInterface.get('Channels to correct'), 'Channels to correct')
+except ValueError as exc:
+    sendError("Could not read the channel selection.", info=str(exc))
+    return
+if not channels:
+    sendError("No channels selected")
+    return
 ```
 Catch the `ValueError` at the call site and `sendError` with an "interface out
 of date or misconfigured" message.
@@ -102,10 +132,57 @@ of date or misconfigured" message.
 ```bash
 grep -rln "channelCheckboxes\|\.items()" workers/   # then inspect for raw .items() on interface values
 ```
-Known consumers: cellposesam, registration, deconwolf, histogram_matching,
-gaussian_blur, rolling_ball. NOTE: the list form is undocumented — the
-NimbusImage front-end is the root-cause source of truth for what
-`channelCheckboxes` serializes.
+All known consumers now use the helper: cellposesam, cellposesam_train,
+registration, deconwolf, histogram_matching, gaussian_blur, rolling_ball,
+sample_interface. Regression coverage lives in
+`annotation_utilities/tests/test_selected_channels.py` (runs in CI). Configs that
+already hold list-shaped values now report a clear error until re-saved, and the
+submitter that wrote them is still unidentified — tracked in
+`todo/channelcheckboxes-serialization.md`.
+
+**A well-formed selection can still name channels the dataset does not have.**
+`get_selected_channels` validates shape, not range: a saved config selecting
+channel 1 parses cleanly and then matches no frame when it is run against a
+single-channel dataset. There is no crash — the worker processes nothing, uploads
+a byte-identical copy of its input, and reports success, which is worse than an
+error because nobody looks for it. Split the selection against the dataset's real
+channel count and report:
+```python
+num_channels = tileClient.tiles.get('IndexRange', {}).get('IndexC', 1)
+channels, missing_channels = annotation_tools.split_channel_selection(
+    channels, num_channels)
+if missing_channels:
+    detail = (f"Selected channel indices {missing_channels} do not exist in "
+              f"this dataset, which has {num_channels} channel(s) "
+              f"(indices 0-{num_channels - 1}).")
+    if not channels:
+        sendError("None of the selected channels exist in this dataset.", info=detail)
+        return
+    sendWarning("Ignoring channels this dataset does not have.", info=detail)
+```
+Note the asymmetry: an **empty** selection is a different case — the user
+deselected everything, and gaussian_blur/rolling_ball deliberately still write an
+unprocessed copy — so `split_channel_selection` reports nothing missing for it.
+This applies to every dimension a worker filters on, not just channels: crop
+checks its XY/Z/Time ranges and registration checks `Apply to XY coordinates` the
+same way. Anywhere a worker intersects a user selection with what the dataset
+has, an empty intersection needs reporting.
+
+**Sweep:**
+```bash
+grep -rn "get_selected_channels" workers/   # every caller is a candidate
+```
+Done for the five image-processing workers that filter frames by channel:
+gaussian_blur, rolling_ball, histogram_matching, registration, deconwolf. Still
+unaudited: cellposesam and cellposesam_train (three independent per-slot
+selections feeding a channel merge, so an out-of-range index fails differently)
+and sample_interface (a demo worker that only prints its selection).
+
+Covered by `annotation_utilities/tests/test_split_channel_selection.py` (runs in
+CI) plus per-worker tests in all five workers above. A test for this needs a
+fixture whose `IndexRange` channel count is **smaller** than the selected index;
+on the usual 2-channel fixture every selection is in range and the bug is
+invisible.
 
 ### 3. Degenerate / MultiPolygon geometry
 
@@ -144,14 +221,54 @@ with a 1-indexed message matching the UI's Batch fields. Prefer
 helper if present; if not yet merged, guard inline against the dimension size
 (`index_range.get(key, 1)`) and report which coordinates are out of range.
 
-**Sweep:** the `WorkerClient.process()` path (≈6 workers) is the priority;
-~26 workers parse batch ranges directly and can adopt the shared validator as it
-rolls out. Find batch-range consumers:
+**Sweep:** the `WorkerClient.process()` path is the priority -- most annotation
+workers take it and inherit the validator for free. The remaining handful parse
+batch ranges in their own loop; they should adopt
+`batch_argument_parser.get_batch_ranges()` (see #5) rather than calling
+`process_range_list` per field. Find batch-range consumers:
 ```bash
 grep -rln "batch_argument_parser\|Batch XY\|coordinatesToFrameIndex" workers/
 ```
 
-### 5. Build-time transitive dependency breakage
+### 5. Literal `all` parsed without dataset context
+
+**Symptom:** entering `all` in a Batch XY/Z/Time field raises a numeric parsing
+error or `ValueError: 'all' requires all_values`, while numeric ranges still
+work. The range parser cannot infer a dataset dimension by itself.
+
+**Fix:** standard batch fields should go through the shared dataset-aware helper:
+```python
+index_range = datasetClient.tiles.get('IndexRange', {})
+batch_xy, batch_z, batch_time = batch_argument_parser.get_batch_ranges(
+    params['tile'], params['workerInterface'], index_range)
+```
+This preserves 1-indexed numeric UI inputs, expands case-insensitive `all` to
+zero-indexed dataset coordinates, keeps the current tile for an empty field,
+and treats a missing dimension as coordinate `0`. It also raises a `ValueError`
+naming the offending field on malformed input, so callers can surface it with
+`sendError` instead of leaking a parser traceback. Annotation workers using
+`WorkerClient` inherit all of this automatically.
+
+For a non-standard range field, pass the final available coordinates explicitly:
+```python
+values = batch_argument_parser.process_range_list(
+    raw_value,
+    convert_one_to_zero_index=True,
+    all_values=range(index_range.get('IndexZ', 1)),
+)
+```
+`all_values` must already use the coordinate system required by the caller;
+conversion flags apply to numeric user input, not to `all_values`.
+
+**Sweep:**
+```bash
+grep -rln "Batch XY\|Batch Z\|Batch Time" workers/
+grep -rln "process_range_list" workers/
+```
+Inspect local parser copies separately; legacy one-indexed loops may need
+`range(1, size + 1)` before subtracting one inside the loop.
+
+### 6. Build-time transitive dependency breakage
 
 **Symptom:** the image builds one day and a fresh deploy build later crashes at
 **import time** with e.g. `ModuleNotFoundError: No module named 'pkg_resources'`.
@@ -170,7 +287,7 @@ build — so when a worker imports a pinned-era library (`stardist`, older ML
 packages), check the pins proactively. Related: PRs that slimmed startup and
 deferred heavy imports; keep interface-path imports light.
 
-### 6. `tags` interface field treated as a dict
+### 7. `tags` interface field treated as a dict
 
 **Symptom:** `AttributeError: 'list' object has no attribute 'get'`. A `tags`
 **interface field** returns a plain list of strings, not a dict.
@@ -185,6 +302,97 @@ Don't confuse this with `params['tags']` used for **property filtering**, which
 `sendError` if empty (pattern in cellpose_train, piscis). See the
 `nimbus-interface` skill and `CLAUDE.md` for the full interface type→return
 table.
+
+### 8. `groupby` on a DataFrame built from an empty list
+
+**Symptom:** `KeyError: '<column>'` from `pandas` deep inside `groupby`/column
+access, on a dataset where a filter step matched nothing. `pd.DataFrame([])`
+has **no columns at all**, so `df.groupby('parentId')` raises `KeyError:
+'parentId'` instead of returning an empty result. The June 2026 production case
+was children_count_worker run with `'Child Tags': []` — an empty tag set
+intersects with nothing, so `filtered_connections` was `[]`.
+
+**Two fixes, both needed:**
+1. Validate the required selection early and `sendError` (an empty required
+   `tags` field is a misconfiguration — same validation pattern as catalog #6):
+   ```python
+   if not child_tags:
+       sendError("No child tag selected", info="Select at least one tag ...")
+       return
+   ```
+2. Guard the groupby — an empty *result* (valid tags, zero matches) is
+   legitimate data, so skip pandas and report counts of 0 with a `sendWarning`:
+   ```python
+   if filtered_connections:
+       df = pd.DataFrame(filtered_connections)
+       counts = df.groupby('parentId').size().reset_index(name='count')
+   else:
+       counts_dict = {}   # every parent gets 0; sendWarning explains why
+   ```
+Pre-declaring columns also works when a DataFrame must exist either way:
+`pd.DataFrame(connections, columns=['parentId', 'childId'])` — this is why
+connect_to_nearest/connect_sequential (which initialize
+`pd.DataFrame(columns=[...])`) never crashed.
+
+**Sweep:**
+```bash
+grep -rn "pd\.DataFrame(" workers/ | grep -v "columns="   # then check each for a possibly-empty list feeding a groupby/column access
+```
+Swept 2026-08: children_count_worker was the only worker with the pattern
+(fixed; regression tests in its `tests/test_children_count.py`). Note its old
+tests mocked `pandas.DataFrame` entirely, which is how the crash survived —
+when adding tests for a pandas path, use real pandas with an **empty** input
+list; a mocked groupby chain can't catch this class of bug.
+
+### 9. Null / stale `select` value (Model) from a saved config
+
+**Symptom:** a cryptic crash deep inside a model loader, long after "Loading
+model" was reported — e.g. `FileNotFoundError: '/None.pth'` (sam_fewshot,
+May 2026 production), `KeyError: None` from a model→config mapping, or a
+`download_girder_model(client, None)` failure. A saved tool config can hold
+``null`` for a `select` field even though the interface defines a default —
+the config stores whatever was serialized when the tool was saved. A config
+saved against an older worker image can also name a model/checkpoint that no
+longer exists in the current image.
+
+**Fix:** never build a checkpoint path or model name from a raw
+`workerInterface` select value. Route it through
+`annotation_tools.get_required_select(value, field_name, allowed_values=None)`,
+which raises `ValueError` on null/empty/non-string values (and, when
+`allowed_values` is given, on options that no longer exist) instead of letting
+the job die downstream. Catch it at the call site and `sendError`; where the
+checkpoint path is deterministic, also check `os.path.exists(checkpoint_path)`
+before loading. `sendError` only prints a message for the frontend -- it does
+not fail the job, so re-`raise` after it rather than `return`ing; a job that
+returns cleanly is recorded as SUCCESS, and a misconfigured run reported as
+successful is worse than a crash. Missing values are rejected, not defaulted: the saved value is
+what the user believes the tool runs with, and silently substituting a model
+changes the output. Validate **before** the heavy torch/model imports so the
+job fails in milliseconds, not after GPU setup.
+
+```python
+try:
+    model_name = annotation_tools.get_required_select(
+        params['workerInterface'].get('Model'), 'Model', allowed_values=MODELS)
+except ValueError as exc:
+    sendError("Could not read the model selection.", info=str(exc))
+    raise
+```
+
+**Sweep:**
+```bash
+grep -rn "workerInterface\[.\?'Model'\]\|workerInterface\.get('Model')" workers/
+grep -rn "checkpoint_path = f\"" workers/            # paths built from interface values
+```
+Done for: sam_fewshot_segmentation, the five sam2_* workers (which also hoist
+the shared `MODEL_TO_CFG` mapping and check checkpoint existence), stardist,
+cellpose, cellposesam, piscis predict/train, cellpose_train, cellposesam_train.
+Workers whose models come from Girder (cellpose family, piscis) validate shape
+only — no static `allowed_values` exists for custom models.
+`sam_automatic_mask_generator` reads Model but never uses it, so it was left
+alone. Regression coverage: `annotation_utilities/tests/test_required_select.py`
+(CI) plus compute-level tests in sam_fewshot_segmentation and
+sam2_fewshot_segmentation.
 
 ## After fixing
 

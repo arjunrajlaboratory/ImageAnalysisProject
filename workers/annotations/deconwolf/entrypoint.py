@@ -10,6 +10,8 @@ import annotation_client.tiles as tiles
 import annotation_client.workers as workers
 from annotation_client.utils import sendProgress, sendWarning, sendError
 
+import annotation_utilities.annotation_tools as annotation_tools
+
 import numpy as np
 import tifffile
 
@@ -322,8 +324,8 @@ def copy_image_unchanged(tileClient, datasetId, gc):
 
     if 'frames' in tileClient.tiles:
         for i, frame in enumerate(tileClient.tiles['frames']):
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items()
-                                  if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
             image = tileClient.getRegion(datasetId, frame=i).squeeze()
             sink.addTile(image, 0, 0, **large_image_params)
             sendProgress(i / len(tileClient.tiles['frames']), 'Copying image',
@@ -358,8 +360,15 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
 
     # Parse channel selection
-    allChannels = workerInterface.get('Channels to deconvolve', {})
-    channels = [int(k) for k, v in allChannels.items() if v]
+    allChannels = workerInterface.get('Channels to deconvolve')
+    # The front end sends {'1': True, '2': True}, meaning channels 1 and 2 are
+    # being deconvolved. Any other shape is malformed and is rejected below.
+    try:
+        channels = annotation_tools.get_selected_channels(
+            allChannels, 'Channels to deconvolve')
+    except ValueError as exc:
+        sendError("Could not read the channel selection.", info=str(exc))
+        return
     print(f"Selected channels to deconvolve: {channels}")
 
     if len(channels) == 0:
@@ -374,6 +383,22 @@ def compute(datasetId, apiUrl, token, params):
     num_channels = index_range.get('IndexC', 1)
 
     print(f"Image dimensions: XY={num_xy}, Z={num_z}, T={num_time}, C={num_channels}")
+
+    # A selection naming channels the dataset does not have would deconvolve no
+    # frame group below, so the worker would build PSFs and then upload an
+    # unchanged copy of the input while reporting success. It would also index
+    # past the end of the wavelength list in parse_wavelengths.
+    channels, missing_channels = annotation_tools.split_channel_selection(
+        channels, num_channels)
+    if missing_channels:
+        detail = (f"Selected channel indices {missing_channels} do not exist in "
+                  f"this dataset, which has {num_channels} channel(s) "
+                  f"(indices 0-{num_channels - 1}).")
+        if not channels:
+            sendError("None of the selected channels exist in this dataset.",
+                      info=detail)
+            return
+        sendWarning("Ignoring channels this dataset does not have.", info=detail)
 
     gc = tileClient.client
 
@@ -501,8 +526,8 @@ def compute(datasetId, apiUrl, token, params):
         sendProgress(0.9, 'Assembling output', 'Writing frames')
 
         for i, frame in enumerate(tileClient.tiles.get('frames', [])):
-            large_image_params = {f'{k.lower()[5:]}': v for k, v in frame.items()
-                                  if k.startswith('Index') and len(k) > 5}
+            large_image_params = annotation_tools.frame_to_large_image_params(
+                frame)
 
             xy = frame.get('IndexXY', 0)
             t = frame.get('IndexT', 0)

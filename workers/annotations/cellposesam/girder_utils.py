@@ -52,8 +52,24 @@ def download_girder_model(gc, model_name):
 
     girder_models, _ = list_girder_models(gc)
     girder_model = [model for model in girder_models if model['name'] == model_name]
-    if girder_model:
-        gc.downloadItem(girder_model[0]['_id'], MODELS_DIR, girder_model[0]['name'])
+    if not girder_model:
+        raise FileNotFoundError(
+            f'Custom Cellpose-SAM model "{model_name}" was not found in Girder.')
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    model_path = MODELS_DIR / model_name
+    if model_path.exists():
+        if not model_path.is_file():
+            raise FileNotFoundError(
+                f'Custom model download path is not a file: {model_path}')
+        model_path.unlink()
+
+    gc.downloadItem(
+        girder_model[0]['_id'], MODELS_DIR, girder_model[0]['name'])
+    if not model_path.is_file():
+        raise FileNotFoundError(
+            f'Custom model download did not create the expected file: {model_path}')
+    return model_path
 
 
 def upload_girder_model(gc, model_name):

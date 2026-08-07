@@ -19,6 +19,19 @@ from skimage.measure import find_contours
 from annotation_client.utils import sendProgress, sendError
 
 
+# The SAM2 checkpoints this worker can load, mapped to their model configs.
+# interface() offers the checkpoint files present in the image; compute()
+# validates the saved selection against this mapping, since a saved tool
+# config can hold null (or a checkpoint name from an older image) for a
+# select field even though the interface defines a default.
+MODEL_TO_CFG = {
+    'sam2.1_hiera_base_plus.pt': 'sam2.1_hiera_b+.yaml',
+    'sam2.1_hiera_large.pt': 'sam2.1_hiera_l.yaml',
+    'sam2.1_hiera_small.pt': 'sam2.1_hiera_s.yaml',
+    'sam2.1_hiera_tiny.pt': 'sam2.1_hiera_t.yaml',
+}
+
+
 def interface(image, apiUrl, token):
     client = workers.UPennContrastWorkerPreviewClient(apiUrl=apiUrl, token=token)
 
@@ -249,6 +262,26 @@ def annotation_to_mask(annotation, image_shape):
 
 
 def compute(datasetId, apiUrl, token, params):
+    # Validate the saved Model selection before the heavy imports and model
+    # load below: a saved tool config can hold null for a select field, which
+    # otherwise surfaces as a cryptic crash deep inside SAM2's checkpoint
+    # loader, long after "Loading model" was already reported.
+    try:
+        model_name = annotation_tools.get_required_select(
+            params['workerInterface'].get('Model'), 'Model',
+            allowed_values=MODEL_TO_CFG)
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
+
+    checkpoint_path = f"/code/sam2/checkpoints/{model_name}"
+    if not os.path.exists(checkpoint_path):
+        sendError("Model checkpoint is missing from the worker image.",
+                  info=f"Expected the checkpoint at {checkpoint_path}. "
+                       f"The worker image may need to be rebuilt.")
+        raise FileNotFoundError(
+            f"Model checkpoint not found at {checkpoint_path}")
+
     # Lazy import: keeps torch/sam2 off the interface/startup path (~seconds). See todo/worker-startup-latency.md
     import torch
     import torch.nn.functional as F
@@ -261,7 +294,6 @@ def compute(datasetId, apiUrl, token, params):
     tileClient = tiles.UPennContrastDataset(apiUrl=apiUrl, token=token, datasetId=datasetId)
 
     # Parse parameters
-    model_name = params['workerInterface']['Model']
     similarity_threshold = float(params['workerInterface']['Similarity Threshold'])
     target_occupancy = float(params['workerInterface']['Target Occupancy'])
     points_per_side = int(params['workerInterface']['Points per side'])
@@ -292,14 +324,7 @@ def compute(datasetId, apiUrl, token, params):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
-    checkpoint_path = f"/code/sam2/checkpoints/{model_name}"
-    model_to_cfg = {
-        'sam2.1_hiera_base_plus.pt': 'sam2.1_hiera_b+.yaml',
-        'sam2.1_hiera_large.pt': 'sam2.1_hiera_l.yaml',
-        'sam2.1_hiera_small.pt': 'sam2.1_hiera_s.yaml',
-        'sam2.1_hiera_tiny.pt': 'sam2.1_hiera_t.yaml',
-    }
-    model_cfg = f"configs/sam2.1/{model_to_cfg[model_name]}"
+    model_cfg = f"configs/sam2.1/{MODEL_TO_CFG[model_name]}"
     sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)
     predictor = SAM2ImagePredictor(sam2_model)
 
