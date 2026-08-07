@@ -178,6 +178,35 @@ if not channels:
 channels = [int(k) for k, v in workerInterface['Channels to correct'].items() if v]
 ```
 
+**Common pitfall with `select`**: a saved tool config can hold `null` for a
+`select` field even though the interface defines a default — the config stores
+whatever was serialized when the tool was saved, and a config saved against an
+older worker image can also name an option (e.g. a model checkpoint) that no
+longer exists. A production `sam_fewshot_segmentation` job received
+`"Model": null` and crashed with `FileNotFoundError: '/None.pth'` deep inside
+SAM's checkpoint loader. Never build a checkpoint path or model name from the
+raw value; validate it with `annotation_tools.get_required_select()` first and
+`sendError` on `ValueError`:
+
+```python
+# CORRECT - rejects null/stale selections with a clear message:
+try:
+    model_name = annotation_tools.get_required_select(
+        workerInterface.get('Model'), 'Model', allowed_values=MODELS)
+except ValueError as exc:
+    sendError("Could not read the model selection.", info=str(exc))
+    return
+
+# WRONG - a null Model becomes the checkpoint path '/None.pth':
+model_name = workerInterface['Model']
+checkpoint_path = f"/{model_name}.pth"
+```
+
+Missing values are rejected, not silently replaced with the interface default:
+the saved value is what the user believes the tool runs with, and substituting
+a different model changes the output. Validate before any heavy imports or GPU
+model loading so the job fails fast with feedback instead of after setup.
+
 **Common pitfall with `tags`**: The `tags` type returns a **plain list of strings**, NOT a dict. Do not call `.get('tags')` on the result.
 
 ```python

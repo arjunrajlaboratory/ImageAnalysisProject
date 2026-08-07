@@ -1,6 +1,8 @@
 import utils
 from worker_client import WorkerClient
 import annotation_client.workers as workers
+from annotation_client.utils import sendError
+from annotation_utilities.annotation_tools import get_required_select
 from functools import partial
 import argparse
 import json
@@ -135,7 +137,12 @@ def compute(datasetId, apiUrl, token, params):
     worker = WorkerClient(datasetId, apiUrl, token, params)
 
     # Get the Gaussian sigma and threshold from interface values
-    model_name = worker.workerInterface['Model']
+    try:
+        model_name = get_required_select(
+            worker.workerInterface.get('Model'), 'Model')
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
     stack = worker.workerInterface['Mode'] == 'Z-Stack'
     scale = float(worker.workerInterface['Scale'])
     threshold = float(worker.workerInterface['Threshold'])

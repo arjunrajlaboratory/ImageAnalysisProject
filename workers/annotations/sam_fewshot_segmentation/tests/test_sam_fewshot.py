@@ -8,6 +8,8 @@ from entrypoint import (
     ensure_rgb,
     annotation_to_mask,
     interface,
+    compute,
+    MODELS,
 )
 
 
@@ -227,6 +229,68 @@ class TestAnnotationToMask:
         }
         mask = annotation_to_mask(annotation, (100, 200))
         assert mask.shape == (100, 200)
+
+
+class TestComputeModelValidation:
+    """Regression tests for a May 2026 production crash: a saved tool config
+    held '"Model": null', so the checkpoint path was built as '/None.pth' and
+    the job died with FileNotFoundError deep inside SAM's model loader.
+    compute() must reject a missing/unknown model with sendError before any
+    model loading starts."""
+
+    def _params(self, model):
+        # Mirrors the workerInterface of the failing production job.
+        return {
+            'workerInterface': {
+                'Model': model,
+                'Similarity Threshold': 0.5,
+                'Target Occupancy': 0.2,
+                'Points per side': 128,
+                'Min Mask Area': 30,
+                'Max Mask Area': 1000,
+                'Smoothing': 0.3,
+                'Training Tag': ['manual blobs'],
+                'Batch XY': '',
+                'Batch Z': '',
+                'Batch Time': '',
+            },
+            'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+            'channel': 0,
+            'tags': ['Default - Red blob'],
+        }
+
+    @patch('entrypoint.sendError')
+    def test_null_model_sends_error_and_returns(self, mock_send_error):
+        compute('dataset_id', 'http://test-api', 'token', self._params(None))
+
+        mock_send_error.assert_called_once()
+        assert 'model' in mock_send_error.call_args[0][0].lower()
+
+    @patch('entrypoint.sendError')
+    def test_unknown_model_sends_error_and_returns(self, mock_send_error):
+        compute('dataset_id', 'http://test-api', 'token',
+                self._params('sam_vit_h_deleted'))
+
+        mock_send_error.assert_called_once()
+        info = mock_send_error.call_args.kwargs.get('info') or mock_send_error.call_args[0][1]
+        assert 'sam_vit_h_deleted' in info
+
+    @patch('entrypoint.sendError')
+    def test_missing_model_key_sends_error_and_returns(self, mock_send_error):
+        params = self._params(None)
+        del params['workerInterface']['Model']
+
+        compute('dataset_id', 'http://test-api', 'token', params)
+
+        mock_send_error.assert_called_once()
+
+    @patch('entrypoint.os.path.exists', return_value=False)
+    @patch('entrypoint.sendError')
+    def test_missing_checkpoint_file_sends_error(self, mock_send_error, mock_exists):
+        compute('dataset_id', 'http://test-api', 'token', self._params(MODELS[0]))
+
+        mock_send_error.assert_called_once()
+        assert 'checkpoint' in mock_send_error.call_args[0][0].lower()
 
 
 class TestInterface:

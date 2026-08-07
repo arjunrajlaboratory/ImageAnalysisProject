@@ -141,7 +141,12 @@ def compute(datasetId, apiUrl, token, params):
     workerInterface = params['workerInterface']
 
     # Get the model and diameter from interface values
-    base_model = workerInterface['Base Model']
+    try:
+        base_model = annotation_tools.get_required_select(
+            workerInterface.get('Base Model'), 'Base Model')
+    except ValueError as exc:
+        sendError("Could not read the model selection.", info=str(exc))
+        raise
     output_model_name = workerInterface['Output Model Name']
     nuclear_model = workerInterface['Nuclear Model?']
     primary_channel = workerInterface.get('Primary Channel', None)

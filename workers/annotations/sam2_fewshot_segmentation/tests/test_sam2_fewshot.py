@@ -8,6 +8,8 @@ from entrypoint import (
     ensure_rgb,
     annotation_to_mask,
     interface,
+    compute,
+    MODEL_TO_CFG,
 )
 
 
@@ -227,6 +229,61 @@ class TestAnnotationToMask:
         }
         mask = annotation_to_mask(annotation, (100, 200))
         assert mask.shape == (100, 200)
+
+
+class TestComputeModelValidation:
+    """Regression tests mirroring a May 2026 production crash in the SAM1
+    few-shot worker: a saved tool config held '"Model": null', so the
+    checkpoint path was built from None and the job died with
+    FileNotFoundError deep inside the model loader. compute() must reject a
+    missing/unknown model with sendError before any model loading starts."""
+
+    def _params(self, model):
+        return {
+            'workerInterface': {
+                'Model': model,
+                'Similarity Threshold': 0.5,
+                'Target Occupancy': 0.2,
+                'Points per side': 32,
+                'Min Mask Area': 30,
+                'Max Mask Area': 1000,
+                'Smoothing': 0.3,
+                'Training Tag': ['manual blobs'],
+                'Batch XY': '',
+                'Batch Z': '',
+                'Batch Time': '',
+            },
+            'tile': {'XY': 0, 'Z': 0, 'Time': 0},
+            'channel': 0,
+            'tags': ['test'],
+        }
+
+    @patch('entrypoint.sendError')
+    def test_null_model_sends_error_and_returns(self, mock_send_error):
+        compute('dataset_id', 'http://test-api', 'token', self._params(None))
+
+        mock_send_error.assert_called_once()
+        assert 'model' in mock_send_error.call_args[0][0].lower()
+
+    @patch('entrypoint.sendError')
+    def test_stale_model_name_sends_error_and_returns(self, mock_send_error):
+        # A config saved against an older image can name a checkpoint that
+        # no longer exists in the current image.
+        compute('dataset_id', 'http://test-api', 'token',
+                self._params('sam2_hiera_removed.pt'))
+
+        mock_send_error.assert_called_once()
+        info = mock_send_error.call_args.kwargs.get('info') or mock_send_error.call_args[0][1]
+        assert 'sam2_hiera_removed.pt' in info
+
+    @patch('entrypoint.os.path.exists', return_value=False)
+    @patch('entrypoint.sendError')
+    def test_missing_checkpoint_file_sends_error(self, mock_send_error, mock_exists):
+        model = next(iter(MODEL_TO_CFG))
+        compute('dataset_id', 'http://test-api', 'token', self._params(model))
+
+        mock_send_error.assert_called_once()
+        assert 'checkpoint' in mock_send_error.call_args[0][0].lower()
 
 
 class TestInterface:
