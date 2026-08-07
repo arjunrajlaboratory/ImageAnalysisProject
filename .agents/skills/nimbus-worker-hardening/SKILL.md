@@ -263,6 +263,47 @@ Don't confuse this with `params['tags']` used for **property filtering**, which
 `nimbus-interface` skill and `AGENTS.md` for the full interface type→return
 table.
 
+### 7. `groupby` on a DataFrame built from an empty list
+
+**Symptom:** `KeyError: '<column>'` from `pandas` deep inside `groupby`/column
+access, on a dataset where a filter step matched nothing. `pd.DataFrame([])`
+has **no columns at all**, so `df.groupby('parentId')` raises `KeyError:
+'parentId'` instead of returning an empty result. The June 2026 production case
+was children_count_worker run with `'Child Tags': []` — an empty tag set
+intersects with nothing, so `filtered_connections` was `[]`.
+
+**Two fixes, both needed:**
+1. Validate the required selection early and `sendError` (an empty required
+   `tags` field is a misconfiguration — same validation pattern as catalog #6):
+   ```python
+   if not child_tags:
+       sendError("No child tag selected", info="Select at least one tag ...")
+       return
+   ```
+2. Guard the groupby — an empty *result* (valid tags, zero matches) is
+   legitimate data, so skip pandas and report counts of 0 with a `sendWarning`:
+   ```python
+   if filtered_connections:
+       df = pd.DataFrame(filtered_connections)
+       counts = df.groupby('parentId').size().reset_index(name='count')
+   else:
+       counts_dict = {}   # every parent gets 0; sendWarning explains why
+   ```
+Pre-declaring columns also works when a DataFrame must exist either way:
+`pd.DataFrame(connections, columns=['parentId', 'childId'])` — this is why
+connect_to_nearest/connect_sequential (which initialize
+`pd.DataFrame(columns=[...])`) never crashed.
+
+**Sweep:**
+```bash
+grep -rn "pd\.DataFrame(" workers/ | grep -v "columns="   # then check each for a possibly-empty list feeding a groupby/column access
+```
+Swept 2026-08: children_count_worker was the only worker with the pattern
+(fixed; regression tests in its `tests/test_children_count.py`). Note its old
+tests mocked `pandas.DataFrame` entirely, which is how the crash survived —
+when adding tests for a pandas path, use real pandas with an **empty** input
+list; a mocked groupby chain can't catch this class of bug.
+
 ## After fixing
 
 - Run the relevant package tests (`annotation_utilities`, `worker_client`) and
