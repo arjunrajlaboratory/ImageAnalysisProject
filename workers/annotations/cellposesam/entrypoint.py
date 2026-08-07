@@ -234,6 +234,10 @@ def compute(datasetId, apiUrl, token, params):
     smoothing = float(worker.workerInterface['Smoothing'])
 
     stack_channels = get_slot_channels(worker.workerInterface)
+    # Validate the 1-indexed Batch fields and selected input channels before
+    # loading the large GPU model. WorkerClient.process() repeats this check as
+    # a defense-in-depth measure shared by all workers that use it.
+    worker.validate_coordinates(stack_channels=stack_channels)
 
     print(f"Using channels for Cellpose-SAM input (slots 1, 2, 3): {stack_channels}")
 
