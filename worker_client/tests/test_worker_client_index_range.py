@@ -18,6 +18,7 @@ def _load_worker_client(monkeypatch, dataset_client):
     annotations.UPennContrastAnnotationClient = lambda **kwargs: types.SimpleNamespace()
     tiles.UPennContrastDataset = lambda **kwargs: dataset_client
     utils.sendProgress = lambda *args, **kwargs: None
+    utils.sendError = lambda *args, **kwargs: None
 
     monkeypatch.setitem(sys.modules, "annotation_client", annotation_client)
     monkeypatch.setitem(sys.modules, "annotation_client.annotations", annotations)

@@ -16,9 +16,9 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | **Cellpose-SAM** | notes | -- | Informational text with documentation link |
-| **Batch XY** | text | -- | XY positions to iterate over (e.g., "1-3, 5-8") |
-| **Batch Z** | text | -- | Z slices to iterate over |
-| **Batch Time** | text | -- | Time points to iterate over |
+| **Batch XY** | text | -- | 1-indexed XY positions to iterate over (e.g., "1-3, 5-8") |
+| **Batch Z** | text | -- | 1-indexed Z slices to iterate over |
+| **Batch Time** | text | -- | 1-indexed Time points to iterate over |
 | **Model** | select | cellpose-sam | Model to use. `cellpose-sam` runs the `cpsam_v2` checkpoint (current default); `cellpose-sam (legacy cpsam)` runs the original April 2025 `cpsam` checkpoint. User-trained models from Girder are also listed |
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |
@@ -44,6 +44,13 @@ Unlike the standard Cellpose worker which uses Primary/Secondary channel selecto
 
 - **Base models**: The dropdown labels map to cellpose built-in checkpoints in `models_config.py` — `cellpose-sam` → `cpsam_v2`, `cellpose-sam (legacy cpsam)` → `cpsam`. The selected checkpoint name is passed explicitly as `pretrained_model` rather than relying on Cellpose's internal default, which can shift between versions.
 - **Custom models**: Loaded from Girder by path. Like built-in Cellpose-SAM checkpoints, they run at native resolution with no diameter rescaling.
+
+### Batch Validation
+
+Batch XY/Z/Time values are validated against the dataset before the GPU model
+is loaded. The fields use 1-based positions, so `0` is invalid; out-of-range
+values produce a user-facing error that includes the dataset's valid range.
+Selected input channels are range-checked at the same preflight stage.
 
 ### Built-in Checkpoints
 
