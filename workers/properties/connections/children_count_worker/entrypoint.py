@@ -4,7 +4,7 @@ import sys
 
 import annotation_client.annotations as annotations
 import annotation_client.workers as workers
-from annotation_client.utils import sendProgress
+from annotation_client.utils import sendProgress, sendWarning, sendError
 
 
 
@@ -42,9 +42,19 @@ def compute(datasetId, apiUrl, token, params):
     parent_tags = set(params.get('tags', {}).get('tags', []))
     parent_exclusive = params.get('tags', {}).get('exclusive', False)
 
-    child_tags = set(workerInterface.get('Child Tags', []))
+    child_tags = set(workerInterface.get('Child Tags', []) or [])
     print(workerInterface)
-    child_exclusive = workerInterface['Child Tags Exclusive'] == 'Yes'
+    child_exclusive = workerInterface.get('Child Tags Exclusive', 'No') == 'Yes'
+
+    # An empty tag set matches no annotations (set intersection with an empty
+    # set is always empty), so without this check the worker computes nothing
+    # and crashes on the empty-DataFrame groupby below.
+    if not child_tags:
+        sendError(
+            "No child tag selected",
+            info="Select at least one tag in 'Child Tags' so the worker knows "
+                 "which annotations to count as children of each parent.")
+        return
 
     workerClient = workers.UPennContrastWorkerClient(datasetId, apiUrl, token, params)
     annotationClient = annotations.UPennContrastAnnotationClient(apiUrl=apiUrl, token=token)
@@ -66,6 +76,17 @@ def compute(datasetId, apiUrl, token, params):
     parent_annotations = filter_annotations(all_annotations, parent_tags, parent_exclusive)
     child_annotations = filter_annotations(all_annotations, child_tags, child_exclusive)
 
+    if not parent_annotations:
+        sendWarning(
+            "No parent annotations found",
+            info=f"No annotations match the parent tag(s) {sorted(parent_tags)}, "
+                 "so there is nothing to count children for.")
+    if not child_annotations:
+        sendWarning(
+            "No child annotations found",
+            info=f"No annotations have the selected child tag(s) {sorted(child_tags)}. "
+                 "Every parent will get a count of 0.")
+
     parent_ids = set(ann['_id'] for ann in parent_annotations)
     child_ids = set(ann['_id'] for ann in child_annotations)
 
@@ -76,9 +97,22 @@ def compute(datasetId, apiUrl, token, params):
 
     sendProgress(0.7, 'Computing', 'Counting children')
 
-    df = pd.DataFrame(filtered_connections)
-    children_count = df.groupby('parentId').size().reset_index(name='count')
-    children_count_dict = dict(zip(children_count['parentId'], children_count['count']))
+    # A DataFrame built from an empty list has no columns at all, so
+    # groupby('parentId') on it raises KeyError rather than returning an
+    # empty result. Zero matching connections is a legitimate outcome
+    # (every parent simply has 0 children), so skip pandas entirely.
+    if filtered_connections:
+        df = pd.DataFrame(filtered_connections)
+        children_count = df.groupby('parentId').size().reset_index(name='count')
+        children_count_dict = dict(zip(children_count['parentId'], children_count['count']))
+    else:
+        children_count_dict = {}
+        if parent_annotations and child_annotations:
+            sendWarning(
+                "No connections found",
+                info="No connections exist between the parent and child annotations. "
+                     "Every parent will get a count of 0. If you expected non-zero "
+                     "counts, run a connection tool (e.g. 'Connect to nearest') first.")
 
     property_value_dict = {
         parent_id: children_count_dict.get(parent_id, 0)
