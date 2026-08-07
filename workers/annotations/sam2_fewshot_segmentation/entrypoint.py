@@ -269,14 +269,15 @@ def compute(datasetId, apiUrl, token, params):
             allowed_values=MODEL_TO_CFG)
     except ValueError as exc:
         sendError("Could not read the model selection.", info=str(exc))
-        return
+        raise
 
     checkpoint_path = f"/code/sam2/checkpoints/{model_name}"
     if not os.path.exists(checkpoint_path):
         sendError("Model checkpoint is missing from the worker image.",
                   info=f"Expected the checkpoint at {checkpoint_path}. "
                        f"The worker image may need to be rebuilt.")
-        return
+        raise FileNotFoundError(
+            f"Model checkpoint not found at {checkpoint_path}")
 
     # Lazy import: keeps torch/sam2 off the interface/startup path (~seconds). See todo/worker-startup-latency.md
     import torch

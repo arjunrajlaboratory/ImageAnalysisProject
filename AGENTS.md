@@ -205,7 +205,7 @@ try:
         workerInterface.get('Model'), 'Model', allowed_values=MODELS)
 except ValueError as exc:
     sendError("Could not read the model selection.", info=str(exc))
-    return
+    raise
 
 # WRONG - a null Model becomes the checkpoint path '/None.pth':
 model_name = workerInterface['Model']
@@ -216,6 +216,13 @@ Missing values are rejected, not silently replaced with the interface default:
 the saved value is what the user believes the tool runs with, and substituting
 a different model changes the output. Validate before any heavy imports or GPU
 model loading so the job fails fast with feedback instead of after setup.
+
+`sendError` only prints a message for the frontend to display -- it does not
+fail the job. Re-`raise` after it (rather than `return`) so the Girder job is
+recorded as ERROR: a job that returns cleanly is recorded as SUCCESS, and a
+misconfigured run that silently reports success is worse than a crash because
+nobody goes looking for it. Verified in the browser: with `return`, the tool
+showed the error banner but the job status was SUCCESS.
 
 **Common pitfall with `tags`**: The `tags` type returns a **plain list of strings**, NOT a dict. Do not call `.get('tags')` on the result.
 

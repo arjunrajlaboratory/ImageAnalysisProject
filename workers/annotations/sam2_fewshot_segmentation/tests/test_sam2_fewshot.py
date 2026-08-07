@@ -259,18 +259,21 @@ class TestComputeModelValidation:
         }
 
     @patch('entrypoint.sendError')
-    def test_null_model_sends_error_and_returns(self, mock_send_error):
-        compute('dataset_id', 'http://test-api', 'token', self._params(None))
+    def test_null_model_sends_error_and_raises(self, mock_send_error):
+        with pytest.raises(ValueError):
+            compute('dataset_id', 'http://test-api', 'token',
+                    self._params(None))
 
         mock_send_error.assert_called_once()
         assert 'model' in mock_send_error.call_args[0][0].lower()
 
     @patch('entrypoint.sendError')
-    def test_stale_model_name_sends_error_and_returns(self, mock_send_error):
+    def test_stale_model_name_sends_error_and_raises(self, mock_send_error):
         # A config saved against an older image can name a checkpoint that
         # no longer exists in the current image.
-        compute('dataset_id', 'http://test-api', 'token',
-                self._params('sam2_hiera_removed.pt'))
+        with pytest.raises(ValueError):
+            compute('dataset_id', 'http://test-api', 'token',
+                    self._params('sam2_hiera_removed.pt'))
 
         mock_send_error.assert_called_once()
         info = mock_send_error.call_args.kwargs.get('info') or mock_send_error.call_args[0][1]
@@ -278,9 +281,11 @@ class TestComputeModelValidation:
 
     @patch('entrypoint.os.path.exists', return_value=False)
     @patch('entrypoint.sendError')
-    def test_missing_checkpoint_file_sends_error(self, mock_send_error, mock_exists):
+    def test_missing_checkpoint_file_sends_error_and_raises(self, mock_send_error, mock_exists):
         model = next(iter(MODEL_TO_CFG))
-        compute('dataset_id', 'http://test-api', 'token', self._params(model))
+        with pytest.raises(FileNotFoundError):
+            compute('dataset_id', 'http://test-api', 'token',
+                    self._params(model))
 
         mock_send_error.assert_called_once()
         assert 'checkpoint' in mock_send_error.call_args[0][0].lower()

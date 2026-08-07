@@ -37,7 +37,8 @@ config can hold `null` for a `select` field even though the interface defines a
 default, and a config saved against an older worker image can name a model that
 is no longer offered. Previously a `null` model was passed straight to
 `StarDist2D.from_pretrained()`. Invalid selections now fail fast with
-`sendError`; the fix is to re-select the model in the tool settings and save the
+`sendError` and re-raise, so the job is recorded as failed rather than silently
+succeeding; the fix is to re-select the model in the tool settings and save the
 tool again. The selection is validated against the static pretrained-model list
 (`MODELS`).
 

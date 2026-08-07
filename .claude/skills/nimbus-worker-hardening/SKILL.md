@@ -322,7 +322,10 @@ which raises `ValueError` on null/empty/non-string values (and, when
 `allowed_values` is given, on options that no longer exist) instead of letting
 the job die downstream. Catch it at the call site and `sendError`; where the
 checkpoint path is deterministic, also check `os.path.exists(checkpoint_path)`
-before loading. Missing values are rejected, not defaulted: the saved value is
+before loading. `sendError` only prints a message for the frontend -- it does
+not fail the job, so re-`raise` after it rather than `return`ing; a job that
+returns cleanly is recorded as SUCCESS, and a misconfigured run reported as
+successful is worse than a crash. Missing values are rejected, not defaulted: the saved value is
 what the user believes the tool runs with, and silently substituting a model
 changes the output. Validate **before** the heavy torch/model imports so the
 job fails in milliseconds, not after GPU setup.
@@ -333,7 +336,7 @@ try:
         params['workerInterface'].get('Model'), 'Model', allowed_values=MODELS)
 except ValueError as exc:
     sendError("Could not read the model selection.", info=str(exc))
-    return
+    raise
 ```
 
 **Sweep:**

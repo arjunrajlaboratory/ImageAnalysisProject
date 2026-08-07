@@ -92,7 +92,8 @@ default, and a config saved against an older worker image can name a checkpoint
 that no longer exists in the current image. Previously a `null` model built the
 checkpoint path `/None.pth` and crashed with `FileNotFoundError` deep inside
 SAM's loader (seen in production, May 2026). Invalid selections now fail fast
-with `sendError`; the fix is to re-select the model in the tool settings and
+with `sendError` and re-raise, so the job is recorded as failed rather than
+silently succeeding; the fix is to re-select the model in the tool settings and
 save the tool again. The selection is validated against the worker's model list
 and the checkpoint file's presence in the image is verified before the heavy
 torch/SAM imports, so a bad config fails in milliseconds instead of after GPU

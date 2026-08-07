@@ -278,14 +278,15 @@ def compute(datasetId, apiUrl, token, params):
             params['workerInterface'].get('Model'), 'Model', allowed_values=MODELS)
     except ValueError as exc:
         sendError("Could not read the model selection.", info=str(exc))
-        return
+        raise
 
     checkpoint_path = f"/{model_name}.pth"
     if not os.path.exists(checkpoint_path):
         sendError("Model checkpoint is missing from the worker image.",
                   info=f"Expected the checkpoint at {checkpoint_path}. "
                        f"The worker image may need to be rebuilt.")
-        return
+        raise FileNotFoundError(
+            f"Model checkpoint not found at {checkpoint_path}")
 
     # Lazy import: keeps torch off the interface/startup path (~seconds). See todo/worker-startup-latency.md
     import torch

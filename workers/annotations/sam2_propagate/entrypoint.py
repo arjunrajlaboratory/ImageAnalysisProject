@@ -292,7 +292,7 @@ def compute(datasetId, apiUrl, token, params):
             allowed_values=MODEL_TO_CFG)
     except ValueError as exc:
         sendError("Could not read the model selection.", info=str(exc))
-        return
+        raise
     padding = float(params['workerInterface']['Padding'])
     smoothing = float(params['workerInterface']['Smoothing'])
     propagate_tags = params['workerInterface']['Tag of objects to propagate']
@@ -355,7 +355,8 @@ def compute(datasetId, apiUrl, token, params):
         sendError("Model checkpoint is missing from the worker image.",
                   info=f"Expected the checkpoint at {checkpoint_path}. "
                        f"The worker image may need to be rebuilt.")
-        return
+        raise FileNotFoundError(
+            f"Model checkpoint not found at {checkpoint_path}")
     model_cfg = f"configs/sam2.1/{MODEL_TO_CFG[model]}"
     sam2_model = build_sam2(model_cfg, checkpoint_path, device='cuda', apply_postprocessing=False)  # device='cuda' for GPU
     predictor = SAM2ImagePredictor(sam2_model)

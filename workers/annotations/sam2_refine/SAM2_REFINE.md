@@ -61,7 +61,8 @@ config can hold `null` for a `select` field even though the interface defines a
 default, and a config saved against an older worker image can name a checkpoint
 that no longer exists in the current image. Previously a `null` or stale model
 name crashed with `KeyError` in the model→config mapping or `FileNotFoundError`
-in the checkpoint loader. Invalid selections now fail fast with `sendError`; the
+in the checkpoint loader. Invalid selections now fail fast with `sendError` and
+re-raise, so the job is recorded as failed rather than silently succeeding; the
 fix is to re-select the model in the tool settings and save the tool again. The
 selection is validated against the `MODEL_TO_CFG` mapping and the checkpoint
 file's presence in the image is verified before `build_sam2` runs.

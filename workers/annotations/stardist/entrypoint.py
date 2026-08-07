@@ -127,7 +127,7 @@ def compute(datasetId, apiUrl, token, params):
             allowed_values=MODELS)
     except ValueError as exc:
         sendError("Could not read the model selection.", info=str(exc))
-        return
+        raise
     channel = params['workerInterface']['Channel']
     prob_thresh = float(params['workerInterface']['Probability Threshold'])
     nms_thresh = float(params['workerInterface']['NMS Threshold'])

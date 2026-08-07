@@ -260,34 +260,40 @@ class TestComputeModelValidation:
         }
 
     @patch('entrypoint.sendError')
-    def test_null_model_sends_error_and_returns(self, mock_send_error):
-        compute('dataset_id', 'http://test-api', 'token', self._params(None))
+    def test_null_model_sends_error_and_raises(self, mock_send_error):
+        with pytest.raises(ValueError):
+            compute('dataset_id', 'http://test-api', 'token',
+                    self._params(None))
 
         mock_send_error.assert_called_once()
         assert 'model' in mock_send_error.call_args[0][0].lower()
 
     @patch('entrypoint.sendError')
-    def test_unknown_model_sends_error_and_returns(self, mock_send_error):
-        compute('dataset_id', 'http://test-api', 'token',
-                self._params('sam_vit_h_deleted'))
+    def test_unknown_model_sends_error_and_raises(self, mock_send_error):
+        with pytest.raises(ValueError):
+            compute('dataset_id', 'http://test-api', 'token',
+                    self._params('sam_vit_h_deleted'))
 
         mock_send_error.assert_called_once()
         info = mock_send_error.call_args.kwargs.get('info') or mock_send_error.call_args[0][1]
         assert 'sam_vit_h_deleted' in info
 
     @patch('entrypoint.sendError')
-    def test_missing_model_key_sends_error_and_returns(self, mock_send_error):
+    def test_missing_model_key_sends_error_and_raises(self, mock_send_error):
         params = self._params(None)
         del params['workerInterface']['Model']
 
-        compute('dataset_id', 'http://test-api', 'token', params)
+        with pytest.raises(ValueError):
+            compute('dataset_id', 'http://test-api', 'token', params)
 
         mock_send_error.assert_called_once()
 
     @patch('entrypoint.os.path.exists', return_value=False)
     @patch('entrypoint.sendError')
-    def test_missing_checkpoint_file_sends_error(self, mock_send_error, mock_exists):
-        compute('dataset_id', 'http://test-api', 'token', self._params(MODELS[0]))
+    def test_missing_checkpoint_file_sends_error_and_raises(self, mock_send_error, mock_exists):
+        with pytest.raises(FileNotFoundError):
+            compute('dataset_id', 'http://test-api', 'token',
+                    self._params(MODELS[0]))
 
         mock_send_error.assert_called_once()
         assert 'checkpoint' in mock_send_error.call_args[0][0].lower()
