@@ -60,6 +60,18 @@ This worker fine-tunes a Cellpose model on user-corrected annotations, producing
 
 The worker checks for GPU availability via `cellpose.core.use_gpu()` and logs the result, but model instantiation uses the default Cellpose behavior (GPU if available, CPU otherwise).
 
+### Model selection validation
+
+`compute()` validates the saved `Base Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default. Previously a `null` model was passed straight to the Girder model
+downloader, failing with a confusing error. Invalid selections now fail fast
+with `sendError`; the fix is to re-select the model in the tool settings and
+save the tool again. Because models can be user-trained and downloaded from
+Girder, there is no static option list — validation checks only that the
+selection is a non-empty string.
+
 ## Notes
 
 - Does not use `WorkerClient` for batch processing; instead directly manages annotation retrieval and image loading

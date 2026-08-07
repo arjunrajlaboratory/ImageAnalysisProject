@@ -53,6 +53,19 @@ Annotations are grouped by (XY, Z, Time) location before processing. The image f
 
 Same SAM2.1 Hiera variants as other SAM2 workers: tiny, small (default), base_plus, and large. Checkpoints are auto-detected from `/code/sam2/checkpoints/`.
 
+### Model selection validation
+
+`compute()` validates the saved `Model` selection with
+`annotation_tools.get_required_select()` before loading the model. A saved tool
+config can hold `null` for a `select` field even though the interface defines a
+default, and a config saved against an older worker image can name a checkpoint
+that no longer exists in the current image. Previously a `null` or stale model
+name crashed with `KeyError` in the model→config mapping or `FileNotFoundError`
+in the checkpoint loader. Invalid selections now fail fast with `sendError`; the
+fix is to re-select the model in the tool settings and save the tool again. The
+selection is validated against the `MODEL_TO_CFG` mapping and the checkpoint
+file's presence in the image is verified before `build_sam2` runs.
+
 ## Notes
 
 - The refined annotations are created with the output tags from the tool configuration, not necessarily the same tags as the originals. Make sure to set appropriate output tags.

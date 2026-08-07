@@ -46,6 +46,16 @@ When it was active, the `PostToolUse` hook (`.claude/hooks/update-worker-docs.sh
 
 ### Documentation Conventions
 
+- **Documentation updates ship with the change.** Any change to a worker's
+  interface, behavior, outputs, or error handling must update the affected
+  `WORKERNAME.md` (including shared docs such as `PISCIS.md`) in the same PR,
+  and `REGISTRY.md` when workers are added, removed, or renamed. Changes to
+  the shared packages (`annotation_utilities`, `worker_client`) that alter
+  worker-facing behavior should also be reflected in CLAUDE.md / AGENTS.md
+  (e.g. the interface pitfall sections). Since the automated doc hooks are
+  disabled, this is a manual step — treat a PR as incomplete until the docs
+  match the code.
+
 - Each worker's doc file is named `WORKERNAME.md` (uppercase, matching the worker name) and lives in the worker's directory.
 - These docs are **hand-maintained**. `generate_worker_docs.py` only creates a
   stub for a worker that has **no** doc file yet (existing docs are preserved, per
