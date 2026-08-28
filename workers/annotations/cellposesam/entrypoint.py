@@ -18,7 +18,8 @@ from worker_client import WorkerClient, geometry_to_polygon_coords
 
 from models_config import (
     BASE_MODELS, DEFAULT_MODEL, DEFAULT_DIAMETER, MAX_DIAMETER, MIN_DIAMETER,
-    build_cellpose_parameters, build_model_items, diameter_rescale)
+    build_cellpose_parameters, build_model_items, diameter_rescale,
+    parse_diameter)
 
 
 def interface(image, apiUrl, token):
@@ -225,14 +226,14 @@ def compute(datasetId, apiUrl, token, params):
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
     # The interface offers MIN_DIAMETER..MAX_DIAMETER, but a saved config can
-    # hold anything: configs saved while the field was absent (between a3e4524
-    # and this change) have no 'Diameter' key, and a select/number field can
-    # serialize as null. Both mean "as it ran before" -- the identity value.
-    # Out-of-range numbers are left alone rather than clamped: silently
-    # substituting a different diameter changes the segmentation, and
-    # build_cellpose_parameters drops anything cellpose treats as a no-op.
-    raw_diameter = worker.workerInterface.get('Diameter')
-    diameter = DEFAULT_DIAMETER if raw_diameter is None else float(raw_diameter)
+    # hold anything -- including None or '' for a cleared field, both of which
+    # float() would either mishandle or raise on. parse_diameter resolves the
+    # unset shapes to the identity and rejects non-numeric values.
+    try:
+        diameter = parse_diameter(worker.workerInterface.get('Diameter'))
+    except ValueError as exc:
+        sendError("Could not read the Diameter setting.", info=str(exc))
+        raise
 
     stack_channels = get_slot_channels(worker.workerInterface)
     # Validate the 1-indexed Batch fields and selected input channels before
@@ -242,36 +243,28 @@ def compute(datasetId, apiUrl, token, params):
 
     print(f"Using channels for Cellpose-SAM input (slots 1, 2, 3): {stack_channels}")
 
-    # A small Diameter enlarges every tile before inference (cellpose resizes by
-    # 30 / diameter), which is the easy way to run the GPU out of memory here.
-    # MIN_DIAMETER caps this at 3x for values entered through the interface, but
-    # a saved config can carry a smaller one. Warn rather than block: the user
-    # may have the headroom.
+    # Any rescale is worth surfacing, not just one big enough to threaten GPU
+    # memory. The worker cannot tell a deliberate choice from a stale saved
+    # value, and configs written before a3e4524 carry the old default of 10 --
+    # a 3x upscale that the pre-removal code applied to custom models only. Gating
+    # this on the tile size would stay silent for exactly those configs whenever
+    # Tile Size is small, and Tile Size can itself be 0.
     rescale = diameter_rescale(diameter)
-    effective_tile_size = tile_size * rescale
-    if effective_tile_size > 2048:
+    if rescale != 1.0:
+        effective_tile_size = tile_size * rescale
+        detail = (f"A Diameter of {diameter:g} px rescales the image by "
+                  f"{rescale:.2f}x before segmentation")
+        if tile_size > 0:
+            detail += (f", so each {tile_size:g} px tile is segmented at about "
+                       f"{effective_tile_size:.0f} px")
+        detail += (f". Set Diameter to {DEFAULT_DIAMETER:g} to segment at native "
+                   f"resolution, which is how Cellpose-SAM was trained.")
+        if effective_tile_size > 2048:
+            detail += (" At this size it may exhaust GPU memory; reduce Tile Size "
+                       "or raise Diameter.")
         sendWarning(
-            "Diameter will enlarge each tile substantially.",
-            info=f"A Diameter of {diameter:g} px rescales the image by "
-                 f"{rescale:.2f}x, so each {tile_size} px tile is segmented at "
-                 f"about {effective_tile_size:.0f} px and may exhaust GPU memory. "
-                 f"Reduce Tile Size, raise Diameter, or set Diameter back to "
-                 f"{DEFAULT_DIAMETER:g} to segment at native resolution.")
-
-    client = workers.UPennContrastWorkerPreviewClient(
-        apiUrl=apiUrl, token=token)
-    models_dir = MODELS_DIR
-    if model not in BASE_MODELS:
-        try:
-            downloaded_model = girder_utils.download_girder_model(
-                client.client, model)
-        except FileNotFoundError as exc:
-            sendError("Custom model unavailable.", info=str(exc))
-            raise
-        models_dir = downloaded_model.parent
-
-    # Print the contents of the models directory
-    print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
+            "Cellpose-SAM will rescale the image before segmentation.",
+            info=detail)
 
     cellpose_parameters = build_cellpose_parameters(
         model, models_dir, diameter=diameter)

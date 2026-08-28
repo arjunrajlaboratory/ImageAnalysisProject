@@ -249,3 +249,87 @@ def test_minimum_diameter_caps_the_upscale_factor():
 def test_default_diameter_is_within_the_offered_range():
     """The default must be selectable in the interface it ships with."""
     assert models_config.MIN_DIAMETER <= models_config.DEFAULT_DIAMETER
+    assert models_config.DEFAULT_DIAMETER <= models_config.MAX_DIAMETER
+    assert models_config.MIN_DIAMETER < models_config.MAX_DIAMETER
+
+
+# --- Parsing a stored Diameter value -----------------------------------------
+#
+# The interface min/max are UI hints only. A saved tool config can hold an unset
+# value -- None or '' are both documented shapes in this repo, see
+# annotation_tools.get_selected_channels -- or outright garbage. float('') raises
+# ValueError, so compute() must not call float() on the raw value.
+
+
+def test_parse_diameter_passes_through_numbers():
+    assert models_config.parse_diameter(60) == 60.0
+    assert models_config.parse_diameter(12.5) == 12.5
+    assert isinstance(models_config.parse_diameter(60), float)
+
+
+def test_parse_diameter_accepts_numeric_strings():
+    """Saved configs routinely round-trip numbers through JSON as strings."""
+    assert models_config.parse_diameter('60') == 60.0
+    assert models_config.parse_diameter('  60.5  ') == 60.5
+
+
+def test_parse_diameter_treats_unset_values_as_the_default():
+    """None/'' mean 'as it ran before' -- the identity, not a crash and not 0."""
+    for unset in (None, '', '   '):
+        assert models_config.parse_diameter(unset) == models_config.DEFAULT_DIAMETER
+
+
+def test_parse_diameter_rejects_non_numeric_strings():
+    """Garbage must surface as ValueError so compute() can sendError on it."""
+    for bad in ('abc', 'thirty', '30px'):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError as exc:
+            assert 'Diameter' in str(exc)
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_rejects_non_numeric_types():
+    """A list/dict from a malformed config must not become a diameter."""
+    for bad in ([30], {'value': 30}):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_rejects_booleans():
+    """bool is an int subclass, so float(True) would silently mean a 30x upscale."""
+    for bad in (True, False):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_does_not_clamp_out_of_range_values():
+    """Out-of-range values are honoured, not silently replaced.
+
+    Substituting a different diameter would change the segmentation; the worker
+    warns about the rescale instead.
+    """
+    assert models_config.parse_diameter(2) == 2.0
+    assert models_config.parse_diameter(500) == 500.0
+    assert models_config.parse_diameter(0) == 0.0
+    assert models_config.parse_diameter(-5) == -5.0
+
+
+def test_pre_removal_default_is_not_identity():
+    """Configs saved before a3e4524 hold Diameter 10, which really does rescale.
+
+    This is the case the runtime warning exists for: it is 3x upscaling that the
+    pre-removal code applied to custom models only, so it must not be mistaken
+    for a no-op and must not be gated on the tile size.
+    """
+    assert models_config.diameter_rescale(10) == 3.0
+    assert models_config.diameter_rescale(10) != 1.0

@@ -44,11 +44,11 @@ def build_model_items(girder_model_names):
 
 
 # The diameter at which cellpose applies no rescaling. ``CellposeModel.eval()``
-# computes ``rescale = 30. / diameter`` with 30 as a hardcoded literal
-# (models.py:269) -- it is not a per-model ``diam_mean``, which v4 ignores
-# entirely. So 30 yields rescale == 1.0, exactly what ``diameter=None`` yields,
-# and it serves as the interface default: an in-range, self-describing "leave it
-# alone" value rather than an out-of-band 0 sentinel.
+# computes ``rescale = 30. / diameter`` with 30 as a hardcoded literal -- it is
+# not a per-model ``diam_mean``, which cellpose v4 ignores entirely. So 30
+# yields rescale == 1.0, exactly what ``diameter=None`` yields, and it serves as
+# the interface default: an in-range, self-describing "leave it alone" value
+# rather than an out-of-band 0 sentinel. Verified against cellpose==4.2.1.1.
 DEFAULT_DIAMETER = 30.0
 
 # Smallest diameter the interface offers. A small diameter *enlarges* the image
@@ -57,6 +57,42 @@ MIN_DIAMETER = 10.0
 
 # Largest diameter the interface offers; shrinks the image by 30/200 = 0.15x.
 MAX_DIAMETER = 200.0
+
+
+def parse_diameter(value):
+    """Normalize a stored ``Diameter`` interface value into a float.
+
+    The interface ``min``/``max`` are UI hints only -- a saved tool config, or a
+    direct API call, can hold anything. ``None`` and ``''`` are both documented
+    "unset" shapes for saved interface values in this repo (see
+    ``annotation_tools.get_selected_channels``), and configs saved while the
+    field did not exist have no key at all. All of those mean "as it ran
+    before", so they resolve to ``DEFAULT_DIAMETER`` -- the identity.
+
+    Out-of-range numbers are returned as given rather than clamped: substituting
+    a different diameter would silently change the segmentation, so the worker
+    warns about the resulting rescale instead.
+
+    Raises ``ValueError`` on anything non-numeric, so the caller can ``sendError``
+    rather than crash on ``float('')``.
+    """
+    if value is None:
+        return DEFAULT_DIAMETER
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return DEFAULT_DIAMETER
+    # bool is an int subclass, so float(True) would quietly become 1.0 -- a 30x
+    # upscale. A boolean here means the config is malformed, not that the user
+    # asked for that.
+    if isinstance(value, bool):
+        raise ValueError(
+            f"Diameter must be a number in pixels, got the boolean {value!r}.")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Diameter must be a number in pixels, got {value!r}.")
 
 
 def diameter_rescale(diameter):
