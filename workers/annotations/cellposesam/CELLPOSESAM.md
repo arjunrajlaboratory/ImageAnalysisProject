@@ -23,6 +23,7 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |
 | **Channel for Slot 3** | channelCheckboxes | -- | Optional third input slot channel |
+| **Diameter** | number | 30 | Object diameter in pixels (range: 10-200). `30` (the default) is cellpose's identity value and segments at native resolution; other values rescale the image by `30 / Diameter` before inference |
 | **Smoothing** | number | 0.7 | Polygon simplification tolerance (range: 0-10) |
 | **Padding** | number | 0 | Expand (positive) or shrink (negative) polygons in pixels (range: -20 to 20) |
 | **Tile Size** | number | 1024 | Tile dimension in pixels (range: 0-2048) |
@@ -43,7 +44,88 @@ Unlike the standard Cellpose worker which uses Primary/Secondary channel selecto
 ### Model Behavior
 
 - **Base models**: The dropdown labels map to cellpose built-in checkpoints in `models_config.py` — `cellpose-sam` → `cpsam_v2`, `cellpose-sam (legacy cpsam)` → `cpsam`. The selected checkpoint name is passed explicitly as `pretrained_model` rather than relying on Cellpose's internal default, which can shift between versions.
-- **Custom models**: Loaded from Girder by path. Like built-in Cellpose-SAM checkpoints, they run at native resolution with no diameter rescaling.
+- **Custom models**: Loaded from Girder by path. They take the same optional `Diameter` rescaling as the built-in checkpoints.
+
+### Diameter and Rescaling
+
+`Diameter` tells cellpose what object size to rescale the image to before
+segmentation. `CellposeModel.eval(diameter=...)` sets `rescale = 30 / diameter`,
+so a **smaller** value enlarges the image and a **larger** one shrinks it.
+
+**30 is the default because it is the identity.** The `30` in that formula is a
+hardcoded literal inside `CellposeModel.eval()`, not a per-model `diam_mean` —
+cellpose v4 ignores `diam_mean` entirely. So `Diameter = 30` gives `rescale = 1.0`,
+exactly what `diameter=None` gives, and every downstream branch in cellpose keys
+off `rescale != 1.0` rather than off the diameter. The two are equivalent, which lets the default be a real,
+self-describing in-range value instead of an out-of-band `0` sentinel. At the
+default the worker omits `diameter` from the eval call entirely, so it issues the
+identical call it made while the field was absent.
+
+Cellpose-SAM is trained at native resolution and handles a wide range of object
+sizes, so **30 is the right setting for almost every dataset.** Change it only
+when objects are far outside the size range the checkpoint handles well.
+
+With `resample=True` (cellpose's default) the flows are resized back to the
+original tile size afterwards, so annotation coordinates are unaffected by any
+rescale. (Verified against the pinned `cellpose==4.2.1.1`, where `resample`
+defaults to `True` and is not deprecated; check this again on a version bump.)
+
+Only the **constructor** argument `diam_mean` was deprecated in cellpose v4.0.1+;
+the eval-time `diameter` is still honoured in the pinned `cellpose==4.2.1.1`.
+The parameter was removed from this worker in `a3e4524` on the mistaken
+assumption that Cellpose-SAM ignores it entirely, and restored here.
+
+#### Warnings and GPU memory
+
+**The worker warns on any active rescale**, i.e. whenever `Diameter` is not 30.
+It cannot distinguish a deliberate choice from a stale saved value, and a
+rescale changes the segmentation either way, so it always says so rather than
+staying silent. The warning names the rescale factor and the effective tile size.
+
+A *small* Diameter enlarges each tile: `Diameter` 10 with `Tile Size` 1024 means
+the network actually runs on ~3072 px tiles. The interface minimum of `10` caps
+this at 3x for values entered through the UI, though a saved config can carry
+less. When the effective tile size would exceed 2048 px the warning adds a
+GPU-memory caveat rather than blocking, since the run may still fit. Reduce
+`Tile Size` or raise `Diameter` if it runs out of memory.
+
+Note that the warning is deliberately **not** gated on the tile size: `Tile Size`
+can itself be `0`, and a small tile with a small diameter would otherwise rescale
+silently.
+
+#### Values outside the offered range
+
+The `min`/`max` are interface hints; a saved config or a direct API call can
+still carry `0`, `null`, a negative number, or something below `10`. The worker
+handles these without clamping — substituting a different diameter would
+silently change the segmentation:
+
+Values are normalized by `parse_diameter()` in `models_config.py`:
+
+| Stored value | Behavior |
+|---|---|
+| key absent, `null`, or `""` | Treated as the identity (`30`) — native resolution, matching how such configs ran before this field existed |
+| numeric string (`"60"`) | Parsed as the number |
+| `0` or negative | No rescaling; cellpose itself guards with `diameter > 0` |
+| below `10` | Honored as given, with the rescale warning above |
+| non-numeric (`"abc"`, a list, a boolean) | `sendError` and the job fails, rather than crashing on `float()` or silently segmenting at the wrong scale |
+| non-finite (`"inf"`, `"nan"`, `"1e309"`) | `sendError` and the job fails — see below |
+
+A boolean is rejected specifically because `bool` is an `int` subclass, so
+`float(True)` would quietly mean `1.0` — a 30x upscale.
+
+Non-finite values are rejected because `float()` accepts `"inf"`, `"nan"` and
+overflowing literals like `"1e309"`, and neither is safe to forward. Cellpose
+guards with `diameter > 0`, so `+inf` **passes** that guard and yields
+`rescale = 30/inf = 0.0` — a degenerate zero-scale resize. `NaN` **fails** it, so
+cellpose would not rescale at all, while this worker's own `30/nan != 1.0` check
+would report that it had.
+
+> **Note on configs saved before July 2026:** those hold the old `Diameter`
+> default of `10`, which the pre-removal code applied to custom models only and
+> ignored for the base checkpoints. Such a config will now rescale by 3x on
+> every model. Re-check the `Diameter` on any tool config saved before then, or
+> set it to `30`.
 
 ### Batch Validation
 

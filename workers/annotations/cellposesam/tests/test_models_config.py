@@ -102,3 +102,280 @@ def test_custom_runtime_parameters_use_downloaded_path_at_native_scale(tmp_path)
         },
         'eval_parameters': {},
     }
+
+
+# --- Diameter / eval-time rescaling -----------------------------------------
+#
+# cellpose 4.2.1.1 still honours ``diameter`` in ``CellposeModel.eval()``
+# (models.py: ``if diameter is not None and diameter > 0: rescale = 30./diameter``),
+# and deeptile forwards our ``eval_parameters`` straight into that call. Only the
+# constructor argument ``diam_mean`` was deprecated in v4.0.1+. The parameter was
+# removed from the worker in a3e4524 on the mistaken assumption that Cellpose-SAM
+# ignores it entirely; these tests pin the restored behaviour.
+
+
+def test_diameter_omitted_keeps_native_resolution(tmp_path):
+    """No diameter argument must reproduce the pre-restore native-scale behaviour."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_diameter_none_keeps_native_resolution(tmp_path):
+    """An explicit None is the 'off' value, matching cellpose's own CLI default."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=None)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_diameter_zero_keeps_native_resolution(tmp_path):
+    """0 never reaches eval. It is not offered by the interface (min is 10) but
+    can still arrive from a config saved before the field had a minimum."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=0)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_negative_diameter_keeps_native_resolution(tmp_path):
+    """A negative diameter is meaningless; treat it as off rather than rescaling.
+
+    cellpose itself guards with ``diameter > 0``, so this only keeps the worker
+    from passing through a value that would be silently ignored downstream.
+    """
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=-5)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_positive_diameter_is_passed_to_eval(tmp_path):
+    """A positive diameter reaches ``CellposeModel.eval()`` as a float."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=60)
+
+    assert parameters['eval_parameters'] == {'diameter': 60.0}
+    assert isinstance(parameters['eval_parameters']['diameter'], float)
+
+
+def test_diameter_applies_to_custom_models_too(tmp_path):
+    """Custom Girder models take the same rescaling path as the built-ins."""
+    parameters = models_config.build_cellpose_parameters(
+        'my custom model', tmp_path, diameter=45)
+
+    assert parameters == {
+        'model_parameters': {
+            'gpu': True,
+            'pretrained_model': str(tmp_path / 'my custom model'),
+        },
+        'eval_parameters': {'diameter': 45.0},
+    }
+
+
+def test_diameter_does_not_disturb_model_parameters(tmp_path):
+    """Setting a diameter must not change which checkpoint is loaded."""
+    without = models_config.build_cellpose_parameters('cellpose-sam', tmp_path)
+    with_diameter = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=30)
+
+    assert without['model_parameters'] == with_diameter['model_parameters']
+
+
+def test_diameter_rescale_matches_cellpose_formula():
+    """The worker's preflight estimate must match cellpose's own 30/diameter."""
+    assert models_config.diameter_rescale(30) == 1.0
+    assert models_config.diameter_rescale(10) == 3.0
+    assert models_config.diameter_rescale(60) == 0.5
+
+
+def test_diameter_rescale_is_one_when_off():
+    """'Off' values mean the image is handed to the net unscaled."""
+    assert models_config.diameter_rescale(None) == 1.0
+    assert models_config.diameter_rescale(0) == 1.0
+    assert models_config.diameter_rescale(-5) == 1.0
+
+
+# --- 30 px is the identity value ---------------------------------------------
+#
+# cellpose hardcodes ``rescale = 30. / diameter`` (models.py:269) -- the 30 is a
+# literal, not a per-model ``diam_mean`` (v4 ignores that entirely). So a
+# Diameter of 30 yields rescale == 1.0, exactly what ``diameter=None`` yields at
+# models.py:267, and every downstream branch keys off ``rescale != 1.0``. That
+# makes 30 a real, in-range "no rescaling" value, which is why it is the
+# interface default -- no out-of-band 0 sentinel needed.
+
+
+def test_default_diameter_is_the_native_identity_value():
+    """The interface default must be cellpose's identity diameter."""
+    assert models_config.DEFAULT_DIAMETER == 30.0
+    assert models_config.diameter_rescale(models_config.DEFAULT_DIAMETER) == 1.0
+
+
+def test_default_diameter_is_not_passed_to_eval(tmp_path):
+    """At the default, nothing is forwarded -- identical to the pre-restore call."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=models_config.DEFAULT_DIAMETER)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_diameter_thirty_is_normalized_away_for_custom_models_too(tmp_path):
+    """The normalization is not special-cased to the built-in checkpoints."""
+    parameters = models_config.build_cellpose_parameters(
+        'my custom model', tmp_path, diameter=30)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_values_either_side_of_thirty_still_rescale(tmp_path):
+    """Only the exact identity is dropped; neighbouring values must pass through."""
+    below = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=29)
+    above = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=31)
+
+    assert below['eval_parameters'] == {'diameter': 29.0}
+    assert above['eval_parameters'] == {'diameter': 31.0}
+
+
+def test_minimum_diameter_caps_the_upscale_factor():
+    """The interface minimum bounds how far a tile can be enlarged."""
+    assert models_config.MIN_DIAMETER == 10.0
+    assert models_config.diameter_rescale(models_config.MIN_DIAMETER) == 3.0
+
+
+def test_default_diameter_is_within_the_offered_range():
+    """The default must be selectable in the interface it ships with."""
+    assert models_config.MIN_DIAMETER <= models_config.DEFAULT_DIAMETER
+    assert models_config.DEFAULT_DIAMETER <= models_config.MAX_DIAMETER
+    assert models_config.MIN_DIAMETER < models_config.MAX_DIAMETER
+
+
+# --- Parsing a stored Diameter value -----------------------------------------
+#
+# The interface min/max are UI hints only. A saved tool config can hold an unset
+# value -- None or '' are both documented shapes in this repo, see
+# annotation_tools.get_selected_channels -- or outright garbage. float('') raises
+# ValueError, so compute() must not call float() on the raw value.
+
+
+def test_parse_diameter_passes_through_numbers():
+    assert models_config.parse_diameter(60) == 60.0
+    assert models_config.parse_diameter(12.5) == 12.5
+    assert isinstance(models_config.parse_diameter(60), float)
+
+
+def test_parse_diameter_accepts_numeric_strings():
+    """Saved configs routinely round-trip numbers through JSON as strings."""
+    assert models_config.parse_diameter('60') == 60.0
+    assert models_config.parse_diameter('  60.5  ') == 60.5
+
+
+def test_parse_diameter_treats_unset_values_as_the_default():
+    """None/'' mean 'as it ran before' -- the identity, not a crash and not 0."""
+    for unset in (None, '', '   '):
+        assert models_config.parse_diameter(unset) == models_config.DEFAULT_DIAMETER
+
+
+def test_parse_diameter_rejects_non_numeric_strings():
+    """Garbage must surface as ValueError so compute() can sendError on it."""
+    for bad in ('abc', 'thirty', '30px'):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError as exc:
+            assert 'Diameter' in str(exc)
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_rejects_non_numeric_types():
+    """A list/dict from a malformed config must not become a diameter."""
+    for bad in ([30], {'value': 30}):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_rejects_booleans():
+    """bool is an int subclass, so float(True) would silently mean a 30x upscale."""
+    for bad in (True, False):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_does_not_clamp_out_of_range_values():
+    """Out-of-range values are honoured, not silently replaced.
+
+    Substituting a different diameter would change the segmentation; the worker
+    warns about the rescale instead.
+    """
+    assert models_config.parse_diameter(2) == 2.0
+    assert models_config.parse_diameter(500) == 500.0
+    assert models_config.parse_diameter(0) == 0.0
+    assert models_config.parse_diameter(-5) == -5.0
+
+
+def test_pre_removal_default_is_not_identity():
+    """Configs saved before a3e4524 hold Diameter 10, which really does rescale.
+
+    This is the case the runtime warning exists for: it is 3x upscaling that the
+    pre-removal code applied to custom models only, so it must not be mistaken
+    for a no-op and must not be gated on the tile size.
+    """
+    assert models_config.diameter_rescale(10) == 3.0
+    assert models_config.diameter_rescale(10) != 1.0
+
+
+# --- Non-finite values --------------------------------------------------------
+#
+# float() happily accepts 'inf', 'nan' and overflowing literals like '1e309'.
+# Neither is safe to forward: cellpose's guard is `diameter > 0`, so +inf passes
+# it and yields rescale = 30/inf = 0.0 -- a degenerate zero-scale resize -- while
+# NaN fails it, so cellpose silently does not rescale even though this worker's
+# own 30/nan != 1.0 check would have reported one. Both are rejected at the
+# boundary instead.
+
+
+def test_parse_diameter_rejects_infinity():
+    for bad in (float('inf'), float('-inf'), 'inf', 'Infinity', '-Infinity', '1e309'):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError as exc:
+            assert 'Diameter' in str(exc)
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_rejects_nan():
+    for bad in (float('nan'), 'nan', 'NaN'):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError as exc:
+            assert 'Diameter' in str(exc)
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_diameter_rescale_treats_non_finite_as_no_rescale():
+    """Defence in depth: parse_diameter rejects these, but if one reaches the
+    helper it must not report a rescale that cellpose would not perform."""
+    assert models_config.diameter_rescale(float('nan')) == 1.0
+    assert models_config.diameter_rescale(float('inf')) == 1.0
+    assert models_config.diameter_rescale(float('-inf')) == 1.0
+
+
+def test_non_finite_diameter_is_never_forwarded_to_eval(tmp_path):
+    """Nothing non-finite may end up in eval_parameters."""
+    for bad in (float('nan'), float('inf'), float('-inf')):
+        parameters = models_config.build_cellpose_parameters(
+            'cellpose-sam', tmp_path, diameter=bad)
+        assert parameters['eval_parameters'] == {}

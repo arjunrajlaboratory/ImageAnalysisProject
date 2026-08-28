@@ -17,7 +17,9 @@ from shapely.geometry import Polygon
 from worker_client import WorkerClient, geometry_to_polygon_coords
 
 from models_config import (
-    BASE_MODELS, DEFAULT_MODEL, build_cellpose_parameters, build_model_items)
+    BASE_MODELS, DEFAULT_MODEL, DEFAULT_DIAMETER, MAX_DIAMETER, MIN_DIAMETER,
+    build_cellpose_parameters, build_model_items, diameter_rescale,
+    parse_diameter)
 
 
 def interface(image, apiUrl, token):
@@ -64,13 +66,27 @@ def interface(image, apiUrl, token):
             'tooltip': "Select source channel(s) for the model's third input slot. If multiple are selected, only the first will be used. (Optional)",
             'displayOrder': 7
         },
+        'Diameter': {
+            'type': 'number',
+            'min': MIN_DIAMETER,
+            'max': MAX_DIAMETER,
+            'default': DEFAULT_DIAMETER,
+            'unit': 'pixels',
+            'tooltip': 'The object size the image is rescaled to before segmentation.\n'
+                       'Leave at 30, the default, to segment at native resolution -- this is how\n'
+                       'Cellpose-SAM was trained and is the right choice for almost all images.\n'
+                       'Change it only if your objects are far outside the size range the model\n'
+                       'handles well: the image is resized by 30 / Diameter, so a smaller value\n'
+                       'enlarges the image and a larger one shrinks it.',
+            'displayOrder': 8,
+        },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 10,
             'default': 0.7,
             'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.7 is a good default.',
-            'displayOrder': 8,
+            'displayOrder': 9,
         },
         'Padding': {
             'type': 'number',
@@ -79,7 +95,7 @@ def interface(image, apiUrl, token):
             'default': 0,
             'unit': 'pixels',
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
-            'displayOrder': 9,
+            'displayOrder': 10,
         },
         'Tile Size': {
             'type': 'number',
@@ -88,7 +104,7 @@ def interface(image, apiUrl, token):
             'default': 1024,
             'unit': 'pixels',
             'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the Cellpose model may not be able to run on them.',
-            'displayOrder': 10,
+            'displayOrder': 11,
         },
         'Tile Overlap': {
             'type': 'number',
@@ -99,7 +115,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'The amount of overlap between tiles. A value of 0.1 means that the tiles will overlap by 10%, which is 102 pixels if the tile size is 1024.\n'
                        'Make sure your objects are smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
                        'then the largest object should be less than 102 pixels in its longest dimension.',
-            'displayOrder': 11,
+            'displayOrder': 12,
         },
     }
     # Send the interface object to the server
@@ -209,6 +225,15 @@ def compute(datasetId, apiUrl, token, params):
     tile_overlap = float(worker.workerInterface['Tile Overlap'])
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
+    # The interface offers MIN_DIAMETER..MAX_DIAMETER, but a saved config can
+    # hold anything -- including None or '' for a cleared field, both of which
+    # float() would either mishandle or raise on. parse_diameter resolves the
+    # unset shapes to the identity and rejects non-numeric values.
+    try:
+        diameter = parse_diameter(worker.workerInterface.get('Diameter'))
+    except ValueError as exc:
+        sendError("Could not read the Diameter setting.", info=str(exc))
+        raise
 
     stack_channels = get_slot_channels(worker.workerInterface)
     # Validate the 1-indexed Batch fields and selected input channels before
@@ -217,6 +242,29 @@ def compute(datasetId, apiUrl, token, params):
     worker.validate_coordinates(stack_channels=stack_channels)
 
     print(f"Using channels for Cellpose-SAM input (slots 1, 2, 3): {stack_channels}")
+
+    # Any rescale is worth surfacing, not just one big enough to threaten GPU
+    # memory. The worker cannot tell a deliberate choice from a stale saved
+    # value, and configs written before a3e4524 carry the old default of 10 --
+    # a 3x upscale that the pre-removal code applied to custom models only. Gating
+    # this on the tile size would stay silent for exactly those configs whenever
+    # Tile Size is small, and Tile Size can itself be 0.
+    rescale = diameter_rescale(diameter)
+    if rescale != 1.0:
+        effective_tile_size = tile_size * rescale
+        detail = (f"A Diameter of {diameter:g} px rescales the image by "
+                  f"{rescale:.2f}x before segmentation")
+        if tile_size > 0:
+            detail += (f", so each {tile_size:g} px tile is segmented at about "
+                       f"{effective_tile_size:.0f} px")
+        detail += (f". Set Diameter to {DEFAULT_DIAMETER:g} to segment at native "
+                   f"resolution, which is how Cellpose-SAM was trained.")
+        if effective_tile_size > 2048:
+            detail += (" At this size it may exhaust GPU memory; reduce Tile Size "
+                       "or raise Diameter.")
+        sendWarning(
+            "Cellpose-SAM will rescale the image before segmentation.",
+            info=detail)
 
     client = workers.UPennContrastWorkerPreviewClient(
         apiUrl=apiUrl, token=token)
@@ -233,7 +281,8 @@ def compute(datasetId, apiUrl, token, params):
     # Print the contents of the models directory
     print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
 
-    cellpose_parameters = build_cellpose_parameters(model, models_dir)
+    cellpose_parameters = build_cellpose_parameters(
+        model, models_dir, diameter=diameter)
     cellpose = cellpose_segmentation(
         **cellpose_parameters, output_format='polygons')
     f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size,
