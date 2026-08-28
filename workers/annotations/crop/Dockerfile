@@ -3,7 +3,7 @@ FROM nimbusimage/image-processing-base:latest
 COPY ./workers/annotations/crop/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
-      isGPUWorker="false" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       interfaceName="Crop" \
       interfaceCategory="Image Processing" \
