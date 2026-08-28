@@ -333,3 +333,49 @@ def test_pre_removal_default_is_not_identity():
     """
     assert models_config.diameter_rescale(10) == 3.0
     assert models_config.diameter_rescale(10) != 1.0
+
+
+# --- Non-finite values --------------------------------------------------------
+#
+# float() happily accepts 'inf', 'nan' and overflowing literals like '1e309'.
+# Neither is safe to forward: cellpose's guard is `diameter > 0`, so +inf passes
+# it and yields rescale = 30/inf = 0.0 -- a degenerate zero-scale resize -- while
+# NaN fails it, so cellpose silently does not rescale even though this worker's
+# own 30/nan != 1.0 check would have reported one. Both are rejected at the
+# boundary instead.
+
+
+def test_parse_diameter_rejects_infinity():
+    for bad in (float('inf'), float('-inf'), 'inf', 'Infinity', '-Infinity', '1e309'):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError as exc:
+            assert 'Diameter' in str(exc)
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_parse_diameter_rejects_nan():
+    for bad in (float('nan'), 'nan', 'NaN'):
+        try:
+            models_config.parse_diameter(bad)
+        except ValueError as exc:
+            assert 'Diameter' in str(exc)
+        else:
+            raise AssertionError(f'{bad!r} should have raised ValueError')
+
+
+def test_diameter_rescale_treats_non_finite_as_no_rescale():
+    """Defence in depth: parse_diameter rejects these, but if one reaches the
+    helper it must not report a rescale that cellpose would not perform."""
+    assert models_config.diameter_rescale(float('nan')) == 1.0
+    assert models_config.diameter_rescale(float('inf')) == 1.0
+    assert models_config.diameter_rescale(float('-inf')) == 1.0
+
+
+def test_non_finite_diameter_is_never_forwarded_to_eval(tmp_path):
+    """Nothing non-finite may end up in eval_parameters."""
+    for bad in (float('nan'), float('inf'), float('-inf')):
+        parameters = models_config.build_cellpose_parameters(
+            'cellpose-sam', tmp_path, diameter=bad)
+        assert parameters['eval_parameters'] == {}

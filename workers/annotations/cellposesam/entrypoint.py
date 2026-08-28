@@ -266,6 +266,21 @@ def compute(datasetId, apiUrl, token, params):
             "Cellpose-SAM will rescale the image before segmentation.",
             info=detail)
 
+    client = workers.UPennContrastWorkerPreviewClient(
+        apiUrl=apiUrl, token=token)
+    models_dir = MODELS_DIR
+    if model not in BASE_MODELS:
+        try:
+            downloaded_model = girder_utils.download_girder_model(
+                client.client, model)
+        except FileNotFoundError as exc:
+            sendError("Custom model unavailable.", info=str(exc))
+            raise
+        models_dir = downloaded_model.parent
+
+    # Print the contents of the models directory
+    print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
+
     cellpose_parameters = build_cellpose_parameters(
         model, models_dir, diameter=diameter)
     cellpose = cellpose_segmentation(

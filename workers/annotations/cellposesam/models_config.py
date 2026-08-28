@@ -8,6 +8,7 @@ mapping can be unit-tested in the lightweight local venv without the full
 worker stack.
 """
 
+import math
 from pathlib import Path
 
 
@@ -89,10 +90,19 @@ def parse_diameter(value):
         raise ValueError(
             f"Diameter must be a number in pixels, got the boolean {value!r}.")
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         raise ValueError(
             f"Diameter must be a number in pixels, got {value!r}.")
+    # float() accepts 'inf'/'nan' and overflowing literals like '1e309'. Neither
+    # is safe to forward: cellpose guards with ``diameter > 0``, so +inf passes
+    # and yields rescale = 30/inf = 0.0 -- a degenerate zero-scale resize --
+    # while NaN fails the guard, so cellpose would not rescale at all even though
+    # 30/nan != 1.0 would have this worker report that it did.
+    if not math.isfinite(parsed):
+        raise ValueError(
+            f"Diameter must be a finite number in pixels, got {value!r}.")
+    return parsed
 
 
 def diameter_rescale(diameter):
@@ -104,9 +114,15 @@ def diameter_rescale(diameter):
     flag a rescale that would blow the tile size up past what the GPU can hold,
     before loading the model.
     """
-    if diameter is None or float(diameter) <= 0:
+    if diameter is None:
         return 1.0
-    return 30.0 / float(diameter)
+    diameter = float(diameter)
+    # Defence in depth: parse_diameter rejects non-finite values at the boundary,
+    # but if one reaches here it must not be reported as a rescale. NaN fails
+    # cellpose's own ``diameter > 0`` guard, so cellpose would not rescale.
+    if not math.isfinite(diameter) or diameter <= 0:
+        return 1.0
+    return 30.0 / diameter
 
 
 def build_cellpose_parameters(model_name, models_dir, diameter=None):

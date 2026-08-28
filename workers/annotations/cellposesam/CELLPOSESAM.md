@@ -109,9 +109,17 @@ Values are normalized by `parse_diameter()` in `models_config.py`:
 | `0` or negative | No rescaling; cellpose itself guards with `diameter > 0` |
 | below `10` | Honored as given, with the rescale warning above |
 | non-numeric (`"abc"`, a list, a boolean) | `sendError` and the job fails, rather than crashing on `float()` or silently segmenting at the wrong scale |
+| non-finite (`"inf"`, `"nan"`, `"1e309"`) | `sendError` and the job fails — see below |
 
 A boolean is rejected specifically because `bool` is an `int` subclass, so
 `float(True)` would quietly mean `1.0` — a 30x upscale.
+
+Non-finite values are rejected because `float()` accepts `"inf"`, `"nan"` and
+overflowing literals like `"1e309"`, and neither is safe to forward. Cellpose
+guards with `diameter > 0`, so `+inf` **passes** that guard and yields
+`rescale = 30/inf = 0.0` — a degenerate zero-scale resize. `NaN` **fails** it, so
+cellpose would not rescale at all, while this worker's own `30/nan != 1.0` check
+would report that it had.
 
 > **Note on configs saved before July 2026:** those hold the old `Diameter`
 > default of `10`, which the pre-removal code applied to custom models only and
