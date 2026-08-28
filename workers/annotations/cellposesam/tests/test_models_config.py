@@ -131,7 +131,8 @@ def test_diameter_none_keeps_native_resolution(tmp_path):
 
 
 def test_diameter_zero_keeps_native_resolution(tmp_path):
-    """0 is the interface's 'off' sentinel: run at native resolution."""
+    """0 never reaches eval. It is not offered by the interface (min is 10) but
+    can still arrive from a config saved before the field had a minimum."""
     parameters = models_config.build_cellpose_parameters(
         'cellpose-sam', tmp_path, diameter=0)
 
@@ -194,3 +195,57 @@ def test_diameter_rescale_is_one_when_off():
     assert models_config.diameter_rescale(None) == 1.0
     assert models_config.diameter_rescale(0) == 1.0
     assert models_config.diameter_rescale(-5) == 1.0
+
+
+# --- 30 px is the identity value ---------------------------------------------
+#
+# cellpose hardcodes ``rescale = 30. / diameter`` (models.py:269) -- the 30 is a
+# literal, not a per-model ``diam_mean`` (v4 ignores that entirely). So a
+# Diameter of 30 yields rescale == 1.0, exactly what ``diameter=None`` yields at
+# models.py:267, and every downstream branch keys off ``rescale != 1.0``. That
+# makes 30 a real, in-range "no rescaling" value, which is why it is the
+# interface default -- no out-of-band 0 sentinel needed.
+
+
+def test_default_diameter_is_the_native_identity_value():
+    """The interface default must be cellpose's identity diameter."""
+    assert models_config.DEFAULT_DIAMETER == 30.0
+    assert models_config.diameter_rescale(models_config.DEFAULT_DIAMETER) == 1.0
+
+
+def test_default_diameter_is_not_passed_to_eval(tmp_path):
+    """At the default, nothing is forwarded -- identical to the pre-restore call."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=models_config.DEFAULT_DIAMETER)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_diameter_thirty_is_normalized_away_for_custom_models_too(tmp_path):
+    """The normalization is not special-cased to the built-in checkpoints."""
+    parameters = models_config.build_cellpose_parameters(
+        'my custom model', tmp_path, diameter=30)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_values_either_side_of_thirty_still_rescale(tmp_path):
+    """Only the exact identity is dropped; neighbouring values must pass through."""
+    below = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=29)
+    above = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=31)
+
+    assert below['eval_parameters'] == {'diameter': 29.0}
+    assert above['eval_parameters'] == {'diameter': 31.0}
+
+
+def test_minimum_diameter_caps_the_upscale_factor():
+    """The interface minimum bounds how far a tile can be enlarged."""
+    assert models_config.MIN_DIAMETER == 10.0
+    assert models_config.diameter_rescale(models_config.MIN_DIAMETER) == 3.0
+
+
+def test_default_diameter_is_within_the_offered_range():
+    """The default must be selectable in the interface it ships with."""
+    assert models_config.MIN_DIAMETER <= models_config.DEFAULT_DIAMETER

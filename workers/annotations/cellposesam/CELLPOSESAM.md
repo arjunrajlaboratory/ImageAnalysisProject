@@ -23,7 +23,7 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |
 | **Channel for Slot 3** | channelCheckboxes | -- | Optional third input slot channel |
-| **Diameter** | number | 0 | Optional object diameter in pixels (range: 0-200). `0` (the default) segments at native resolution; a positive value rescales the image by `30 / Diameter` before inference |
+| **Diameter** | number | 30 | Object diameter in pixels (range: 10-200). `30` (the default) is cellpose's identity value and segments at native resolution; other values rescale the image by `30 / Diameter` before inference |
 | **Smoothing** | number | 0.7 | Polygon simplification tolerance (range: 0-10) |
 | **Padding** | number | 0 | Expand (positive) or shrink (negative) polygons in pixels (range: -20 to 20) |
 | **Tile Size** | number | 1024 | Tile dimension in pixels (range: 0-2048) |
@@ -48,34 +48,58 @@ Unlike the standard Cellpose worker which uses Primary/Secondary channel selecto
 
 ### Diameter and Rescaling
 
-`Diameter` is an optional escape hatch, off by default. Cellpose-SAM is trained
-at native resolution and handles a wide range of object sizes, so `0` — no
-rescaling — is the right setting for almost every dataset, and it is what the
-worker ran with while the field was absent.
+`Diameter` tells cellpose what object size to rescale the image to before
+segmentation. `CellposeModel.eval(diameter=...)` sets `rescale = 30 / diameter`,
+so a **smaller** value enlarges the image and a **larger** one shrinks it.
 
-A positive value is forwarded to `CellposeModel.eval(diameter=...)`, which sets
-`rescale = 30 / diameter` and resizes the image so objects land near the 30 px
-scale before the network sees them. This is worth reaching for only when objects
-are far outside the size range the checkpoint handles well. With `resample=True`
-(cellpose's default) the flows are resized back to the original tile size
-afterwards, so annotation coordinates are unaffected.
+**30 is the default because it is the identity.** The `30` in that formula is a
+hardcoded literal in cellpose (`models.py:269`), not a per-model `diam_mean` —
+v4 ignores `diam_mean` entirely. So `Diameter = 30` gives `rescale = 1.0`,
+exactly what `diameter=None` gives, and every downstream branch in cellpose keys
+off `rescale != 1.0`. The two are equivalent, which lets the default be a real,
+self-describing in-range value instead of an out-of-band `0` sentinel. At the
+default the worker omits `diameter` from the eval call entirely, so it issues the
+identical call it made while the field was absent.
+
+Cellpose-SAM is trained at native resolution and handles a wide range of object
+sizes, so **30 is the right setting for almost every dataset.** Change it only
+when objects are far outside the size range the checkpoint handles well.
+
+With `resample=True` (cellpose's default) the flows are resized back to the
+original tile size afterwards (`models.py:363-366`), so annotation coordinates
+are unaffected by any rescale.
 
 Only the **constructor** argument `diam_mean` was deprecated in cellpose v4.0.1+;
 the eval-time `diameter` is still honoured in the pinned `cellpose==4.2.1.1`.
 The parameter was removed from this worker in `a3e4524` on the mistaken
 assumption that Cellpose-SAM ignores it entirely, and restored here.
 
-**GPU memory:** a *small* Diameter enlarges each tile (`Diameter` 10 with
-`Tile Size` 1024 means the network actually runs on ~3072 px tiles). When the
-effective tile size would exceed 2048 px the worker emits a warning rather than
-blocking, since the run may still fit. Reduce `Tile Size` or raise `Diameter` if
-it runs out of memory.
+#### GPU memory
+
+A *small* Diameter enlarges each tile: `Diameter` 10 with `Tile Size` 1024 means
+the network actually runs on ~3072 px tiles. The interface minimum of `10` caps
+this at 3x, and when the effective tile size would exceed 2048 px the worker
+emits a warning rather than blocking, since the run may still fit. Reduce
+`Tile Size` or raise `Diameter` if it runs out of memory.
+
+#### Values outside the offered range
+
+The `min`/`max` are interface hints; a saved config or a direct API call can
+still carry `0`, `null`, a negative number, or something below `10`. The worker
+handles these without clamping — substituting a different diameter would
+silently change the segmentation:
+
+| Stored value | Behavior |
+|---|---|
+| key absent, or `null` | Treated as the identity (`30`) — native resolution, matching how such configs ran before this field existed |
+| `0` or negative | No rescaling; cellpose itself guards with `diameter > 0` |
+| below `10` | Honored as given, with the GPU-memory warning above |
 
 > **Note on configs saved before July 2026:** those hold the old `Diameter`
 > default of `10`, which the pre-removal code applied to custom models only and
 > ignored for the base checkpoints. Such a config will now rescale by 3x on
 > every model. Re-check the `Diameter` on any tool config saved before then, or
-> set it to `0`.
+> set it to `30`.
 
 ### Batch Validation
 

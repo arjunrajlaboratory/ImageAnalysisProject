@@ -17,8 +17,8 @@ from shapely.geometry import Polygon
 from worker_client import WorkerClient, geometry_to_polygon_coords
 
 from models_config import (
-    BASE_MODELS, DEFAULT_MODEL, build_cellpose_parameters, build_model_items,
-    diameter_rescale)
+    BASE_MODELS, DEFAULT_MODEL, DEFAULT_DIAMETER, MAX_DIAMETER, MIN_DIAMETER,
+    build_cellpose_parameters, build_model_items, diameter_rescale)
 
 
 def interface(image, apiUrl, token):
@@ -67,15 +67,16 @@ def interface(image, apiUrl, token):
         },
         'Diameter': {
             'type': 'number',
-            'min': 0,
-            'max': 200,
-            'default': 0,
+            'min': MIN_DIAMETER,
+            'max': MAX_DIAMETER,
+            'default': DEFAULT_DIAMETER,
             'unit': 'pixels',
-            'tooltip': 'Optional. Leave at 0 to run at native resolution, which is how\n'
+            'tooltip': 'The object size the image is rescaled to before segmentation.\n'
+                       'Leave at 30, the default, to segment at native resolution -- this is how\n'
                        'Cellpose-SAM was trained and is the right choice for almost all images.\n'
-                       'Set a value only if your objects are far outside the size range the model\n'
-                       'handles well: the image is then resized by 30 / Diameter before segmentation,\n'
-                       'so a small Diameter enlarges the image and a large one shrinks it.',
+                       'Change it only if your objects are far outside the size range the model\n'
+                       'handles well: the image is resized by 30 / Diameter, so a smaller value\n'
+                       'enlarges the image and a larger one shrinks it.',
             'displayOrder': 8,
         },
         'Smoothing': {
@@ -223,10 +224,15 @@ def compute(datasetId, apiUrl, token, params):
     tile_overlap = float(worker.workerInterface['Tile Overlap'])
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
-    # Optional and off by default. Configs saved while the field was absent
-    # (between a3e4524 and this change) have no 'Diameter' key at all, so fall
-    # back to 0 -- the native-resolution behaviour those configs ran with.
-    diameter = float(worker.workerInterface.get('Diameter') or 0)
+    # The interface offers MIN_DIAMETER..MAX_DIAMETER, but a saved config can
+    # hold anything: configs saved while the field was absent (between a3e4524
+    # and this change) have no 'Diameter' key, and a select/number field can
+    # serialize as null. Both mean "as it ran before" -- the identity value.
+    # Out-of-range numbers are left alone rather than clamped: silently
+    # substituting a different diameter changes the segmentation, and
+    # build_cellpose_parameters drops anything cellpose treats as a no-op.
+    raw_diameter = worker.workerInterface.get('Diameter')
+    diameter = DEFAULT_DIAMETER if raw_diameter is None else float(raw_diameter)
 
     stack_channels = get_slot_channels(worker.workerInterface)
     # Validate the 1-indexed Batch fields and selected input channels before
@@ -238,8 +244,9 @@ def compute(datasetId, apiUrl, token, params):
 
     # A small Diameter enlarges every tile before inference (cellpose resizes by
     # 30 / diameter), which is the easy way to run the GPU out of memory here.
-    # Warn rather than block: the user may have the headroom, and the old default
-    # of 10 would silently have tripled the tile size.
+    # MIN_DIAMETER caps this at 3x for values entered through the interface, but
+    # a saved config can carry a smaller one. Warn rather than block: the user
+    # may have the headroom.
     rescale = diameter_rescale(diameter)
     effective_tile_size = tile_size * rescale
     if effective_tile_size > 2048:
@@ -248,8 +255,8 @@ def compute(datasetId, apiUrl, token, params):
             info=f"A Diameter of {diameter:g} px rescales the image by "
                  f"{rescale:.2f}x, so each {tile_size} px tile is segmented at "
                  f"about {effective_tile_size:.0f} px and may exhaust GPU memory. "
-                 f"Reduce Tile Size, raise Diameter, or set Diameter to 0 to run "
-                 f"at native resolution.")
+                 f"Reduce Tile Size, raise Diameter, or set Diameter back to "
+                 f"{DEFAULT_DIAMETER:g} to segment at native resolution.")
 
     client = workers.UPennContrastWorkerPreviewClient(
         apiUrl=apiUrl, token=token)
