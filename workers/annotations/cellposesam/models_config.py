@@ -43,19 +43,44 @@ def build_model_items(girder_model_names):
     return sorted(set(BASE_MODELS) | set(custom))
 
 
-def build_cellpose_parameters(model_name, models_dir):
-    """Build native-scale Cellpose-SAM constructor and evaluation parameters."""
+def diameter_rescale(diameter):
+    """Return the factor cellpose will resize the image by for ``diameter``.
+
+    Mirrors ``CellposeModel.eval()`` in cellpose 4.2.1.1, which sets
+    ``rescale = 30. / diameter`` only when ``diameter is not None and
+    diameter > 0``. Exposed so the worker can flag a rescale that would blow the
+    tile size up past what the GPU can hold, before loading the model.
+    """
+    if diameter is None or float(diameter) <= 0:
+        return 1.0
+    return 30.0 / float(diameter)
+
+
+def build_cellpose_parameters(model_name, models_dir, diameter=None):
+    """Build the Cellpose-SAM constructor and evaluation parameters.
+
+    ``diameter`` is optional and off by default: omitting it (or passing 0)
+    evaluates at native resolution, which is how Cellpose-SAM was trained and
+    what nearly every dataset should use. A positive value is forwarded to
+    ``CellposeModel.eval()``, which rescales the image to a 30 px object
+    diameter -- useful as an escape hatch when objects are far outside the size
+    range the checkpoint handles well. Note that only the *constructor*
+    argument ``diam_mean`` was deprecated in cellpose v4.0.1+; the eval-time
+    ``diameter`` is still honoured.
+    """
     if model_name in BASE_MODEL_CHECKPOINTS:
         pretrained_model = BASE_MODEL_CHECKPOINTS[model_name]
     else:
         pretrained_model = str(Path(models_dir) / model_name)
+
+    eval_parameters = {}
+    if diameter is not None and float(diameter) > 0:
+        eval_parameters['diameter'] = float(diameter)
 
     return {
         'model_parameters': {
             'gpu': True,
             'pretrained_model': pretrained_model,
         },
-        # Cellpose-SAM trains and evaluates at native resolution. Passing a
-        # diameter would rescale the input to 30 / diameter before inference.
-        'eval_parameters': {},
+        'eval_parameters': eval_parameters,
     }

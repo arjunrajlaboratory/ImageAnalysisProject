@@ -23,6 +23,7 @@ This worker runs Cellpose-SAM, a variant of Cellpose that combines Cellpose with
 | **Channel for Slot 1** | channelCheckboxes | -- | **Required.** Source channel(s) for the model's first input slot. If multiple selected, only the first is used |
 | **Channel for Slot 2** | channelCheckboxes | -- | Optional second input slot channel |
 | **Channel for Slot 3** | channelCheckboxes | -- | Optional third input slot channel |
+| **Diameter** | number | 0 | Optional object diameter in pixels (range: 0-200). `0` (the default) segments at native resolution; a positive value rescales the image by `30 / Diameter` before inference |
 | **Smoothing** | number | 0.7 | Polygon simplification tolerance (range: 0-10) |
 | **Padding** | number | 0 | Expand (positive) or shrink (negative) polygons in pixels (range: -20 to 20) |
 | **Tile Size** | number | 1024 | Tile dimension in pixels (range: 0-2048) |
@@ -43,7 +44,38 @@ Unlike the standard Cellpose worker which uses Primary/Secondary channel selecto
 ### Model Behavior
 
 - **Base models**: The dropdown labels map to cellpose built-in checkpoints in `models_config.py` — `cellpose-sam` → `cpsam_v2`, `cellpose-sam (legacy cpsam)` → `cpsam`. The selected checkpoint name is passed explicitly as `pretrained_model` rather than relying on Cellpose's internal default, which can shift between versions.
-- **Custom models**: Loaded from Girder by path. Like built-in Cellpose-SAM checkpoints, they run at native resolution with no diameter rescaling.
+- **Custom models**: Loaded from Girder by path. They take the same optional `Diameter` rescaling as the built-in checkpoints.
+
+### Diameter and Rescaling
+
+`Diameter` is an optional escape hatch, off by default. Cellpose-SAM is trained
+at native resolution and handles a wide range of object sizes, so `0` — no
+rescaling — is the right setting for almost every dataset, and it is what the
+worker ran with while the field was absent.
+
+A positive value is forwarded to `CellposeModel.eval(diameter=...)`, which sets
+`rescale = 30 / diameter` and resizes the image so objects land near the 30 px
+scale before the network sees them. This is worth reaching for only when objects
+are far outside the size range the checkpoint handles well. With `resample=True`
+(cellpose's default) the flows are resized back to the original tile size
+afterwards, so annotation coordinates are unaffected.
+
+Only the **constructor** argument `diam_mean` was deprecated in cellpose v4.0.1+;
+the eval-time `diameter` is still honoured in the pinned `cellpose==4.2.1.1`.
+The parameter was removed from this worker in `a3e4524` on the mistaken
+assumption that Cellpose-SAM ignores it entirely, and restored here.
+
+**GPU memory:** a *small* Diameter enlarges each tile (`Diameter` 10 with
+`Tile Size` 1024 means the network actually runs on ~3072 px tiles). When the
+effective tile size would exceed 2048 px the worker emits a warning rather than
+blocking, since the run may still fit. Reduce `Tile Size` or raise `Diameter` if
+it runs out of memory.
+
+> **Note on configs saved before July 2026:** those hold the old `Diameter`
+> default of `10`, which the pre-removal code applied to custom models only and
+> ignored for the base checkpoints. Such a config will now rescale by 3x on
+> every model. Re-check the `Diameter` on any tool config saved before then, or
+> set it to `0`.
 
 ### Batch Validation
 

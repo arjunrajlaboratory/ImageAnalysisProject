@@ -102,3 +102,95 @@ def test_custom_runtime_parameters_use_downloaded_path_at_native_scale(tmp_path)
         },
         'eval_parameters': {},
     }
+
+
+# --- Diameter / eval-time rescaling -----------------------------------------
+#
+# cellpose 4.2.1.1 still honours ``diameter`` in ``CellposeModel.eval()``
+# (models.py: ``if diameter is not None and diameter > 0: rescale = 30./diameter``),
+# and deeptile forwards our ``eval_parameters`` straight into that call. Only the
+# constructor argument ``diam_mean`` was deprecated in v4.0.1+. The parameter was
+# removed from the worker in a3e4524 on the mistaken assumption that Cellpose-SAM
+# ignores it entirely; these tests pin the restored behaviour.
+
+
+def test_diameter_omitted_keeps_native_resolution(tmp_path):
+    """No diameter argument must reproduce the pre-restore native-scale behaviour."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_diameter_none_keeps_native_resolution(tmp_path):
+    """An explicit None is the 'off' value, matching cellpose's own CLI default."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=None)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_diameter_zero_keeps_native_resolution(tmp_path):
+    """0 is the interface's 'off' sentinel: run at native resolution."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=0)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_negative_diameter_keeps_native_resolution(tmp_path):
+    """A negative diameter is meaningless; treat it as off rather than rescaling.
+
+    cellpose itself guards with ``diameter > 0``, so this only keeps the worker
+    from passing through a value that would be silently ignored downstream.
+    """
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=-5)
+
+    assert parameters['eval_parameters'] == {}
+
+
+def test_positive_diameter_is_passed_to_eval(tmp_path):
+    """A positive diameter reaches ``CellposeModel.eval()`` as a float."""
+    parameters = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=60)
+
+    assert parameters['eval_parameters'] == {'diameter': 60.0}
+    assert isinstance(parameters['eval_parameters']['diameter'], float)
+
+
+def test_diameter_applies_to_custom_models_too(tmp_path):
+    """Custom Girder models take the same rescaling path as the built-ins."""
+    parameters = models_config.build_cellpose_parameters(
+        'my custom model', tmp_path, diameter=45)
+
+    assert parameters == {
+        'model_parameters': {
+            'gpu': True,
+            'pretrained_model': str(tmp_path / 'my custom model'),
+        },
+        'eval_parameters': {'diameter': 45.0},
+    }
+
+
+def test_diameter_does_not_disturb_model_parameters(tmp_path):
+    """Setting a diameter must not change which checkpoint is loaded."""
+    without = models_config.build_cellpose_parameters('cellpose-sam', tmp_path)
+    with_diameter = models_config.build_cellpose_parameters(
+        'cellpose-sam', tmp_path, diameter=30)
+
+    assert without['model_parameters'] == with_diameter['model_parameters']
+
+
+def test_diameter_rescale_matches_cellpose_formula():
+    """The worker's preflight estimate must match cellpose's own 30/diameter."""
+    assert models_config.diameter_rescale(30) == 1.0
+    assert models_config.diameter_rescale(10) == 3.0
+    assert models_config.diameter_rescale(60) == 0.5
+
+
+def test_diameter_rescale_is_one_when_off():
+    """'Off' values mean the image is handed to the net unscaled."""
+    assert models_config.diameter_rescale(None) == 1.0
+    assert models_config.diameter_rescale(0) == 1.0
+    assert models_config.diameter_rescale(-5) == 1.0

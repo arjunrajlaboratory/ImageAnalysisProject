@@ -17,7 +17,8 @@ from shapely.geometry import Polygon
 from worker_client import WorkerClient, geometry_to_polygon_coords
 
 from models_config import (
-    BASE_MODELS, DEFAULT_MODEL, build_cellpose_parameters, build_model_items)
+    BASE_MODELS, DEFAULT_MODEL, build_cellpose_parameters, build_model_items,
+    diameter_rescale)
 
 
 def interface(image, apiUrl, token):
@@ -64,13 +65,26 @@ def interface(image, apiUrl, token):
             'tooltip': "Select source channel(s) for the model's third input slot. If multiple are selected, only the first will be used. (Optional)",
             'displayOrder': 7
         },
+        'Diameter': {
+            'type': 'number',
+            'min': 0,
+            'max': 200,
+            'default': 0,
+            'unit': 'pixels',
+            'tooltip': 'Optional. Leave at 0 to run at native resolution, which is how\n'
+                       'Cellpose-SAM was trained and is the right choice for almost all images.\n'
+                       'Set a value only if your objects are far outside the size range the model\n'
+                       'handles well: the image is then resized by 30 / Diameter before segmentation,\n'
+                       'so a small Diameter enlarges the image and a large one shrinks it.',
+            'displayOrder': 8,
+        },
         'Smoothing': {
             'type': 'number',
             'min': 0,
             'max': 10,
             'default': 0.7,
             'tooltip': 'Smoothing is used to simplify the polygons. A value of 0.7 is a good default.',
-            'displayOrder': 8,
+            'displayOrder': 9,
         },
         'Padding': {
             'type': 'number',
@@ -79,7 +93,7 @@ def interface(image, apiUrl, token):
             'default': 0,
             'unit': 'pixels',
             'tooltip': 'Padding will expand (or, if negative, subtract) from the polygon. A value of 0 means no padding.',
-            'displayOrder': 9,
+            'displayOrder': 10,
         },
         'Tile Size': {
             'type': 'number',
@@ -88,7 +102,7 @@ def interface(image, apiUrl, token):
             'default': 1024,
             'unit': 'pixels',
             'tooltip': 'The worker will split the image into tiles of this size. If they are too large, the Cellpose model may not be able to run on them.',
-            'displayOrder': 10,
+            'displayOrder': 11,
         },
         'Tile Overlap': {
             'type': 'number',
@@ -99,7 +113,7 @@ def interface(image, apiUrl, token):
             'tooltip': 'The amount of overlap between tiles. A value of 0.1 means that the tiles will overlap by 10%, which is 102 pixels if the tile size is 1024.\n'
                        'Make sure your objects are smaller than the overlap; i.e., if your tile size is 1024 and overlap is 0.1, '
                        'then the largest object should be less than 102 pixels in its longest dimension.',
-            'displayOrder': 11,
+            'displayOrder': 12,
         },
     }
     # Send the interface object to the server
@@ -209,6 +223,10 @@ def compute(datasetId, apiUrl, token, params):
     tile_overlap = float(worker.workerInterface['Tile Overlap'])
     padding = float(worker.workerInterface['Padding'])
     smoothing = float(worker.workerInterface['Smoothing'])
+    # Optional and off by default. Configs saved while the field was absent
+    # (between a3e4524 and this change) have no 'Diameter' key at all, so fall
+    # back to 0 -- the native-resolution behaviour those configs ran with.
+    diameter = float(worker.workerInterface.get('Diameter') or 0)
 
     stack_channels = get_slot_channels(worker.workerInterface)
     # Validate the 1-indexed Batch fields and selected input channels before
@@ -217,6 +235,21 @@ def compute(datasetId, apiUrl, token, params):
     worker.validate_coordinates(stack_channels=stack_channels)
 
     print(f"Using channels for Cellpose-SAM input (slots 1, 2, 3): {stack_channels}")
+
+    # A small Diameter enlarges every tile before inference (cellpose resizes by
+    # 30 / diameter), which is the easy way to run the GPU out of memory here.
+    # Warn rather than block: the user may have the headroom, and the old default
+    # of 10 would silently have tripled the tile size.
+    rescale = diameter_rescale(diameter)
+    effective_tile_size = tile_size * rescale
+    if effective_tile_size > 2048:
+        sendWarning(
+            "Diameter will enlarge each tile substantially.",
+            info=f"A Diameter of {diameter:g} px rescales the image by "
+                 f"{rescale:.2f}x, so each {tile_size} px tile is segmented at "
+                 f"about {effective_tile_size:.0f} px and may exhaust GPU memory. "
+                 f"Reduce Tile Size, raise Diameter, or set Diameter to 0 to run "
+                 f"at native resolution.")
 
     client = workers.UPennContrastWorkerPreviewClient(
         apiUrl=apiUrl, token=token)
@@ -233,7 +266,8 @@ def compute(datasetId, apiUrl, token, params):
     # Print the contents of the models directory
     print(f"Models directory contents: {list(MODELS_DIR.glob('*'))}")
 
-    cellpose_parameters = build_cellpose_parameters(model, models_dir)
+    cellpose_parameters = build_cellpose_parameters(
+        model, models_dir, diameter=diameter)
     cellpose = cellpose_segmentation(
         **cellpose_parameters, output_format='polygons')
     f_process = partial(run_model, cellpose=cellpose, tile_size=tile_size,
