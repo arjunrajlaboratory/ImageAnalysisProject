@@ -3,7 +3,7 @@ FROM nimbusimage/image-processing-base:latest
 COPY ./workers/annotations/registration/entrypoint.py /
 
 LABEL isUPennContrastWorker="" \
-      isGPUWorker="false" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       interfaceName="Time lapse registration" \
       interfaceCategory="Image Processing" \
