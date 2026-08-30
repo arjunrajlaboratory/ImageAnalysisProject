@@ -20,6 +20,11 @@ dist/
 venv/
 env/
 
+# Local environment files may contain credentials
+.env
+.env.*
+!.env.example
+
 # Docker buildx cache (produced by build_workers.sh)
 .cache/
 
