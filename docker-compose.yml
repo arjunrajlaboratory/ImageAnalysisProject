@@ -197,6 +197,15 @@ services:
     depends_on:
       - image-processing-base
 
+  illumination_correction:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/illumination_correction/Dockerfile
+    image: annotations/illumination_correction:latest
+    profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
+
   registration:
     build:
       context: .
@@ -445,6 +454,15 @@ services:
     image: annotations/histogram_matching:test
     depends_on:
       - histogram_matching
+    profiles: ["test"]
+
+  illumination_correction_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/illumination_correction/tests/Dockerfile_Test
+    image: annotations/illumination_correction:test
+    depends_on:
+      - illumination_correction
     profiles: ["test"]
 
   rolling_ball_test:

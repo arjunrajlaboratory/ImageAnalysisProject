@@ -1,0 +1,11 @@
+FROM annotations/illumination_correction:latest AS test
+
+SHELL ["conda", "run", "-n", "worker", "/bin/bash", "-c"]
+RUN pip install pytest pytest-mock
+
+RUN mkdir -p /tests
+COPY ./workers/annotations/illumination_correction/tests/*.py /tests
+WORKDIR /tests
+ENV PYTHONPATH=/
+
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"]
