@@ -21,6 +21,18 @@ MIN_PERIODS = 4
 N_FOLD_BINS = 256
 SEAM_SEARCH_DIVISOR = 6.0
 TILE_N = 256
+ALGORITHM_OPTIONS = (
+    "Automatic (recommended)",
+    "BaSiC",
+    "Folded log-gradient",
+    "Split-half affine",
+)
+REFERENCE_CHANNEL_MODE_OPTIONS = (
+    "Automatically choose best channel",
+    "Use specified channel",
+)
+DARKFIELD_OPTIONS = ("Automatic", "Enabled", "Disabled")
+OUTPUT_TYPE_OPTIONS = ("Float32 (recommended)", "Preserve source dtype")
 
 
 @dataclass(frozen=True)
@@ -400,9 +412,11 @@ def choose_reference_grid(
 
 def normalize_flat(field: np.ndarray) -> np.ndarray:
     field = np.asarray(field, dtype=np.float32)
+    if not np.isfinite(field).all() or np.any(field <= 0):
+        raise ValueError("A fitted flatfield must be finite and strictly positive")
     mean = float(np.mean(field))
-    if not np.isfinite(mean) or abs(mean) < 1e-12:
-        return np.ones_like(field)
+    if not np.isfinite(mean) or mean < 1e-12:
+        raise ValueError("A fitted flatfield must have a positive finite mean")
     return (field / mean).astype(np.float32)
 
 
@@ -480,7 +494,14 @@ class PeriodicFieldModel:
         self.name = name
         self.grid = grid
         self.flat_tile = normalize_flat(flat_tile)
+        dark_values = np.asarray(dark)
+        if not np.isfinite(dark_values).all():
+            raise ValueError("A fitted darkfield must be finite")
         self.dark = dark
+        if gains is not None:
+            gains = np.asarray(gains, dtype=np.float32)
+            if not np.isfinite(gains).all() or np.any(gains <= 0):
+                raise ValueError("Fitted per-tile gains must be finite and positive")
         self.gains = gains
         self.diagnostics = diagnostics or {}
 
@@ -506,6 +527,23 @@ class PeriodicFieldModel:
         output /= flat
         output += dark_mean
         return output.astype(np.float32)
+
+
+class IdentityModel:
+    """Explicit no-correction baseline used by automatic selection."""
+
+    def __init__(self, grid: TileGrid, diagnostics: dict | None = None):
+        self.name = "identity"
+        self.grid = grid
+        self.diagnostics = diagnostics or {}
+
+    def apply(self, image: np.ndarray) -> np.ndarray:
+        raw = as_plane(image)
+        if raw.shape != self.grid.shape:
+            raise ValueError(
+                f"Model expects planes of shape {self.grid.shape}, got {raw.shape}"
+            )
+        return raw.astype(np.float32, copy=True)
 
 
 class SplitHalfAffineModel:
@@ -878,6 +916,7 @@ UV_POLY_DEGREE = 5
 N_HARMONICS = 4
 PSF_SIGMA = 1.3
 SPOT_K = 5.0
+MIN_SPOT_COUNT = 20
 HF_CUTOFF = 0.10
 HF_CROPS = 4
 HF_CROP = 2048
@@ -1073,16 +1112,24 @@ def p1_spots(image: np.ndarray, grid: TileGrid) -> dict:
         ndimage.maximum_filter(response, size=3) == response
     )
     y, x = np.nonzero(peaks)
-    if y.size == 0:
-        return {"P1_spot_count": 0, "P1_spot_uniformity": float("nan")}
+    if y.size < MIN_SPOT_COUNT:
+        return {
+            "P1_spot_count": int(y.size),
+            "P1_spot_uniformity": float("nan"),
+            "P1_applicable": False,
+        }
     u, v = grid.u_of(y), grid.v_of(x)
     inner = (np.abs(u - 0.5) < 0.25) & (np.abs(v - 0.5) < 0.25)
     outer = (np.abs(u - 0.5) > 0.40) | (np.abs(v - 0.5) > 0.40)
-    density_inner = inner.sum() / 0.25
-    density_outer = outer.sum() / 0.36
+    # Jeffreys-style pseudocounts keep the ratio finite and symmetric when
+    # either region has no detections. A zero outer count must not look like an
+    # unavailable metric while a large outer count is penalized.
+    density_inner = (inner.sum() + 0.5) / 0.25
+    density_outer = (outer.sum() + 0.5) / 0.36
     return {
         "P1_spot_count": int(y.size),
         "P1_spot_uniformity": float(density_outer / max(density_inner, 1e-9)),
+        "P1_applicable": True,
     }
 
 
@@ -1115,7 +1162,11 @@ def p2_object_intensity(
     count: int,
 ) -> dict:
     if count < 10:
-        return {"P2_n_objects": count, "P2_spearman": float("nan")}
+        return {
+            "P2_n_objects": count,
+            "P2_spearman": float("nan"),
+            "P2_applicable": False,
+        }
     indices = np.arange(1, count + 1)
     raw_sum = ndimage.sum_labels(raw.astype(np.float64), labels, indices)
     corrected_sum = ndimage.sum_labels(
@@ -1123,12 +1174,17 @@ def p2_object_intensity(
     )
     keep = (raw_sum > 0) & (corrected_sum > 0)
     if keep.sum() < 10:
-        return {"P2_n_objects": int(keep.sum()), "P2_spearman": float("nan")}
+        return {
+            "P2_n_objects": int(keep.sum()),
+            "P2_spearman": float("nan"),
+            "P2_applicable": False,
+        }
     from scipy.stats import spearmanr
 
     return {
         "P2_n_objects": int(keep.sum()),
         "P2_spearman": float(spearmanr(raw_sum[keep], corrected_sum[keep]).statistic),
+        "P2_applicable": True,
     }
 
 
@@ -1141,7 +1197,11 @@ def p3_high_frequency(raw: np.ndarray, corrected: np.ndarray) -> dict:
     height, width = raw.shape
     crop = min(HF_CROP, height, width)
     if crop < 8:
-        return {"P3_hf_power_ratio": float("nan")}
+        return {
+            "P3_hf_power_ratio": float("nan"),
+            "P3_applicable": False,
+            "P3_n_crops": 0,
+        }
     fy = np.fft.fftfreq(crop)
     fx = np.fft.rfftfreq(crop)
     mask = np.sqrt(fy[:, None] ** 2 + fx[None, :] ** 2) > HF_CUTOFF
@@ -1158,39 +1218,92 @@ def p3_high_frequency(raw: np.ndarray, corrected: np.ndarray) -> dict:
         )
         power_before = float((np.abs(np.fft.rfft2(before)) ** 2)[mask].sum())
         power_after = float((np.abs(np.fft.rfft2(after)) ** 2)[mask].sum())
-        ratios.append(power_after / max(power_before, 1e-30))
-    return {"P3_hf_power_ratio": float(np.mean(ratios))}
-
-
-def p5_range(corrected: np.ndarray) -> dict:
+        if np.isfinite(power_before) and power_before > 1e-20:
+            ratios.append(power_after / power_before)
+    if not ratios:
+        return {
+            "P3_hf_power_ratio": float("nan"),
+            "P3_applicable": False,
+            "P3_n_crops": 0,
+        }
     return {
-        "P5_frac_nonpositive": float(np.count_nonzero(corrected <= 0) / corrected.size),
-        "P5_frac_over_uint16": float(
-            np.count_nonzero(corrected > 65535) / corrected.size
+        "P3_hf_power_ratio": float(np.mean(ratios)),
+        "P3_applicable": True,
+        "P3_n_crops": len(ratios),
+    }
+
+
+def p5_range(raw: np.ndarray, corrected: np.ndarray) -> dict:
+    raw_values = np.asarray(raw)
+    corrected_values = np.asarray(corrected)
+    finite = np.isfinite(corrected_values)
+    source_finite = np.isfinite(raw_values)
+    finite_values = corrected_values[finite]
+    return {
+        "P5_frac_source_nonfinite": float(
+            np.count_nonzero(~source_finite) / raw_values.size
         ),
-        "P5_min": float(np.min(corrected)),
-        "P5_max": float(np.max(corrected)),
+        "P5_frac_nonfinite": float(
+            np.count_nonzero(~finite) / corrected_values.size
+        ),
+        "P5_frac_nonpositive": float(
+            np.count_nonzero(finite & (corrected_values <= 0))
+            / corrected_values.size
+        ),
+        "P5_frac_new_nonpositive": float(
+            np.count_nonzero(
+                source_finite
+                & (raw_values > 0)
+                & finite
+                & (corrected_values <= 0)
+            )
+            / corrected_values.size
+        ),
+        "P5_min": (
+            float(np.min(finite_values)) if finite_values.size else float("nan")
+        ),
+        "P5_max": (
+            float(np.max(finite_values)) if finite_values.size else float("nan")
+        ),
     }
 
 
 GUARDRAILS = {
     "P2_spearman": ("min", 0.98),
     "P3_hf_power_ratio": ("min", 0.90),
-    "P5_frac_nonpositive": ("max", 1e-4),
+    "P5_frac_source_nonfinite": ("max", 0.0),
+    "P5_frac_nonfinite": ("max", 0.0),
+    "P5_frac_new_nonpositive": ("max", 1e-4),
+}
+CONDITIONAL_GUARDRAILS = {
+    "P2_spearman": "P2_applicable",
+    "P3_hf_power_ratio": "P3_applicable",
 }
 
 
 def check_guardrails(metrics: dict) -> list[str]:
     violations = []
     for key, (kind, limit) in GUARDRAILS.items():
+        applicable_key = CONDITIONAL_GUARDRAILS.get(key)
+        if applicable_key is not None and metrics.get(applicable_key) is False:
+            continue
         value = metrics.get(key)
         if value is None or not np.isfinite(value):
+            violations.append(f"{key} is unavailable or non-finite")
             continue
         if kind == "min" and value < limit:
             violations.append(f"{key}={value:.4g} < {limit}")
         if kind == "max" and value > limit:
             violations.append(f"{key}={value:.4g} > {limit}")
     return violations
+
+
+def unavailable_guardrails(metrics: dict) -> list[str]:
+    return [
+        key
+        for key, applicable_key in CONDITIONAL_GUARDRAILS.items()
+        if metrics.get(applicable_key) is False
+    ]
 
 
 def preservation_metrics(
@@ -1204,8 +1317,9 @@ def preservation_metrics(
     metrics = {}
     metrics.update(p2_object_intensity(raw, corrected, labels, count))
     metrics.update(p3_high_frequency(raw, corrected))
-    metrics.update(p5_range(corrected))
+    metrics.update(p5_range(raw, corrected))
     metrics["guardrail_violations"] = check_guardrails(metrics)
+    metrics["guardrail_unavailable"] = unavailable_guardrails(metrics)
     return metrics
 
 
@@ -1244,8 +1358,8 @@ NOISE_FLOORS = {
 }
 
 
-def artifact_index(metrics: dict, baseline: dict) -> float:
-    ratios = []
+def artifact_ratios(metrics: dict, baseline: dict) -> dict[str, float]:
+    ratios = {}
     for key in ARTIFACT_KEYS:
         value, raw_value = metrics.get(key), baseline.get(key)
         if value is None or raw_value is None:
@@ -1256,7 +1370,14 @@ def artifact_index(metrics: dict, baseline: dict) -> float:
             value, raw_value = value - 1.0, raw_value - 1.0
         if raw_value <= 1e-9:
             continue
-        ratios.append(max(value, NOISE_FLOORS.get(key, 1e-9)) / raw_value)
+        ratios[key] = float(
+            max(value, NOISE_FLOORS.get(key, 1e-9)) / raw_value
+        )
+    return ratios
+
+
+def artifact_index(metrics: dict, baseline: dict) -> float:
+    ratios = list(artifact_ratios(metrics, baseline).values())
     if not ratios:
         return float("nan")
     return float(np.exp(np.mean(np.log(ratios))))
@@ -1295,6 +1416,12 @@ class CandidateResult:
     fit_seconds: float = 0.0
     selection_score: float = float("inf")
     alternatives: list[dict] = field(default_factory=list)
+    artifact_ratios: dict[str, float] = field(default_factory=dict)
+    selection_samples: list[dict] = field(default_factory=list)
+    score_log_se: float = 0.0
+    pareto_optimal: bool = False
+    fit_metrics: dict = field(default_factory=dict)
+    validation_reports: list[dict] = field(default_factory=list)
 
     @property
     def valid(self) -> bool:
@@ -1307,14 +1434,48 @@ class CandidateResult:
             "selection_score": float(self.selection_score),
             "fit_seconds": float(self.fit_seconds),
             "valid": bool(self.valid),
+            "pareto_optimal": bool(self.pareto_optimal),
+            "score_log_se": float(self.score_log_se),
             "guardrail_violations": list(self.violations),
             "physics_violations": list(self.physics_violations),
+            "artifact_ratios": dict(self.artifact_ratios),
             "metrics": dict(self.metrics),
+            "fit_metrics": dict(self.fit_metrics),
+            "validation_reports": list(self.validation_reports),
         }
 
 
+def _selection_score(index: float, spot_uniformity, use_spot_uniformity: bool):
+    if not np.isfinite(index) or index <= 0:
+        return float("inf")
+    spot_penalty = 0.0
+    if (
+        use_spot_uniformity
+        and spot_uniformity is not None
+        and np.isfinite(spot_uniformity)
+    ):
+        bounded = max(float(spot_uniformity), 1e-6)
+        spot_penalty = 0.5 * abs(math.log(bounded))
+    return float(index * math.exp(spot_penalty))
+
+
+def _dominates(left: CandidateResult, right: CandidateResult) -> bool:
+    keys = sorted(left.artifact_ratios)
+    if not keys or set(keys) != set(right.artifact_ratios):
+        return False
+    no_worse = all(
+        left.artifact_ratios[key] <= right.artifact_ratios[key] for key in keys
+    )
+    strictly_better = any(
+        left.artifact_ratios[key] < right.artifact_ratios[key] for key in keys
+    )
+    return no_worse and strictly_better
+
+
 def rank_candidates(
-    candidates: Iterable[CandidateResult], tie_fraction: float = 0.05
+    candidates: Iterable[CandidateResult],
+    tie_fraction: float = 0.05,
+    use_spot_uniformity: bool = False,
 ) -> tuple[CandidateResult, list[CandidateResult]]:
     valid = [candidate for candidate in candidates if candidate.valid]
     if not valid:
@@ -1322,49 +1483,165 @@ def rank_candidates(
             "Every correction candidate failed a preservation or physics check"
         )
     for candidate in valid:
-        spot_uniformity = candidate.metrics.get("P1_spot_uniformity")
-        spot_penalty = 0.0
-        if (
-            spot_uniformity is not None
-            and np.isfinite(spot_uniformity)
-            and spot_uniformity > 0
-        ):
-            spot_penalty = 0.5 * abs(math.log(float(spot_uniformity)))
-        index = float(candidate.artifact_index)
-        if not np.isfinite(index) or index <= 0:
-            index = float("inf")
-        candidate.selection_score = index * math.exp(spot_penalty)
+        candidate.selection_score = _selection_score(
+            float(candidate.artifact_index),
+            candidate.metrics.get("P1_spot_uniformity"),
+            use_spot_uniformity,
+        )
+        sample_scores = [
+            _selection_score(
+                float(sample.get("artifact_index", float("nan"))),
+                sample.get("P1_spot_uniformity"),
+                use_spot_uniformity,
+            )
+            for sample in candidate.selection_samples
+        ]
+        sample_scores = [score for score in sample_scores if np.isfinite(score)]
+        if len(sample_scores) >= 2:
+            candidate.score_log_se = float(
+                np.std(np.log(sample_scores), ddof=1) / math.sqrt(len(sample_scores))
+            )
 
-    ranked = sorted(valid, key=lambda c: (c.selection_score, c.complexity, c.name))
-    best_score = ranked[0].selection_score
+    require_complete_panel = any(candidate.name == "identity" for candidate in valid)
+    scorable = [
+        candidate
+        for candidate in valid
+        if np.isfinite(candidate.selection_score)
+        and (
+            not require_complete_panel
+            or len(candidate.artifact_ratios) >= 3
+            or not candidate.artifact_ratios
+        )
+    ]
+    if not scorable:
+        raise ValueError("No safe candidate produced a finite artifact score")
+
+    frontier = [
+        candidate
+        for candidate in scorable
+        if not any(
+            other is not candidate and _dominates(other, candidate)
+            for other in scorable
+        )
+    ]
+    for candidate in frontier:
+        candidate.pareto_optimal = True
+
+    ranked = sorted(
+        scorable,
+        key=lambda c: (
+            not c.pareto_optimal,
+            c.selection_score,
+            c.complexity,
+            c.name,
+        ),
+    )
+    selectable = sorted(
+        frontier, key=lambda c: (c.selection_score, c.complexity, c.name)
+    )
+    best = selectable[0]
+    best_score = best.selection_score
+    base_margin = math.log1p(tie_fraction)
     tied = [
         candidate
-        for candidate in ranked
-        if candidate.selection_score <= best_score * (1 + tie_fraction)
+        for candidate in selectable
+        if math.log(candidate.selection_score / best_score)
+        <= max(
+            base_margin,
+            1.96
+            * math.hypot(best.score_log_se, candidate.score_log_se),
+        )
     ]
     selected = min(tied, key=lambda c: (c.complexity, c.selection_score, c.name))
     return selected, ranked
 
 
 def _candidate_specs(algorithm: str, darkfield_mode: str):
-    if algorithm == "Automatic (recommended)":
+    if algorithm == ALGORITHM_OPTIONS[0]:
         return [
+            ("identity", -1),
             ("basic_darkfield_off", 2),
             ("basic_darkfield_on", 3),
             ("fold_log_gradient", 1),
             ("split_half_affine", 0),
         ]
-    if algorithm == "BaSiC":
-        if darkfield_mode == "Enabled":
+    if algorithm == ALGORITHM_OPTIONS[1]:
+        if darkfield_mode == DARKFIELD_OPTIONS[1]:
             return [("basic_darkfield_on", 3)]
-        if darkfield_mode == "Disabled":
+        if darkfield_mode == DARKFIELD_OPTIONS[2]:
             return [("basic_darkfield_off", 2)]
         return [("basic_darkfield_off", 2), ("basic_darkfield_on", 3)]
-    if algorithm == "Folded log-gradient":
+    if algorithm == ALGORITHM_OPTIONS[2]:
         return [("fold_log_gradient", 1)]
-    if algorithm == "Split-half affine":
+    if algorithm == ALGORITHM_OPTIONS[3]:
         return [("split_half_affine", 0)]
     raise ValueError(f"Unknown illumination-correction algorithm: {algorithm}")
+
+
+def _aggregate_ratios(reports: list[dict]) -> dict[str, float]:
+    output = {}
+    for key in ARTIFACT_KEYS:
+        values = [
+            report["artifact_ratios"].get(key)
+            for report in reports
+            if report["artifact_ratios"].get(key) is not None
+            and np.isfinite(report["artifact_ratios"].get(key))
+            and report["artifact_ratios"].get(key) > 0
+        ]
+        if values:
+            output[key] = float(np.exp(np.mean(np.log(values))))
+    return output
+
+
+def _aggregate_selection_metrics(reports: list[dict], basis: str) -> dict:
+    output = {"selection_basis": basis, "selection_plane_count": len(reports)}
+    keys = sorted(set().union(*(report["metrics"] for report in reports)))
+    for key in keys:
+        values = [report["metrics"].get(key) for report in reports]
+        numeric = [
+            float(value)
+            for value in values
+            if isinstance(value, (int, float, np.integer, np.floating))
+            and not isinstance(value, (bool, np.bool_))
+            and np.isfinite(value)
+        ]
+        if numeric:
+            output[key] = float(np.median(numeric))
+    output["guardrail_violations"] = sorted(
+        {
+            violation
+            for report in reports
+            for violation in report["metrics"].get("guardrail_violations", [])
+        }
+    )
+    output["guardrail_unavailable"] = sorted(
+        {
+            unavailable
+            for report in reports
+            for unavailable in report["metrics"].get("guardrail_unavailable", [])
+        }
+    )
+    return output
+
+
+def _evaluate_model_plane(
+    model, raw: np.ndarray, grid: TileGrid, label: str
+) -> dict:
+    plane = as_plane(raw)
+    if not np.isfinite(plane).all():
+        raise ValueError(f"{label} contains non-finite source pixels")
+    labels, count = build_object_mask(plane)
+    baseline = evaluate(plane, plane, grid, labels, count)
+    corrected = model.apply(plane)
+    metrics = evaluate(corrected, plane, grid, labels, count)
+    ratios = artifact_ratios(metrics, baseline)
+    index = artifact_index(metrics, baseline)
+    return {
+        "label": label,
+        "metrics": metrics,
+        "artifact_ratios": ratios,
+        "artifact_index": index,
+    }
 
 
 def select_model(
@@ -1374,11 +1651,51 @@ def select_model(
     darkfield_mode: str,
     per_tile_gain: bool,
     progress: Callable[[float, str, str], None] | None = None,
+    validation_source: Callable[
+        [], Iterable[tuple[str, np.ndarray]]
+    ]
+    | None = None,
+    use_spot_uniformity: bool = False,
 ) -> CandidateResult:
-    """Fit, score, reject, and rank the requested candidate set on one channel."""
+    """Fit on one plane and select on independent planes when available."""
     raw = as_plane(raw)
+    if not np.isfinite(raw).all():
+        raise ValueError("The reference plane contains non-finite source pixels")
     labels, count = build_object_mask(raw)
     baseline = evaluate(raw, raw, grid, labels, count)
+    validation_planes = (
+        list(validation_source()) if validation_source is not None else []
+    )
+
+    if algorithm == ALGORITHM_OPTIONS[0] and not validation_planes:
+        metrics = dict(baseline)
+        metrics["selection_basis"] = "identity_without_holdout"
+        model = IdentityModel(
+            grid,
+            diagnostics={
+                "selection_basis": "identity_without_holdout",
+                "reason": (
+                    "Automatic correction requires an independent Z plane; "
+                    "the channel was left unchanged"
+                ),
+            },
+        )
+        identity = CandidateResult(
+            name="identity",
+            model=model,
+            metrics=metrics,
+            artifact_index=1.0,
+            violations=list(metrics["guardrail_violations"]),
+            physics_violations=[],
+            complexity=-1,
+            artifact_ratios={key: 1.0 for key in ARTIFACT_KEYS},
+            fit_metrics=dict(metrics),
+            pareto_optimal=True,
+            selection_score=1.0,
+        )
+        identity.alternatives = [identity.summary()]
+        return identity
+
     specs = _candidate_specs(algorithm, darkfield_mode)
     candidates: list[CandidateResult] = []
     failures = []
@@ -1389,10 +1706,12 @@ def select_model(
                 index / max(len(specs), 1),
                 "Illumination correction",
                 f"Fitting {name.replace('_', ' ')}",
-            )
+        )
         started = time.monotonic()
         try:
-            if name == "basic_darkfield_off":
+            if name == "identity":
+                model = IdentityModel(grid)
+            elif name == "basic_darkfield_off":
                 model = fit_basic(
                     raw, grid, darkfield=False, per_tile_gain=per_tile_gain
                 )
@@ -1404,18 +1723,55 @@ def select_model(
                 model = fit_log_gradient(raw, grid, per_tile_gain=per_tile_gain)
             else:
                 model = fit_split_half_affine(raw, grid)
-            corrected = model.apply(raw)
-            metrics = evaluate(corrected, raw, grid, labels, count)
+            fit_report = _evaluate_model_plane(model, raw, grid, "fit plane")
+            validation_reports = (
+                [
+                    _evaluate_model_plane(model, plane, grid, label)
+                    for label, plane in validation_planes
+                ]
+                if validation_planes
+                else []
+            )
+            selection_reports = validation_reports or [fit_report]
+            ratios = _aggregate_ratios(selection_reports)
+            index_value = (
+                float(np.exp(np.mean(np.log(list(ratios.values())))))
+                if ratios
+                else float("nan")
+            )
+            basis = "held_out_z" if validation_reports else "fit_plane"
+            metrics = _aggregate_selection_metrics(selection_reports, basis)
+            violations = [
+                f"{fit_report['label']}: {violation}"
+                for violation in fit_report["metrics"]["guardrail_violations"]
+            ]
+            violations.extend(
+                f"{report['label']}: {violation}"
+                for report in validation_reports
+                for violation in report["metrics"]["guardrail_violations"]
+            )
             candidates.append(
                 CandidateResult(
                     name=name,
                     model=model,
                     metrics=metrics,
-                    artifact_index=artifact_index(metrics, baseline),
-                    violations=list(metrics["guardrail_violations"]),
+                    artifact_index=index_value,
+                    violations=violations,
                     physics_violations=physics_violations(model, raw),
                     complexity=complexity,
                     fit_seconds=time.monotonic() - started,
+                    artifact_ratios=ratios,
+                    selection_samples=[
+                        {
+                            "artifact_index": report["artifact_index"],
+                            "P1_spot_uniformity": report["metrics"].get(
+                                "P1_spot_uniformity"
+                            ),
+                        }
+                        for report in selection_reports
+                    ],
+                    fit_metrics=fit_report["metrics"],
+                    validation_reports=validation_reports,
                 )
             )
         except Exception as exc:
@@ -1426,7 +1782,9 @@ def select_model(
             "No correction candidate could be fitted. " + "; ".join(failures)
         )
     try:
-        selected, _ = rank_candidates(candidates)
+        selected, _ = rank_candidates(
+            candidates, use_spot_uniformity=use_spot_uniformity
+        )
     except ValueError as exc:
         detail = "; ".join(
             f"{candidate.name}: "

@@ -1,19 +1,24 @@
 # Illumination Correction Worker
 
-Corrects grid-locked uneven illumination in stitched microscopy images and uploads a new multi-frame TIFF. It can use a requested algorithm or automatically choose a safe method independently for each selected channel.
+Corrects grid-locked uneven illumination in an already-stitched microscopy TIFF and uploads a new multi-frame TIFF. It can use a requested algorithm or automatically choose independently for each selected channel, including choosing no correction.
+
+This worker is the stitched-TIFF fallback described by the illumination-correction study. The study's preferred v7 workflow starts from raw overlapping acquisition tiles and uses overlap/DCT or CIDRE-style information that is unavailable after stitching; use that upstream workflow when raw tiles and overlap metadata are available.
 
 ## How It Works
 
 1. Loads the requested reference XY/Z/time plane.
 2. Fits the physical stitched-tile grid. Automatic reference mode evaluates every available channel, identifies the dominant cross-channel pitch cluster, and uses its highest-quality member. Only the grid geometry is shared across channels.
-3. Fits each selected channel independently on the reference plane.
-4. In automatic algorithm mode, evaluates:
+3. Fits each selected channel independently on the reference Z plane.
+4. In automatic algorithm mode, evaluates on representative held-out Z planes:
+   - Identity (leave the channel unchanged)
    - BaSiC with darkfield disabled and enabled
    - Folded log-gradient
    - Split-half affine
-5. Rejects candidates that damage object-intensity ranking, fine detail, or numeric range, or that infer an implausible field.
-6. Ranks valid candidates using the artifact panel plus a soft penalty for position-biased spot detection. When candidates are within 5%, it prefers the simpler model.
-7. Applies the selected channel model to every XY, Z, and time frame, preserves unselected channels, writes a TIFF, and uploads it to Girder.
+5. Rejects candidates that damage object-intensity ranking, fine detail, or numeric range, contain non-finite values, or infer an implausible field. Metrics that cannot be measured on a plane are explicitly recorded as unavailable.
+6. Finds the Pareto-optimal candidates across the artifact panel, accounts for score uncertainty across validation planes, and prefers the simpler model inside the resulting tie margin. Spot uniformity participates only for channels explicitly marked punctate.
+7. Applies the selected channel model across Z only at the reference XY and reference time, preserves other acquisitions and unselected channels, writes a TIFF, and uploads it to Girder.
+
+Automatic selection is deliberately conservative: if there is no independent Z plane, the identity candidate is returned and the channel is left unchanged with a warning. A manual algorithm can still be requested for a single-plane dataset.
 
 The workflow is based on the channel-specific evaluation in `FINDINGS_AND_WORKFLOW.md` from the illumination-correction study. The acquisition geometry is estimated once, while flatfield, darkfield, and per-tile gains are never transferred between channels.
 
@@ -25,12 +30,13 @@ The workflow is based on the channel-specific evaluation in `FINDINGS_AND_WORKFL
 | **Algorithm** | select | Automatic (recommended) | Choose automatic comparison, BaSiC, folded log-gradient, or split-half affine. |
 | **Reference channel mode** | select | Automatically choose best channel | Select the best grid reference from all channels or use the specified channel. |
 | **Reference channel** | channel | 0 | Manual grid-reference channel; ignored in automatic reference mode. |
-| **Reference XY** | text | blank | 1-based XY used for grid and model fitting; blank uses the current XY. |
+| **Reference XY** | text | blank | 1-based XY used for grid and model fitting; blank uses the current XY. Only this XY is corrected. |
 | **Reference Z** | text | blank | 1-based Z used for fitting; blank uses the current Z. Use a well-focused plane. |
-| **Reference Time** | text | blank | 1-based time point used for fitting; blank uses the current time. |
+| **Reference Time** | text | blank | 1-based time point used for fitting; blank uses the current time. Only this time point is corrected. |
 | **BaSiC darkfield** | select | Automatic | In BaSiC mode, compare both settings or force darkfield on/off. Automatic algorithm mode always evaluates both. |
-| **Per-tile gain correction** | checkbox | true | Correct residual whole-tile gain variation after estimating the shared within-tile field. |
-| **Output type** | select | Float32 (recommended) | Keep float32 values for audit, or clip and cast back to the source dtype. |
+| **Per-tile gain correction** | checkbox | false | Experimental whole-tile gain correction for BaSiC and folded log-gradient. It is estimated from the fit plane and can absorb biological field differences. It has no effect on split-half affine. |
+| **Punctate channels for spot metric** | channelCheckboxes | none | Channels for which position-dependent spot counts may influence automatic selection. Leave empty for non-punctate signal. |
+| **Output type** | select | Float32 (recommended) | Keep float32 values for audit, or preserve source dtype. Preserve-dtype output fails if more than `1e-4` of corrected pixels would be clipped. |
 | **Validate every corrected plane** | checkbox | true | Recheck object rank, high-frequency detail, and numeric range on every output frame. |
 | **Minimum tile pitch** | number | 150 px | Lower bound for physical stitched-tile pitch detection. |
 | **Maximum tile pitch** | number | 1400 px | Upper bound for physical stitched-tile pitch detection. |
@@ -51,7 +57,7 @@ This conservative comparator estimates separable multiplicative and additive pos
 
 ## Automatic Evaluation
 
-Artifact metrics are calculated against the channel's raw reference plane:
+Artifact metrics are calculated against each channel's raw plane. Models are fitted on the requested reference Z and automatic ranking uses representative held-out Z planes (first, middle, and last when available, excluding the fit plane):
 
 - Jitter-aware within-tile amplitude (A1)
 - Tile-frequency harmonic modulation (A2)
@@ -59,13 +65,14 @@ Artifact metrics are calculated against the channel's raw reference plane:
 - Background dynamic range (A5)
 - Detrended whole-tile scatter (A6)
 
-Candidates are rejected when any hard preservation guardrail fails:
+The unchanged image is the baseline candidate. A correction must improve beyond the tie/uncertainty margin to displace it. Candidates are rejected when any applicable hard preservation guardrail fails:
 
-- Object-intensity Spearman rank below 0.98
-- Locally normalized high-frequency power below 0.90 of raw
-- More than `1e-4` of pixels nonpositive
+- Object-intensity Spearman rank below 0.98, when at least 10 measurable objects are available
+- Locally normalized high-frequency power below 0.90 of raw, when finite source high-frequency power is available
+- Any non-finite source or output pixels
+- More than `1e-4` newly nonpositive pixels (pre-existing source zeros are not treated as correction damage)
 
-BaSiC darkfields are also rejected when their mean reaches or exceeds the reference plane's first-percentile image floor. Spot-count uniformity is a soft selection term rather than a hard guardrail because it is not equally meaningful for every channel.
+BaSiC darkfields are also rejected when their mean reaches or exceeds the reference plane's first-percentile image floor. Spot-count uniformity uses a minimum-count requirement and symmetric pseudocounts, and is a soft selection term only for channels marked as punctate.
 
 ## Output and Metadata
 
@@ -73,9 +80,10 @@ The worker uploads `/tmp/illumination_corrected.tiff` to the source dataset. Gir
 
 - Requested and selected algorithm for every corrected channel
 - Full candidate scores and rejection reasons
-- Reference channel and XY/Z/time coordinates
+- Explicit zero-based and one-based reference channel and XY/Z/time coordinates
+- Held-out Z planes, correction scope, pitch bounds, and punctate-metric channels
 - Measured pitch, seam positions, residuals, and reference-quality reports
-- Model diagnostics, output type, and validation setting
+- Model diagnostics, output type, validation setting, worker version, and dependency versions
 
 Channel names, pixel size, and magnification are copied when present in the source tile metadata. Single-frame datasets without `IndexRange` are supported.
 
@@ -83,11 +91,13 @@ Channel names, pixel size, and magnification are copied when present in the sour
 
 - This worker is for stitched mosaics with a repeatable physical tile pattern. Each image axis must contain at least four candidate periods and enough detected seams to bound complete tiles.
 - Automatic reference selection chooses the best channel on the requested reference XY/Z/time plane; it does not search all Z planes for focus. Navigate to, or specify, a representative focused plane.
-- The chosen grid and each channel's fitted model are applied across all XY, Z, and time frames. Enable per-plane validation when illumination stability across those dimensions has not already been established.
-- Per-tile gain correction is enabled because it improved the study dataset, but it can absorb real field-to-field biology. Disable it when whole-tile biological differences are expected.
-- Float32 is the safe default. Source-dtype output clips out-of-range corrected values before casting.
+- The chosen grid and fitted channel models are shared across Z only at the reference XY and time. Other XY positions and time points are preserved because their acquisition-specific grids and gains may differ.
+- Automatic mode needs at least two Z planes. On a single-Z dataset it selects identity; choose a manual algorithm only when fitting and evaluating on the same plane is scientifically acceptable.
+- Per-tile gain correction is off by default because it can absorb real whole-tile biology. When enabled, it affects only BaSiC and folded log-gradient.
+- Float32 is the recommended audit output. Preserve-source-dtype mode allows only negligible (`<=1e-4`) range clipping and otherwise fails with a request to use Float32.
+- Conditional guardrails are recorded as unavailable rather than silently passed. Non-finite input/output and newly nonpositive-pixel checks are always required.
 - Missing or stale select values are rejected before image loading. The worker reports which setting must be re-selected and raises so Girder records the job as failed rather than successful.
-- The worker is CPU-routed (`isGPUWorker=false`). BaSiCPy uses a CPU PyTorch backend, so its image is larger than other classical image-processing workers.
+- The worker is CPU-routed (`isGPUWorker=false`). BaSiCPy uses a CPU PyTorch backend, so its image is larger than other classical image-processing workers. The image intentionally overrides BaSiCPy's stale `scipy<1.13` metadata pin while installing its `hyperactive` runtime dependency explicitly; Docker tests run real BaSiC fits with darkfield both off and on.
 
 ## Build and Test
 

@@ -26,6 +26,7 @@ except (ImportError, ModuleNotFoundError):
     workers_module.UPennContrastWorkerPreviewClient = MagicMock()
     utils_module.sendError = MagicMock()
     utils_module.sendProgress = MagicMock()
+    utils_module.sendWarning = MagicMock()
     sys.modules.update(
         {
             "annotation_client": annotation_client,
@@ -56,8 +57,29 @@ except (ImportError, ModuleNotFoundError):
             raise ValueError(f"The '{field_name}' setting is stale: {value!r}")
         return value
 
+    def split_channel_selection(selected_channels, num_channels):
+        present = sorted(
+            {value for value in selected_channels if 0 <= value < num_channels}
+        )
+        missing = sorted({value for value in selected_channels if value not in present})
+        return present, missing
+
+    def get_frame_index(frame, dimension, default=0):
+        key = dimension if dimension.startswith("Index") else f"Index{dimension}"
+        return frame.get(key, default)
+
+    def frame_to_large_image_params(frame):
+        return {
+            key.lower()[5:]: value
+            for key, value in frame.items()
+            if key.startswith("Index") and len(key) > 5
+        }
+
     annotation_tools.get_selected_channels = get_selected_channels
     annotation_tools.get_required_select = get_required_select
+    annotation_tools.split_channel_selection = split_channel_selection
+    annotation_tools.get_frame_index = get_frame_index
+    annotation_tools.frame_to_large_image_params = frame_to_large_image_params
     sys.modules.update(
         {
             "annotation_utilities": annotation_utilities,
@@ -116,6 +138,7 @@ def _params(channels=None):
         "tile": {"XY": 0, "Z": 0, "Time": 0},
         "workerInterface": {
             "Channels to correct": channels or {"0": True, "1": False},
+            "Punctate channels for spot metric": {},
             "Algorithm": "Automatic (recommended)",
             "Reference channel mode": "Automatically choose best channel",
             "Reference channel": 0,
@@ -123,7 +146,7 @@ def _params(channels=None):
             "Reference Z": "",
             "Reference Time": "",
             "BaSiC darkfield": "Automatic",
-            "Per-tile gain correction": True,
+            "Per-tile gain correction": False,
             "Output type": "Float32 (recommended)",
             "Validate every corrected plane": False,
             "Minimum tile pitch": 10,
@@ -170,6 +193,8 @@ def test_interface_exposes_auto_and_manual_controls():
     ]
     assert values["Reference channel mode"]["type"] == "select"
     assert values["Reference channel"]["type"] == "channel"
+    assert values["Punctate channels for spot metric"]["type"] == "channelCheckboxes"
+    assert values["Per-tile gain correction"]["default"] is False
     assert values["Output type"]["default"] == "Float32 (recommended)"
     assert sorted(v["displayOrder"] for v in values.values()) == list(
         range(len(values))
@@ -206,8 +231,42 @@ def test_compute_corrects_selected_channels_and_uploads_tiff():
     )
     metadata = tile_client.client.addMetadataToItem.call_args.args[1]
     assert metadata["tool"] == "Illumination correction"
-    assert metadata["reference_channel"] == 1
+    assert metadata["reference_channel_zero_based"] == 1
+    assert metadata["reference_channel_one_based"] == 2
+    assert metadata["reference_coordinates_zero_based"] == {
+        "XY": 0,
+        "Z": 0,
+        "Time": 0,
+    }
+    assert metadata["correction_scope"]["Z"].startswith("all planes")
     assert metadata["channel_models"]["0"]["selected"] == "fold_log_gradient"
+
+
+def test_compute_supplies_independent_z_planes_for_automatic_selection():
+    tile_client = _tile_client()
+    tile_client.tiles["IndexRange"]["IndexZ"] = 2
+    tile_client.coordinatesToFrameIndex.side_effect = (
+        lambda xy, z, time, channel: z * 2 + channel
+    )
+    sink = MagicMock()
+    fake_large_image = types.SimpleNamespace(new=MagicMock(return_value=sink))
+    reference = (_grid(), 0, [{"channel": 0, "quality_score": 0.1}])
+
+    def inspect_validation(*args, validation_source=None, **kwargs):
+        reports = list(validation_source())
+        assert [label for label, _ in reports] == ["held-out Z 2"]
+        assert np.all(reports[0][1] == 102)
+        return _selection()
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid", return_value=reference),
+        patch("entrypoint.correction.select_model", side_effect=inspect_validation),
+        patch.dict(sys.modules, {"large_image": fake_large_image}),
+    ):
+        compute("dataset-id", "http://api", "token", _params())
+
+    tile_client.client.uploadFileToFolder.assert_called_once()
 
 
 def test_compute_rejects_malformed_channel_selection():
@@ -268,3 +327,116 @@ def test_compute_supports_single_frame_without_index_range():
 
     sink.addTile.assert_called_once()
     tile_client.client.uploadFileToFolder.assert_called_once()
+
+
+def test_compute_rejects_selected_channels_outside_dataset():
+    tile_client = _tile_client()
+    params = _params(channels={"3": True})
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid") as choose_grid,
+        patch("entrypoint.sendError") as send_error,
+        pytest.raises(ValueError, match="do not exist"),
+    ):
+        compute("dataset-id", "http://api", "token", params)
+
+    choose_grid.assert_not_called()
+    send_error.assert_called_once()
+
+
+def test_compute_rejects_reference_coordinate_outside_dataset():
+    tile_client = _tile_client()
+    params = _params()
+    params["workerInterface"]["Reference Z"] = "2"
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid") as choose_grid,
+        patch("entrypoint.sendError") as send_error,
+        pytest.raises(ValueError, match="Reference Z"),
+    ):
+        compute("dataset-id", "http://api", "token", params)
+
+    choose_grid.assert_not_called()
+    send_error.assert_called_once()
+
+
+def test_automatic_reference_ignores_malformed_manual_channel_value():
+    tile_client = _tile_client()
+    sink = MagicMock()
+    fake_large_image = types.SimpleNamespace(new=MagicMock(return_value=sink))
+    reference = (_grid(), 0, [{"channel": 0, "quality_score": 0.1}])
+    params = _params()
+    params["workerInterface"]["Reference channel"] = None
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid", return_value=reference),
+        patch("entrypoint.correction.select_model", return_value=_selection()),
+        patch.dict(sys.modules, {"large_image": fake_large_image}),
+    ):
+        compute("dataset-id", "http://api", "token", params)
+
+    tile_client.client.uploadFileToFolder.assert_called_once()
+
+
+def test_compute_only_applies_model_to_reference_xy_and_time():
+    tile_client = _tile_client()
+    tile_client.tiles["IndexRange"]["IndexXY"] = 2
+    tile_client.tiles["frames"] = [
+        {"IndexXY": 0, "IndexZ": 0, "IndexT": 0, "IndexC": 0},
+        {"IndexXY": 1, "IndexZ": 0, "IndexT": 0, "IndexC": 0},
+    ]
+    tile_client.getRegion.side_effect = lambda dataset_id, frame: np.full(
+        (64, 64, 1), 100 + frame, dtype=np.uint16
+    )
+    sink = MagicMock()
+    fake_large_image = types.SimpleNamespace(new=MagicMock(return_value=sink))
+    reference = (_grid(), 0, [{"channel": 0, "quality_score": 0.1}])
+    params = _params(channels={"0": True})
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid", return_value=reference),
+        patch("entrypoint.correction.select_model", return_value=_selection()),
+        patch.dict(sys.modules, {"large_image": fake_large_image}),
+    ):
+        compute("dataset-id", "http://api", "token", params)
+
+    reference_output = sink.addTile.call_args_list[0].args[0]
+    other_xy_output = sink.addTile.call_args_list[1].args[0]
+    assert np.all(reference_output == 101)
+    assert np.all(other_xy_output == 101)
+
+
+class _OverflowModel:
+    name = "fold_log_gradient"
+    diagnostics = {}
+
+    def apply(self, image):
+        return np.full(np.asarray(image).squeeze().shape, 70000.0, dtype=np.float32)
+
+
+def test_preserve_dtype_rejects_material_clipping():
+    tile_client = _tile_client()
+    sink = MagicMock()
+    fake_large_image = types.SimpleNamespace(new=MagicMock(return_value=sink))
+    reference = (_grid(), 0, [{"channel": 0, "quality_score": 0.1}])
+    selection = _selection()
+    selection.model = _OverflowModel()
+    params = _params(channels={"0": True})
+    params["workerInterface"]["Output type"] = "Preserve source dtype"
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid", return_value=reference),
+        patch("entrypoint.correction.select_model", return_value=selection),
+        patch("entrypoint.sendError") as send_error,
+        patch.dict(sys.modules, {"large_image": fake_large_image}),
+        pytest.raises(ValueError, match="clipped"),
+    ):
+        compute("dataset-id", "http://api", "token", params)
+
+    send_error.assert_called()
+    sink.write.assert_not_called()

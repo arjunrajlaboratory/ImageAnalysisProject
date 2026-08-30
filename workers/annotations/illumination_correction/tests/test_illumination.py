@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 WORKER_DIR = Path(__file__).resolve().parents[1]
@@ -10,13 +11,18 @@ if str(WORKER_DIR) not in sys.path:
 
 from illumination import (  # noqa: E402
     CandidateResult,
+    IdentityModel,
     TileGrid,
     a1_fold_amplitude,
     choose_reference_grid,
+    fit_basic,
     fit_grid,
     fit_log_gradient,
     fit_split_half_affine,
+    normalize_flat,
+    preservation_metrics,
     rank_candidates,
+    select_model,
 )
 
 
@@ -177,7 +183,9 @@ def test_rank_candidates_rejects_guardrail_failures_and_penalizes_spot_bias():
     )
     stable = _candidate("fold_log_gradient", artifact_index=0.41, p1=1.02, complexity=1)
 
-    selected, ranked = rank_candidates([unsafe, biased, stable])
+    selected, ranked = rank_candidates(
+        [unsafe, biased, stable], use_spot_uniformity=True
+    )
 
     assert selected.name == "fold_log_gradient"
     assert unsafe not in ranked
@@ -192,3 +200,103 @@ def test_rank_candidates_prefers_simpler_method_inside_tie_margin():
     )
 
     assert selected.name == "split_half_affine"
+
+
+def test_automatic_selection_can_keep_identity_when_corrections_are_worse():
+    identity = _candidate("identity", 1.0, complexity=-1)
+    worse = _candidate("fold_log_gradient", 1.25, complexity=1)
+
+    selected, _ = rank_candidates([identity, worse])
+
+    assert selected.name == "identity"
+
+
+def test_rank_candidates_rejects_undefined_artifact_scores():
+    undefined = _candidate("split_half_affine", float("nan"), complexity=0)
+
+    with pytest.raises(ValueError, match="finite artifact score"):
+        rank_candidates([undefined])
+
+
+def test_spot_penalty_treats_zero_as_extreme_bias():
+    zero_outer = _candidate("zero_outer", 0.20, p1=0.0, complexity=0)
+    balanced = _candidate("balanced", 0.25, p1=1.0, complexity=1)
+
+    selected, _ = rank_candidates(
+        [zero_outer, balanced], use_spot_uniformity=True
+    )
+
+    assert selected.name == "balanced"
+
+
+def test_normalize_flat_rejects_nonfinite_and_nonpositive_fields():
+    with pytest.raises(ValueError, match="finite and strictly positive"):
+        normalize_flat(np.full((8, 8), np.nan, dtype=np.float32))
+    with pytest.raises(ValueError, match="finite and strictly positive"):
+        normalize_flat(np.zeros((8, 8), dtype=np.float32))
+
+
+def test_range_guardrail_ignores_preexisting_zeros_but_rejects_new_ones():
+    raw = np.full((64, 64), 10.0, dtype=np.float32)
+    raw[:8] = 0.0
+    unchanged = preservation_metrics(raw, raw.copy())
+
+    damaged = raw.copy()
+    damaged[8:16] = 0.0
+    damaged_metrics = preservation_metrics(raw, damaged)
+
+    assert unchanged["P5_frac_new_nonpositive"] == 0.0
+    assert not any(
+        "P5_frac_new_nonpositive" in item
+        for item in unchanged["guardrail_violations"]
+    )
+    assert any(
+        "P5_frac_new_nonpositive" in item
+        for item in damaged_metrics["guardrail_violations"]
+    )
+
+
+def test_range_guardrail_rejects_nonfinite_output():
+    raw = np.full((64, 64), 10.0, dtype=np.float32)
+    corrected = raw.copy()
+    corrected[0, 0] = np.nan
+
+    metrics = preservation_metrics(raw, corrected)
+
+    assert metrics["P5_frac_nonfinite"] > 0
+    assert any(
+        "P5_frac_nonfinite" in item for item in metrics["guardrail_violations"]
+    )
+
+
+def test_automatic_selection_without_held_out_plane_returns_identity():
+    _, raw, grid = _synthetic_mosaic(seed=17)
+
+    selected = select_model(
+        raw,
+        grid,
+        "Automatic (recommended)",
+        "Automatic",
+        per_tile_gain=False,
+    )
+
+    assert isinstance(selected.model, IdentityModel)
+    assert selected.name == "identity"
+    assert selected.metrics["selection_basis"] == "identity_without_holdout"
+
+
+@pytest.mark.parametrize("darkfield", [False, True])
+def test_basic_fit_smoke_uses_production_dependency_path(darkfield):
+    _, raw, grid = _synthetic_mosaic(seed=19, pitch=32, tiles=4)
+
+    model = fit_basic(
+        raw,
+        grid,
+        darkfield=darkfield,
+        per_tile_gain=False,
+        tile_n=32,
+    )
+    corrected = model.apply(raw)
+
+    assert corrected.shape == raw.shape
+    assert np.isfinite(corrected).all()
