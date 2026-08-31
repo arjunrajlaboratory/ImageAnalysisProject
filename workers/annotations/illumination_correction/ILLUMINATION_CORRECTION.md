@@ -6,7 +6,7 @@ Existing annotations are not transformed. If a dataset already has annotations, 
 
 ## How It Works
 
-1. Downloads the dataset's `multi-source2.json` and resolves its single referenced ND2 item. The job fails clearly if the original was deleted.
+1. Downloads the dataset's `multi-source2.json` and resolves its single referenced ND2 item. The job fails before processing with an actionable error if the dataset contains only an already-stitched TIFF, the source document is missing, or the original ND2 was deleted.
 2. Reuses every deployed source transform as the stitch seed. It never re-derives stage geometry and never changes `s11`, `s12`, `s21`, or `s22`.
 3. Creates one float32 max-Z reference tile per stage position from the selected channel.
 4. Builds the four-neighbor stage grid using the validated 50 µm bin-gap rule.
@@ -22,7 +22,7 @@ Existing annotations are not transformed. If a dataset already has annotations, 
 |---|---|---|---|
 | **Refine stitch positions** | checkbox | true | Apply the globally solved translations. Clearing it still measures overlaps for DCT correction but retains the deployed positions. |
 | **Refinement channel** | channel | 0 | Channel used for max-Z alignment. Channel 0 (the first channel, normally DAPI) is the validated default. |
-| **NCC threshold** | number | 0.5 | Reject adjacent pairs below this score. Valid range: 0.5–1.0. |
+| **NCC threshold** | number | 0.5 | Reject adjacent pairs below this score. Lower values retain more dim/low-texture pairs but risk false matches; higher values are stricter but can disconnect the grid or reject every pair. Valid range: 0.5–1.0. |
 | **Illumination algorithm** | select | Overlap DCT + tile gains (recommended) | Use overlap-DCT with or without small regularized per-position gains. |
 | **Output filename** | text | automatic | Optional `.tif`/`.tiff` filename. The automatic name is based on the source ND2. |
 
@@ -31,6 +31,8 @@ Existing annotations are not transformed. If a dataset already has annotations, 
 For a pair `i → j`, the measured content shift is `S`. The placement constraint uses the existing shared camera transform `M`: `p_j - p_i = M S` (`M = -I` for the validated Nikon composites). Search is local and metadata-seeded; there is no blind global registration. Confident constraints are solved jointly, translations are rounded to integers, and the mean coordinate change is held at zero.
 
 The job report contains every predicted/measured offset and NCC, the confident-pair count, per-pair solved residuals, maximum residual, maximum position change, original/output mosaic bounds, and the similarity fallback matrix. A residual above 2 px produces a warning. A second warning reports when any outer mosaic boundary changes by more than the 16 px coordinate-stability target; the measured Well_2 correction is globally self-consistent but accumulates beyond that target, so this condition is reported rather than silently discarding the validated alignment.
+
+Leave the NCC threshold at the validated default of 0.5 for normal runs. Raise it only when the report shows low-NCC pairs with inconsistent offsets, a high residual, or visible misregistration. A higher value rejects those ambiguous matches but can disconnect part of the tile graph; if too few pairs remain, return toward 0.5 or choose a sharper, higher-texture refinement channel. The Well_2 acceptance run did not require tuning: all 84 adjacent pairs had NCC above 0.91.
 
 ## Illumination Correction
 
@@ -61,6 +63,7 @@ The source `multi-source2.json` and ND2 are read-only. The derived TIFF is indep
 
 ## Limitations
 
+- The input must be the original ND2-backed Nimbus multi-source dataset. An already-stitched TIFF does not retain the independent raw tile overlaps required for either position refinement or overlap-DCT fitting and is rejected before processing.
 - v1 supports a single ND2 path referenced by one standard `multi-source2.json`. Mixed-source composites are rejected.
 - Every ND2 P×T×Z×C frame must be represented exactly once in the source document.
 - Source tiles must share one invertible camera transform. Only translations are refined.

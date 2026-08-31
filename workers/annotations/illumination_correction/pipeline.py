@@ -22,6 +22,10 @@ MODEL_SIZE = 128
 UINT16_MAX = np.iinfo(np.uint16).max
 
 
+class RawCompositeRequiredError(FileNotFoundError):
+    """The dataset cannot supply the raw overlapping tiles this worker needs."""
+
+
 @dataclass(frozen=True)
 class SourceLayout:
     source_path: str
@@ -71,11 +75,19 @@ def download_composite_sources(
 ) -> DownloadedSources:
     """Download the deployed multi-source JSON and its one original ND2."""
     document_items = _exact_items(client, dataset_id, MULTI_SOURCE_NAME)
+    if not document_items:
+        raise RawCompositeRequiredError(
+            f"No {MULTI_SOURCE_NAME!r} was found in dataset folder {dataset_id}. "
+            "This worker requires the original raw ND2 and its Nimbus multi-source "
+            "geometry. The dataset may contain only an already-stitched TIFF-only "
+            "image; raw tile overlaps cannot be recovered from a stitched image. "
+            "Run the worker on the original multi-source dataset instead."
+        )
     if len(document_items) != 1:
         raise FileNotFoundError(
             f"Expected exactly one {MULTI_SOURCE_NAME!r} item in dataset folder "
-            f"{dataset_id}, found {len(document_items)}. This worker only supports "
-            "single-file composited datasets."
+            f"{dataset_id}, found {len(document_items)}. Remove or rename duplicate "
+            "source documents before running this worker."
         )
     document_item = document_items[0]
     document_files = [
@@ -102,8 +114,11 @@ def download_composite_sources(
         )
     source_name = Path(next(iter(paths))).name
     if Path(source_name).suffix.lower() != ".nd2":
-        raise ValueError(
-            f"v1 supports an original ND2 source, but the stitch references {source_name!r}"
+        raise RawCompositeRequiredError(
+            f"The {MULTI_SOURCE_NAME!r} document references {source_name!r}, not "
+            "an original ND2. This worker cannot use an already-stitched or derived "
+            "TIFF because its raw tile overlaps are unavailable. Run it on the "
+            "original ND2-backed multi-source dataset instead."
         )
     source_items = _exact_items(client, dataset_id, source_name)
     source_files = []
@@ -112,7 +127,7 @@ def download_composite_sources(
             if file.get("name") == source_name:
                 source_files.append((item, file))
     if len(source_files) != 1:
-        raise FileNotFoundError(
+        raise RawCompositeRequiredError(
             f"The original ND2 {source_name!r} referenced by {MULTI_SOURCE_NAME} "
             "is missing. The worker cannot reconstruct raw tiles after that original "
             "item has been deleted."

@@ -15,6 +15,7 @@ import annotation_utilities.annotation_tools as annotation_tools
 from illumination import fit_overlap_dct
 from pipeline import (
     MODEL_SIZE,
+    RawCompositeRequiredError,
     corrected_source_document,
     convert_multi_source,
     download_composite_sources,
@@ -28,7 +29,7 @@ from refinement import refine_positions
 
 
 WORKER_NAME = "Stitch Refinement + Illumination Correction"
-WORKER_VERSION = "1.0.0"
+WORKER_VERSION = "1.0.1"
 ALGORITHM_OPTIONS = (
     "Overlap DCT + tile gains (recommended)",
     "Overlap DCT",
@@ -46,7 +47,9 @@ def interface(image, apiUrl, token):
                 "new pyramidal TIFF. Existing annotations are not moved; if this "
                 "dataset already has annotations, their mosaic coordinates can shift "
                 "by tens of pixels relative to the corrected image. The original "
-                "image is not modified."
+                "image is not modified. Requires the original raw ND2 and "
+                "multi-source2.json; already-stitched TIFF-only datasets cannot be "
+                "used because their raw tile overlaps are unavailable."
             ),
             "displayOrder": 0,
         },
@@ -75,8 +78,11 @@ def interface(image, apiUrl, token):
             "max": 1.0,
             "step": 0.05,
             "tooltip": (
-                "Adjacent pairs below this normalized cross-correlation score are "
-                "dropped from the global solve and illumination model."
+                "Higher NCC means the overlap texture matches more reliably. The "
+                "validated default is 0.5. Lower values keep more dim or low-texture "
+                "pairs but can admit false matches. Higher values reject ambiguous "
+                "pairs but can disconnect the tile grid or leave no usable pairs. "
+                "Raise it only when low-NCC pairs report inconsistent shifts."
             ),
             "displayOrder": 3,
         },
@@ -340,6 +346,9 @@ def compute(datasetId, apiUrl, token, params):
             )
             print(json.dumps({"item": item, "metadata": metadata}, sort_keys=True))
             return item
+    except RawCompositeRequiredError as exc:
+        sendError("Raw composite input required.", info=str(exc))
+        raise
     except Exception as exc:
         sendError(f"{WORKER_NAME} failed.", info=str(exc))
         raise

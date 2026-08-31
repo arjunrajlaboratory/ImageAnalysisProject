@@ -55,7 +55,12 @@ except (ImportError, ModuleNotFoundError):
     )
 
 from illumination import IlluminationModel  # noqa: E402
-from pipeline import DownloadedSources, RawTrainingData, SourceLayout  # noqa: E402
+from pipeline import (  # noqa: E402
+    DownloadedSources,
+    RawCompositeRequiredError,
+    RawTrainingData,
+    SourceLayout,
+)
 from refinement import PairMeasurement, RefinementResult  # noqa: E402
 from entrypoint import ALGORITHM_OPTIONS, compute, interface  # noqa: E402
 
@@ -80,8 +85,13 @@ def test_interface_surfaces_position_and_annotation_warning() -> None:
     assert values["Refine stitch positions"]["default"] is True
     assert values["Refinement channel"]["type"] == "channel"
     assert values["NCC threshold"]["default"] == 0.5
+    ncc_tooltip = values["NCC threshold"]["tooltip"]
+    assert "Lower values keep more" in ncc_tooltip
+    assert "Higher values" in ncc_tooltip
+    assert "disconnect" in ncc_tooltip
     assert values["Illumination algorithm"]["items"] == list(ALGORITHM_OPTIONS)
     assert "annotations are not moved" in values["Correction details"]["value"]
+    assert "already-stitched TIFF-only" in values["Correction details"]["value"]
     assert sorted(field["displayOrder"] for field in values.values()) == list(
         range(len(values))
     )
@@ -169,6 +179,7 @@ def test_compute_refines_fits_all_channels_converts_and_uploads() -> None:
     assert fit.call_args.kwargs["adaptive_tile_gains"] is True
     metadata = upload.call_args.args[-1]
     assert metadata["tool"] == "Stitch Refinement + Illumination Correction"
+    assert metadata["worker_version"] == "1.0.1"
     assert metadata["refinement"]["pairs_matched"] == 1
     assert metadata["parameters"]["refinement_channel_name"] == "DAPI"
     assert metadata["source"]["original_nd2_item_id"] == "source-item"
@@ -193,3 +204,27 @@ def test_compute_rejects_stale_algorithm_before_contacting_girder() -> None:
 
     girder.assert_not_called()
     send_error.assert_called_once()
+
+
+def test_compute_reports_that_stitched_only_input_is_unsupported() -> None:
+    failure = RawCompositeRequiredError(
+        "The dataset contains only an already-stitched TIFF-only image."
+    )
+
+    with (
+        patch("entrypoint.GirderClient"),
+        patch("entrypoint.download_composite_sources", side_effect=failure),
+        patch("entrypoint.ND2File") as nd2_file,
+        patch("entrypoint.sendError") as send_error,
+    ):
+        try:
+            compute("dataset", "http://api", "token", _params())
+        except RawCompositeRequiredError as exc:
+            assert exc is failure
+        else:
+            raise AssertionError("stitched-only input must fail the job")
+
+    send_error.assert_called_once_with(
+        "Raw composite input required.", info=str(failure)
+    )
+    nd2_file.assert_not_called()

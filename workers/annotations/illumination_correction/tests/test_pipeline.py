@@ -14,10 +14,12 @@ if str(WORKER_DIR) not in sys.path:
 
 from illumination import IlluminationModel  # noqa: E402
 from pipeline import (  # noqa: E402
+    RawCompositeRequiredError,
     _exact_items,
     _item_files,
     corrected_source_document,
     convert_multi_source,
+    download_composite_sources,
     parse_source_layout,
     transformed_bounds,
     write_corrected_tile_tiff,
@@ -50,6 +52,64 @@ def test_girder_resource_helpers_use_exhaustive_default_pagination() -> None:
     assert _item_files(client, "wanted") == [
         {"_id": "file", "name": "multi-source2.json"}
     ]
+
+
+class _StitchedOnlyClient:
+    def listItem(self, folder_id, **kwargs):
+        assert folder_id == "stitched-folder"
+        assert kwargs == {"name": "multi-source2.json"}
+        return iter(())
+
+
+def test_source_discovery_explains_that_stitched_only_images_are_unsupported(
+    tmp_path,
+) -> None:
+    try:
+        download_composite_sources(
+            _StitchedOnlyClient(), "stitched-folder", tmp_path
+        )
+    except RawCompositeRequiredError as exc:
+        message = str(exc)
+        assert "already-stitched TIFF-only" in message
+        assert "raw tile overlaps" in message
+        assert "multi-source2.json" in message
+    else:
+        raise AssertionError("a stitched-only dataset should be rejected")
+
+
+class _TiffBackedCompositeClient:
+    def listItem(self, folder_id, **kwargs):
+        assert folder_id == "derived-folder"
+        assert kwargs == {"name": "multi-source2.json"}
+        return iter(({"_id": "document", "name": "multi-source2.json"},))
+
+    def listFile(self, item_id, **kwargs):
+        assert item_id == "document"
+        assert kwargs == {}
+        return iter(({"_id": "document-file", "name": "multi-source2.json"},))
+
+    def downloadFile(self, file_id, destination):
+        assert file_id == "document-file"
+        Path(destination).write_text(
+            json.dumps({"sources": [{"path": "already-stitched.tiff"}]}),
+            encoding="utf-8",
+        )
+
+
+def test_source_discovery_rejects_a_multisource_document_backed_by_tiff(
+    tmp_path,
+) -> None:
+    try:
+        download_composite_sources(
+            _TiffBackedCompositeClient(), "derived-folder", tmp_path
+        )
+    except RawCompositeRequiredError as exc:
+        message = str(exc)
+        assert "already-stitched.tiff" in message
+        assert "not an original ND2" in message
+        assert "raw tile overlaps are unavailable" in message
+    else:
+        raise AssertionError("a TIFF-backed composite should be rejected")
 
 
 def _document(paths=("source.nd2",)):
