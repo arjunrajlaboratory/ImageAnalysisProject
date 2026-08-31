@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Nimbus Worker"
+  short_description: "Run and verify Nimbus workers locally"
+  default_prompt: "Use $nimbus-run-worker to run a built worker against a local NimbusImage dataset and verify its output."

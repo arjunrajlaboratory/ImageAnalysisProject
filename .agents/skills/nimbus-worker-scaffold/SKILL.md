@@ -1,6 +1,6 @@
 ---
 name: "nimbus-worker-scaffold"
-description: "Scaffold a new NimbusImage Docker worker end to end, including entrypoint, Dockerfiles and GPU labels, tests, Compose registration, WORKERNAME.md, and REGISTRY.md. Use when adding, creating, or porting a new annotation, property, image-processing, ML, or test worker. Use nimbus-worker-hardening for existing-worker fixes and nimbus-interface for runtime API details."
+description: "Scaffold a new NimbusImage Docker worker end to end, including entrypoint, Dockerfiles and GPU labels, tests, Compose registration, WORKERNAME.md, and REGISTRY.md. Use when adding, creating, or porting a new annotation, property, image-processing, ML, or test worker. Use nimbus-run-worker for live local execution, nimbus-worker-hardening for existing-worker fixes, and nimbus-interface for runtime API details."
 ---
 
 # Scaffolding a NimbusImage Worker
@@ -18,6 +18,10 @@ either annotations or property values.
 **This skill covers the *structure* of a worker. For the runtime API** (image
 access, annotation CRUD, coordinate conventions, local testing), read the
 `nimbus-interface` skill — don't re-derive that here.
+
+For a real end-to-end run of the built image against a local Girder dataset,
+use `nimbus-run-worker`; direct execution has authentication, dataset-view ID,
+Docker-network, mutation, and verification requirements beyond a test build.
 
 ## Step 1 — Decide the worker's shape
 

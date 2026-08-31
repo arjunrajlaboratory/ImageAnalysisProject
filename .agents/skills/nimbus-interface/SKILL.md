@@ -1,6 +1,6 @@
 ---
 name: "nimbus-interface"
-description: "Runtime NimbusImage/Girder API reference for worker code. Use for image loading, annotation CRUD, property values, channel merging, coordinate conversions, local API tests, or infrastructure errors such as HTTP 500. Use nimbus-worker-scaffold to create a new worker and nimbus-worker-hardening to diagnose or sweep failures in existing workers."
+description: "Runtime NimbusImage/Girder API reference for worker code. Use for image loading, annotation CRUD, property values, channel merging, coordinate conversions, API test scripts, or infrastructure errors such as HTTP 500. Use nimbus-run-worker to execute a built image against a real local dataset, nimbus-worker-scaffold to create a worker, and nimbus-worker-hardening to diagnose or sweep failures."
 ---
 
 # NimbusImage Worker Development
@@ -72,6 +72,10 @@ Typical shapes:
 - `process_and_merge_channels`: `(H, W, 3)` float64, values 0-255
 
 ## Local Testing
+
+To execute a built production image end to end against a live local dataset,
+including safe authentication and output verification, use the
+`nimbus-run-worker` skill. This section covers lower-level API test scripts.
 
 ### Avoid importing entrypoint.py
 Worker entrypoints import heavy ML libraries (torch, sam2) at module level. Copy helper functions locally instead of importing the entrypoint.
