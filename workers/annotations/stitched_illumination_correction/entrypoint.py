@@ -15,7 +15,7 @@ import illumination as correction
 
 OUTPUT_PATH = "/tmp/illumination_corrected.tiff"
 WORKER_NAME = "Stitched TIFF Illumination Correction"
-WORKER_VERSION = "1.0.0"
+WORKER_VERSION = "1.0.1"
 ALGORITHM_OPTIONS = correction.ALGORITHM_OPTIONS
 REFERENCE_CHANNEL_MODE_OPTIONS = correction.REFERENCE_CHANNEL_MODE_OPTIONS
 DARKFIELD_OPTIONS = correction.DARKFIELD_OPTIONS
@@ -298,6 +298,18 @@ def _copy_sink_metadata(sink, tile_metadata):
             setattr(sink, name, tile_metadata[name])
 
 
+def _phase_progress(start, stop):
+    """Map a nested routine's local progress into one global worker phase."""
+    start = float(start)
+    stop = float(stop)
+
+    def report(fraction, title, info):
+        local = float(np.clip(fraction, 0.0, 1.0))
+        sendProgress(start + (stop - start) * local, title, info)
+
+    return report
+
+
 def compute(datasetId, apiUrl, token, params):
     worker_interface = params.get("workerInterface", {})
     try:
@@ -436,7 +448,7 @@ def compute(datasetId, apiUrl, token, params):
             reference_channel_setting,
             pitch_min,
             pitch_max,
-            progress=sendProgress,
+            progress=_phase_progress(0.0, 0.15),
         )
     except Exception as exc:
         sendError("Could not determine the physical tile grid.", info=str(exc))
@@ -449,8 +461,10 @@ def compute(datasetId, apiUrl, token, params):
     model_metadata = {}
 
     for index, channel in enumerate(channels):
+        phase_start = 0.15 + 0.35 * index / max(len(channels), 1)
+        phase_stop = 0.15 + 0.35 * (index + 1) / max(len(channels), 1)
         sendProgress(
-            0.15 + 0.35 * index / max(len(channels), 1),
+            phase_start,
             WORKER_NAME,
             f"Selecting a correction for channel {channel + 1}",
         )
@@ -487,7 +501,7 @@ def compute(datasetId, apiUrl, token, params):
                 algorithm,
                 darkfield_mode,
                 per_tile_gain,
-                progress=sendProgress,
+                progress=_phase_progress(phase_start, phase_stop),
                 validation_source=validation_source if validation_zs else None,
                 use_spot_uniformity=channel in punctate_channels,
             )
@@ -505,6 +519,15 @@ def compute(datasetId, apiUrl, token, params):
                     "No correction beat the identity baseline by a reliable margin.",
                 ),
             )
+        if selection.candidate_failures:
+            sendWarning(
+                f"Correction candidate comparison was incomplete for channel "
+                f"{channel + 1}.",
+                info="; ".join(
+                    f"{failure['name']} ({failure['kind']}): {failure['error']}"
+                    for failure in selection.candidate_failures
+                ),
+            )
         selections[channel] = selection
         model_metadata[str(channel)] = {
             "channel_index_zero_based": channel,
@@ -513,6 +536,7 @@ def compute(datasetId, apiUrl, token, params):
             "metrics": selection.metrics,
             "diagnostics": getattr(selection.model, "diagnostics", {}),
             "candidates": selection.alternatives,
+            "candidate_failures": selection.candidate_failures,
         }
 
     # Delay the heavy writer import until validation and model fitting have passed.

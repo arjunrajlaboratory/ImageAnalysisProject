@@ -15,10 +15,10 @@ This worker is the stitched-TIFF fallback described by the illumination-correcti
    - Folded log-gradient
    - Split-half affine
 5. Rejects candidates that damage object-intensity ranking, fine detail, or numeric range, contain non-finite values, or infer an implausible field. Metrics that cannot be measured on a plane are explicitly recorded as unavailable.
-6. Finds the Pareto-optimal candidates across the artifact panel, accounts for score uncertainty across validation planes, and prefers the simpler model inside the resulting tie margin. Spot uniformity participates only for channels explicitly marked punctate.
+6. Finds the Pareto-optimal candidates across the artifact panel and prefers the simpler model inside a fixed 5% tie margin. A correction can displace identity only when it improves the aggregate score by more than that margin and improves every paired held-out Z plane. Spot uniformity participates only for channels explicitly marked punctate.
 7. Applies the selected channel model across Z only at the reference XY and reference time, preserves other acquisitions and unselected channels, writes a TIFF, and uploads it to Girder.
 
-Automatic selection is deliberately conservative: if there is no independent Z plane, the identity candidate is returned and the channel is left unchanged with a warning. A manual algorithm can still be requested for a single-plane dataset.
+Automatic selection is deliberately conservative: if there is no independent Z plane, the identity candidate is returned and the channel is left unchanged with a warning. A manual algorithm can still be requested for a single-plane dataset. Candidate algorithms that are unavailable or fail are reported in a frontend warning and in output metadata. If the identity baseline fails, or every non-identity algorithm fails, the job fails rather than reporting a winner from an unsafe or incomplete comparison.
 
 The workflow is based on the channel-specific evaluation in `FINDINGS_AND_WORKFLOW.md` from the illumination-correction study. The acquisition geometry is estimated once, while flatfield, darkfield, and per-tile gains are never transferred between channels.
 
@@ -65,9 +65,9 @@ Artifact metrics are calculated against each channel's raw plane. Models are fit
 - Background dynamic range (A5)
 - Detrended whole-tile scatter (A6)
 
-The unchanged image is the baseline candidate. A correction must improve beyond the tie/uncertainty margin to displace it. Candidates are rejected when any applicable hard preservation guardrail fails:
+The unchanged image is the baseline candidate. A correction must improve the aggregate score by more than the fixed 5% tie margin and improve every paired held-out plane to displace it. This deterministic paired rule avoids treating the two or three correlated validation planes as independent normal samples. Candidates are rejected when any applicable hard preservation guardrail fails:
 
-- Object-intensity Spearman rank below 0.98, when at least 10 measurable objects are available
+- Object-intensity Spearman rank below 0.98, when at least 10 measurable objects with nonconstant intensities are available
 - Locally normalized high-frequency power below 0.90 of raw, when finite source high-frequency power is available
 - Any non-finite source or output pixels
 - More than `1e-4` newly nonpositive pixels (pre-existing source zeros are not treated as correction damage)
@@ -79,7 +79,7 @@ BaSiC darkfields are also rejected when their mean reaches or exceeds the refere
 The worker uploads `/tmp/illumination_corrected.tiff` to the source dataset. Girder metadata records:
 
 - Requested and selected algorithm for every corrected channel
-- Full candidate scores and rejection reasons
+- Full candidate scores, rejection reasons, and unavailable/failed algorithms
 - Explicit zero-based and one-based reference channel and XY/Z/time coordinates
 - Held-out Z planes, correction scope, pitch bounds, and punctate-metric channels
 - Measured pitch, seam positions, residuals, and reference-quality reports
@@ -95,7 +95,8 @@ Channel names, pixel size, and magnification are copied when present in the sour
 - Automatic mode needs at least two Z planes. On a single-Z dataset it selects identity; choose a manual algorithm only when fitting and evaluating on the same plane is scientifically acceptable.
 - Per-tile gain correction is off by default because it can absorb real whole-tile biology. When enabled, it affects only BaSiC and folded log-gradient.
 - Float32 is the recommended audit output. Preserve-source-dtype mode allows only negligible (`<=1e-4`) range clipping and otherwise fails with a request to use Float32.
-- Conditional guardrails are recorded as unavailable rather than silently passed. Non-finite input/output and newly nonpositive-pixel checks are always required.
+- Conditional guardrails are recorded as unavailable rather than silently passed. Constant object intensities make Spearman rank undefined and are recorded as unavailable. Non-finite input/output and newly nonpositive-pixel checks are always required.
+- Nested grid fitting, model selection, and TIFF writing report progress within monotonic global phases.
 - Missing or stale select values are rejected before image loading. The worker reports which setting must be re-selected and raises so Girder records the job as failed rather than successful.
 - The worker is CPU-routed (`isGPUWorker=false`). BaSiCPy uses a CPU PyTorch backend, so its image is larger than other classical image-processing workers. The image intentionally overrides BaSiCPy's stale `scipy<1.13` metadata pin while installing its `hyperactive` runtime dependency explicitly. It also pins the matching `pyvips`/libvips wheel used by the TIFF converter and verifies that runtime during the Docker build and tests. Docker tests run real BaSiC fits with darkfield both off and on.
 

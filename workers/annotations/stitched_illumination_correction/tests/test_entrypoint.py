@@ -184,7 +184,7 @@ def test_interface_exposes_auto_and_manual_controls():
 
     values = preview_cls.return_value.setWorkerImageInterface.call_args.args[1]
     assert WORKER_NAME == "Stitched TIFF Illumination Correction"
-    assert WORKER_VERSION == "1.0.0"
+    assert WORKER_VERSION == "1.0.1"
     assert values["Stitched TIFF illumination correction"]["type"] == "notes"
     assert values["Channels to correct"]["type"] == "channelCheckboxes"
     assert values["Algorithm"]["items"] == [
@@ -207,7 +207,7 @@ def test_docker_identity_is_distinct_and_cpu_routed():
     dockerfile = (WORKER_DIR / "Dockerfile").read_text()
 
     assert 'isGPUWorker="false"' in dockerfile
-    assert 'workerVersion="1.0.0"' in dockerfile
+    assert 'workerVersion="1.0.1"' in dockerfile
     assert 'interfaceName="Stitched TIFF Illumination Correction"' in dockerfile
 
 
@@ -286,6 +286,72 @@ def test_compute_supplies_independent_z_planes_for_automatic_selection():
         compute("dataset-id", "http://api", "token", _params())
 
     tile_client.client.uploadFileToFolder.assert_called_once()
+
+
+def test_compute_warns_when_automatic_algorithm_panel_is_incomplete():
+    tile_client = _tile_client()
+    sink = MagicMock()
+    fake_large_image = types.SimpleNamespace(new=MagicMock(return_value=sink))
+    reference = (_grid(), 0, [{"channel": 0, "quality_score": 0.1}])
+    selection = _selection()
+    selection.candidate_failures = [
+        {
+            "name": "basic_darkfield_on",
+            "kind": "unavailable",
+            "error": "not applicable to this image",
+        }
+    ]
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid", return_value=reference),
+        patch("entrypoint.correction.select_model", return_value=selection),
+        patch("entrypoint.sendWarning") as send_warning,
+        patch.dict(sys.modules, {"large_image": fake_large_image}),
+    ):
+        compute("dataset-id", "http://api", "token", _params())
+
+    assert any(
+        "incomplete" in call.args[0].lower()
+        for call in send_warning.call_args_list
+    )
+    metadata = tile_client.client.addMetadataToItem.call_args.args[1]
+    assert metadata["channel_models"]["0"]["candidate_failures"] == (
+        selection.candidate_failures
+    )
+
+
+def test_compute_reports_monotonic_global_progress():
+    tile_client = _tile_client()
+    sink = MagicMock()
+    fake_large_image = types.SimpleNamespace(new=MagicMock(return_value=sink))
+    reference = (_grid(), 0, [{"channel": 0, "quality_score": 0.1}])
+    progress_values = []
+
+    def choose_grid(*args, progress=None, **kwargs):
+        progress(0.0, "grid", "start")
+        progress(0.8, "grid", "nearly done")
+        return reference
+
+    def select_model(*args, progress=None, **kwargs):
+        progress(0.0, "model", "start")
+        progress(0.75, "model", "nearly done")
+        return _selection()
+
+    with (
+        patch("entrypoint.tiles.UPennContrastDataset", return_value=tile_client),
+        patch("entrypoint.correction.choose_reference_grid", side_effect=choose_grid),
+        patch("entrypoint.correction.select_model", side_effect=select_model),
+        patch(
+            "entrypoint.sendProgress",
+            side_effect=lambda fraction, *args: progress_values.append(fraction),
+        ),
+        patch.dict(sys.modules, {"large_image": fake_large_image}),
+    ):
+        compute("dataset-id", "http://api", "token", _params())
+
+    assert progress_values == sorted(progress_values)
+    assert progress_values[-1] == 1.0
 
 
 def test_compute_rejects_malformed_channel_selection():

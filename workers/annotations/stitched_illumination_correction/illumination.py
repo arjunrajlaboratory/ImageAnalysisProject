@@ -1181,9 +1181,26 @@ def p2_object_intensity(
         }
     from scipy.stats import spearmanr
 
+    raw_values = raw_sum[keep]
+    corrected_values = corrected_sum[keep]
+    if np.ptp(raw_values) <= np.finfo(float).eps or np.ptp(
+        corrected_values
+    ) <= np.finfo(float).eps:
+        return {
+            "P2_n_objects": int(keep.sum()),
+            "P2_spearman": float("nan"),
+            "P2_applicable": False,
+        }
+    statistic = float(spearmanr(raw_values, corrected_values).statistic)
+    if not np.isfinite(statistic):
+        return {
+            "P2_n_objects": int(keep.sum()),
+            "P2_spearman": float("nan"),
+            "P2_applicable": False,
+        }
     return {
         "P2_n_objects": int(keep.sum()),
-        "P2_spearman": float(spearmanr(raw_sum[keep], corrected_sum[keep]).statistic),
+        "P2_spearman": statistic,
         "P2_applicable": True,
     }
 
@@ -1418,7 +1435,7 @@ class CandidateResult:
     alternatives: list[dict] = field(default_factory=list)
     artifact_ratios: dict[str, float] = field(default_factory=dict)
     selection_samples: list[dict] = field(default_factory=list)
-    score_log_se: float = 0.0
+    candidate_failures: list[dict] = field(default_factory=list)
     pareto_optimal: bool = False
     fit_metrics: dict = field(default_factory=dict)
     validation_reports: list[dict] = field(default_factory=list)
@@ -1435,7 +1452,7 @@ class CandidateResult:
             "fit_seconds": float(self.fit_seconds),
             "valid": bool(self.valid),
             "pareto_optimal": bool(self.pareto_optimal),
-            "score_log_se": float(self.score_log_se),
+            "candidate_failures": list(self.candidate_failures),
             "guardrail_violations": list(self.violations),
             "physics_violations": list(self.physics_violations),
             "artifact_ratios": dict(self.artifact_ratios),
@@ -1472,6 +1489,41 @@ def _dominates(left: CandidateResult, right: CandidateResult) -> bool:
     return no_worse and strictly_better
 
 
+def _sample_selection_scores(
+    candidate: CandidateResult, use_spot_uniformity: bool
+) -> list[float]:
+    return [
+        _selection_score(
+            float(sample.get("artifact_index", float("nan"))),
+            sample.get("P1_spot_uniformity"),
+            use_spot_uniformity,
+        )
+        for sample in candidate.selection_samples
+    ]
+
+
+def _consistently_improves(
+    candidate: CandidateResult,
+    identity: CandidateResult,
+    use_spot_uniformity: bool,
+) -> bool:
+    """Require paired improvement on every available held-out plane."""
+    candidate_scores = _sample_selection_scores(candidate, use_spot_uniformity)
+    identity_scores = _sample_selection_scores(identity, use_spot_uniformity)
+    if not candidate.selection_samples or not identity.selection_samples:
+        return True
+    if len(candidate_scores) != len(identity_scores):
+        return False
+    return all(
+        np.isfinite(candidate_score)
+        and np.isfinite(identity_score)
+        and candidate_score > 0
+        and identity_score > 0
+        and candidate_score < identity_score
+        for candidate_score, identity_score in zip(candidate_scores, identity_scores)
+    )
+
+
 def rank_candidates(
     candidates: Iterable[CandidateResult],
     tie_fraction: float = 0.05,
@@ -1488,20 +1540,6 @@ def rank_candidates(
             candidate.metrics.get("P1_spot_uniformity"),
             use_spot_uniformity,
         )
-        sample_scores = [
-            _selection_score(
-                float(sample.get("artifact_index", float("nan"))),
-                sample.get("P1_spot_uniformity"),
-                use_spot_uniformity,
-            )
-            for sample in candidate.selection_samples
-        ]
-        sample_scores = [score for score in sample_scores if np.isfinite(score)]
-        if len(sample_scores) >= 2:
-            candidate.score_log_se = float(
-                np.std(np.log(sample_scores), ddof=1) / math.sqrt(len(sample_scores))
-            )
-
     require_complete_panel = any(candidate.name == "identity" for candidate in valid)
     scorable = [
         candidate
@@ -1546,13 +1584,40 @@ def rank_candidates(
         candidate
         for candidate in selectable
         if math.log(candidate.selection_score / best_score)
-        <= max(
-            base_margin,
-            1.96
-            * math.hypot(best.score_log_se, candidate.score_log_se),
-        )
+        <= base_margin
     ]
     selected = min(tied, key=lambda c: (c.complexity, c.selection_score, c.name))
+
+    identity = next(
+        (candidate for candidate in scorable if candidate.name == "identity"), None
+    )
+    if identity is not None and selected is not identity:
+        aggregate_improvement = math.log(
+            identity.selection_score / selected.selection_score
+        )
+        consistent = _consistently_improves(
+            selected, identity, use_spot_uniformity
+        )
+        if aggregate_improvement <= base_margin or not consistent:
+            identity.metrics["selection_basis"] = "identity_conservative_gate"
+            identity.metrics["proposed_candidate"] = selected.name
+            identity.metrics["proposed_aggregate_log_improvement"] = float(
+                aggregate_improvement
+            )
+            identity.metrics["paired_improvement_consistent"] = bool(consistent)
+            diagnostics = getattr(identity.model, "diagnostics", None)
+            if isinstance(diagnostics, dict):
+                diagnostics.update(
+                    {
+                        "selection_basis": "identity_conservative_gate",
+                        "reason": (
+                            "No correction improved the identity baseline by more "
+                            "than the fixed tie margin on aggregate and on every "
+                            "held-out plane"
+                        ),
+                    }
+                )
+            selected = identity
     return selected, ranked
 
 
@@ -1698,7 +1763,7 @@ def select_model(
 
     specs = _candidate_specs(algorithm, darkfield_mode)
     candidates: list[CandidateResult] = []
-    failures = []
+    failures: list[dict] = []
 
     for index, (name, complexity) in enumerate(specs):
         if progress:
@@ -1775,11 +1840,41 @@ def select_model(
                 )
             )
         except Exception as exc:
-            failures.append(f"{name}: {exc}")
+            failures.append(
+                {
+                    "name": name,
+                    "kind": "unavailable" if isinstance(exc, ValueError) else "error",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            )
 
     if not candidates:
         raise ValueError(
-            "No correction candidate could be fitted. " + "; ".join(failures)
+            "No correction candidate could be fitted. "
+            + "; ".join(
+                f"{failure['name']}: {failure['error']}" for failure in failures
+            )
+        )
+    if algorithm == ALGORITHM_OPTIONS[0] and not any(
+        candidate.name == "identity" for candidate in candidates
+    ):
+        raise ValueError(
+            "The identity baseline failed, so Automatic mode cannot compare "
+            "corrections safely. "
+            + "; ".join(
+                f"{failure['name']}: {failure['error']}" for failure in failures
+            )
+        )
+    if algorithm == ALGORITHM_OPTIONS[0] and not any(
+        candidate.name != "identity" for candidate in candidates
+    ):
+        raise ValueError(
+            "Every non-identity correction candidate failed, so Automatic mode "
+            "cannot claim that the unchanged image won a complete comparison. "
+            + "; ".join(
+                f"{failure['name']}: {failure['error']}" for failure in failures
+            )
         )
     try:
         selected, _ = rank_candidates(
@@ -1793,10 +1888,11 @@ def select_model(
         )
         raise ValueError(f"{exc}. {detail}") from exc
 
+    selected.candidate_failures = list(failures)
     selected.alternatives = [candidate.summary() for candidate in candidates]
     if failures:
         selected.alternatives.extend(
-            {"name": failure.split(":", 1)[0], "valid": False, "error": failure}
+            {**failure, "valid": False}
             for failure in failures
         )
     return selected

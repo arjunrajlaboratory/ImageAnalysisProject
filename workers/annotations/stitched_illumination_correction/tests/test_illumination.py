@@ -20,6 +20,7 @@ from illumination import (  # noqa: E402
     fit_log_gradient,
     fit_split_half_affine,
     normalize_flat,
+    p2_object_intensity,
     preservation_metrics,
     rank_candidates,
     select_model,
@@ -159,7 +160,15 @@ def test_split_half_affine_reduces_position_locked_artifact():
     assert after < before * 0.75
 
 
-def _candidate(name, artifact_index, p1=1.0, violations=(), complexity=0):
+def _candidate(
+    name,
+    artifact_index,
+    p1=1.0,
+    violations=(),
+    complexity=0,
+    artifact_ratios=None,
+    sample_scores=(),
+):
     return CandidateResult(
         name=name,
         model=object(),
@@ -168,6 +177,11 @@ def _candidate(name, artifact_index, p1=1.0, violations=(), complexity=0):
         violations=list(violations),
         physics_violations=[],
         complexity=complexity,
+        artifact_ratios=artifact_ratios or {},
+        selection_samples=[
+            {"artifact_index": score, "P1_spot_uniformity": 1.0}
+            for score in sample_scores
+        ],
     )
 
 
@@ -209,6 +223,84 @@ def test_automatic_selection_can_keep_identity_when_corrections_are_worse():
     selected, _ = rank_candidates([identity, worse])
 
     assert selected.name == "identity"
+
+
+def test_identity_is_kept_when_pareto_improvement_is_inside_tie_margin():
+    identity = _candidate(
+        "identity",
+        1.0,
+        complexity=-1,
+        artifact_ratios={key: 1.0 for key in "abcde"},
+        sample_scores=(1.0, 1.0, 1.0),
+    )
+    marginal = _candidate(
+        "fold_log_gradient",
+        0.99,
+        complexity=1,
+        artifact_ratios={key: 0.99 for key in "abcde"},
+        sample_scores=(0.98, 1.0, 0.99),
+    )
+
+    selected, _ = rank_candidates([identity, marginal], tie_fraction=0.05)
+
+    assert selected.name == "identity"
+
+
+def test_identity_requires_consistent_held_out_improvement():
+    identity = _candidate(
+        "identity",
+        1.0,
+        complexity=-1,
+        sample_scores=(1.0, 1.0, 1.0),
+    )
+    inconsistent = _candidate(
+        "fold_log_gradient",
+        0.80,
+        complexity=1,
+        sample_scores=(0.70, 1.05, 0.70),
+    )
+
+    selected, _ = rank_candidates([identity, inconsistent], tie_fraction=0.05)
+
+    assert selected.name == "identity"
+
+
+def test_identity_can_be_displaced_by_strong_consistent_improvement():
+    identity = _candidate(
+        "identity",
+        1.0,
+        complexity=-1,
+        sample_scores=(1.0, 1.0, 1.0),
+    )
+    improved = _candidate(
+        "fold_log_gradient",
+        0.75,
+        complexity=1,
+        sample_scores=(0.70, 0.80, 0.75),
+    )
+
+    selected, _ = rank_candidates([identity, improved], tie_fraction=0.05)
+
+    assert selected.name == "fold_log_gradient"
+
+
+def test_candidate_uncertainty_cannot_expand_the_fixed_tie_margin():
+    best = _candidate(
+        "basic_darkfield_on",
+        1.0,
+        complexity=3,
+        sample_scores=(1.0, 1.0, 1.0),
+    )
+    noisy_but_worse = _candidate(
+        "split_half_affine",
+        1.10,
+        complexity=0,
+        sample_scores=(0.5, 1.1, 2.2),
+    )
+
+    selected, _ = rank_candidates([best, noisy_but_worse], tie_fraction=0.05)
+
+    assert selected.name == "basic_darkfield_on"
 
 
 def test_rank_candidates_rejects_undefined_artifact_scores():
@@ -269,6 +361,17 @@ def test_range_guardrail_rejects_nonfinite_output():
     )
 
 
+def test_constant_object_intensities_make_rank_guardrail_inapplicable():
+    labels = np.arange(1, 11, dtype=np.int32).reshape(2, 5)
+    raw = np.ones(labels.shape, dtype=np.float32)
+    corrected = np.ones(labels.shape, dtype=np.float32)
+
+    metrics = p2_object_intensity(raw, corrected, labels, count=10)
+
+    assert metrics["P2_applicable"] is False
+    assert np.isnan(metrics["P2_spearman"])
+
+
 def test_automatic_selection_without_held_out_plane_returns_identity():
     _, raw, grid = _synthetic_mosaic(seed=17)
 
@@ -283,6 +386,97 @@ def test_automatic_selection_without_held_out_plane_returns_identity():
     assert isinstance(selected.model, IdentityModel)
     assert selected.name == "identity"
     assert selected.metrics["selection_basis"] == "identity_without_holdout"
+
+
+def test_automatic_selection_fails_when_every_correction_algorithm_errors(
+    monkeypatch,
+):
+    _, raw, grid = _synthetic_mosaic(seed=23)
+
+    def unavailable(*args, **kwargs):
+        raise ValueError("not applicable to this image")
+
+    monkeypatch.setattr("illumination.fit_basic", unavailable)
+    monkeypatch.setattr("illumination.fit_log_gradient", unavailable)
+    monkeypatch.setattr("illumination.fit_split_half_affine", unavailable)
+
+    with pytest.raises(ValueError, match="Every non-identity correction"):
+        select_model(
+            raw,
+            grid,
+            "Automatic (recommended)",
+            "Automatic",
+            per_tile_gain=False,
+            validation_source=lambda: [("held-out Z 2", raw.copy())],
+        )
+
+
+def test_automatic_selection_fails_when_identity_baseline_errors(monkeypatch):
+    _, raw, grid = _synthetic_mosaic(seed=31)
+
+    monkeypatch.setattr("illumination.fit_basic", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        "illumination.fit_log_gradient", lambda *args, **kwargs: object()
+    )
+    monkeypatch.setattr(
+        "illumination.fit_split_half_affine", lambda *args, **kwargs: object()
+    )
+
+    def evaluate_model(model, plane, fitted_grid, label):
+        if isinstance(model, IdentityModel):
+            raise RuntimeError("identity evaluation crashed")
+        return {
+            "label": label,
+            "metrics": {"guardrail_violations": [], "guardrail_unavailable": []},
+            "artifact_ratios": {key: 0.5 for key in "abcde"},
+            "artifact_index": 0.5,
+        }
+
+    monkeypatch.setattr("illumination._evaluate_model_plane", evaluate_model)
+
+    with pytest.raises(ValueError, match="identity baseline failed"):
+        select_model(
+            raw,
+            grid,
+            "Automatic (recommended)",
+            "Automatic",
+            per_tile_gain=False,
+            validation_source=lambda: [("held-out Z 2", raw.copy())],
+        )
+
+
+def test_partial_automatic_failures_distinguish_unavailable_from_errors(
+    monkeypatch,
+):
+    _, raw, grid = _synthetic_mosaic(seed=29)
+
+    def crashed(*args, **kwargs):
+        raise RuntimeError("dependency crashed")
+
+    def unavailable(*args, **kwargs):
+        raise ValueError("not applicable to this image")
+
+    monkeypatch.setattr("illumination.fit_basic", crashed)
+    monkeypatch.setattr(
+        "illumination.fit_log_gradient",
+        lambda *args, **kwargs: IdentityModel(grid),
+    )
+    monkeypatch.setattr("illumination.fit_split_half_affine", unavailable)
+
+    selected = select_model(
+        raw,
+        grid,
+        "Automatic (recommended)",
+        "Automatic",
+        per_tile_gain=False,
+        validation_source=lambda: [("held-out Z 2", raw.copy())],
+    )
+
+    assert {failure["kind"] for failure in selected.candidate_failures} == {
+        "error",
+        "unavailable",
+    }
+    assert all("exception_type" in failure for failure in selected.candidate_failures)
 
 
 @pytest.mark.parametrize("darkfield", [False, True])
