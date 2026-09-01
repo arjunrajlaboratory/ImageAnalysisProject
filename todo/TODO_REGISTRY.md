@@ -17,6 +17,7 @@ Master index of deferred work, technical debt, and future improvements for the I
 | TODO-003 | ML worker image size (multi-stage builds across the GPU fleet) | In progress (wave 1 SAM/SAM2 merged; wave 2 cellpose ×4 / stardist / condensatenet / piscis ×2 rewritten but **not yet built or measured**; `deconwolf` still to do) | Medium | [ml-worker-image-size.md](ml-worker-image-size.md) | [#160](https://github.com/arjunrajlaboratory/ImageAnalysisProject/pull/160) |
 | TODO-004 | `channelCheckboxes` list-shaped values: identify the submitter, repair saved configs | Open (workers hardened and now reject the shape; front end surveyed, submitter unidentified) | Medium | [channelcheckboxes-serialization.md](channelcheckboxes-serialization.md) | [#162](https://github.com/arjunrajlaboratory/ImageAnalysisProject/pull/162) |
 | TODO-005 | Make scoped worker builds fail when the Compose service is absent | Open | Medium | [scoped-worker-build-validation.md](scoped-worker-build-validation.md) | — |
+| TODO-006 | Align image-processing base `pyvips` with its native `libvips` | Open (worker-local compatibility pin added) | Medium | [image-processing-pyvips-binding.md](image-processing-pyvips-binding.md) | — |
 
 ## Completed TODOs
 

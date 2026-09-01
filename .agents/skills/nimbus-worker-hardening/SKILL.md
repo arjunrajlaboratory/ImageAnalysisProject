@@ -413,6 +413,29 @@ alone. Regression coverage: `annotation_utilities/tests/test_required_select.py`
 (CI) plus compute-level tests in sam_fewshot_segmentation and
 sam2_fewshot_segmentation.
 
+### 10. Image worker receives an incompatible source representation
+
+**Symptom:** a worker that requires raw acquisition files fails later with a
+generic missing-file or parser error when it is run on a derived TIFF, or worse,
+silently treats the derived image as equivalent input even though required tile
+overlaps or acquisition metadata have been discarded.
+
+**Fix:** validate the source contract before loading images or fitting models.
+Raise a dedicated exception that names the required artifacts, explains why the
+derived representation cannot reconstruct them, and tells the user which
+dataset to select. Catch that exception separately at `compute()` and call
+`sendError` with an actionable title before re-raising so the job is ERROR, not
+SUCCESS. Keep corrupt-source, duplicate-source, and unsupported-version errors
+distinct rather than labeling every failure as "already stitched."
+
+**Sweep:** inspect image-output workers whose algorithm depends on source files
+outside the selected large image:
+```bash
+rg -l "multi-source2\\.json|original ND2|source_path" workers/annotations/
+```
+The stitch-refinement illumination worker now rejects TIFF-only datasets before
+processing and has regression coverage for the missing multi-source document.
+
 ## After fixing
 
 - Run the relevant package tests (`annotation_utilities`, `worker_client`) and
