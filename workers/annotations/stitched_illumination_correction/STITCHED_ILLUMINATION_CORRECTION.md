@@ -67,7 +67,8 @@ Artifact metrics are calculated against each channel's raw plane. Models are fit
 
 The unchanged image is the baseline candidate. A correction must improve the aggregate score by more than the fixed 5% tie margin and improve every paired held-out plane to displace it. This deterministic paired rule avoids treating the two or three correlated validation planes as independent normal samples. Candidates are rejected when any applicable hard preservation guardrail fails:
 
-- Object-intensity Spearman rank below 0.98, when at least 10 measurable objects are available. Constant raw object intensities make the guardrail unavailable; constant corrected intensities with variable raw values are treated as a destructive collapse and fail the guardrail.
+- Any raw-positive object's corrected sum becoming zero or negative, regardless of whether enough objects exist to measure rank correlation
+- Object-intensity Spearman rank below 0.98, when at least 10 raw-positive objects with finite corrected sums are available. Constant raw object intensities make the rank guardrail unavailable; constant corrected intensities with variable raw values are treated as a destructive collapse and fail it.
 - Locally normalized high-frequency power below 0.90 of raw, when finite source high-frequency power is available
 - Any non-finite source or output pixels
 - More than `1e-4` newly nonpositive pixels (pre-existing source zeros are not treated as correction damage)

@@ -441,6 +441,42 @@ def test_constant_corrected_intensities_are_a_rank_guardrail_violation():
     assert metrics["P2_corrected_constant"] is True
 
 
+@pytest.mark.parametrize("erased_value", [0.0, -1.0])
+def test_nonpositive_corrected_object_sum_is_a_preservation_violation(
+    erased_value,
+):
+    labels = np.arange(1, 11, dtype=np.int32).reshape(2, 5)
+    raw = np.arange(1, 11, dtype=np.float32).reshape(2, 5)
+    corrected = raw.copy()
+    corrected[0, 0] = erased_value
+
+    metrics = preservation_metrics(raw, corrected, labels, count=10)
+
+    assert metrics["P2_n_objects"] == 10
+    assert metrics["P2_n_erased_objects"] == 1
+    assert metrics["P2_frac_erased_objects"] == pytest.approx(0.1)
+    assert any(
+        "P2_frac_erased_objects" in item
+        for item in metrics["guardrail_violations"]
+    )
+
+
+def test_erased_object_fails_when_rank_correlation_is_unavailable():
+    labels = np.arange(1, 6, dtype=np.int32).reshape(1, 5)
+    raw = np.arange(1, 6, dtype=np.float32).reshape(1, 5)
+    corrected = raw.copy()
+    corrected[0, 0] = 0.0
+
+    metrics = preservation_metrics(raw, corrected, labels, count=5)
+
+    assert metrics["P2_applicable"] is False
+    assert metrics["P2_frac_erased_objects"] == pytest.approx(0.2)
+    assert any(
+        "P2_frac_erased_objects" in item
+        for item in metrics["guardrail_violations"]
+    )
+
+
 def test_automatic_selection_without_held_out_plane_returns_identity():
     _, raw, grid = _synthetic_mosaic(seed=17)
 

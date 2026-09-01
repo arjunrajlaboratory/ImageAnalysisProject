@@ -29,7 +29,7 @@ COPY ./workers/annotations/stitched_illumination_correction/illumination.py /
 LABEL isUPennContrastWorker="" \
       isGPUWorker="false" \
       isAnnotationWorker="" \
-      workerVersion="1.0.2" \
+      workerVersion="1.0.3" \
       interfaceName="Stitched TIFF Illumination Correction" \
       interfaceCategory="Image Processing" \
       description="Stitched-TIFF fallback for grid-locked illumination correction with held-out model selection" \

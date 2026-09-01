@@ -184,7 +184,7 @@ def test_interface_exposes_auto_and_manual_controls():
 
     values = preview_cls.return_value.setWorkerImageInterface.call_args.args[1]
     assert WORKER_NAME == "Stitched TIFF Illumination Correction"
-    assert WORKER_VERSION == "1.0.2"
+    assert WORKER_VERSION == "1.0.3"
     assert values["Stitched TIFF illumination correction"]["type"] == "notes"
     assert values["Channels to correct"]["type"] == "channelCheckboxes"
     assert values["Algorithm"]["items"] == [
@@ -207,7 +207,7 @@ def test_docker_identity_is_distinct_and_cpu_routed():
     dockerfile = (WORKER_DIR / "Dockerfile").read_text()
 
     assert 'isGPUWorker="false"' in dockerfile
-    assert 'workerVersion="1.0.2"' in dockerfile
+    assert 'workerVersion="1.0.3"' in dockerfile
     assert 'interfaceName="Stitched TIFF Illumination Correction"' in dockerfile
 
 

@@ -1161,31 +1161,40 @@ def p2_object_intensity(
     labels: np.ndarray,
     count: int,
 ) -> dict:
-    if count < 10:
-        return {
-            "P2_n_objects": count,
-            "P2_spearman": float("nan"),
-            "P2_applicable": False,
-        }
     indices = np.arange(1, count + 1)
     raw_sum = ndimage.sum_labels(raw.astype(np.float64), labels, indices)
     corrected_sum = ndimage.sum_labels(
         corrected.astype(np.float64), labels, indices
     )
-    keep = (raw_sum > 0) & (corrected_sum > 0)
-    if keep.sum() < 10:
+    raw_positive = np.isfinite(raw_sum) & (raw_sum > 0)
+    corrected_finite = np.isfinite(corrected_sum)
+    rankable = raw_positive & corrected_finite
+    erased = rankable & (corrected_sum <= 0)
+    n_raw_objects = int(raw_positive.sum())
+    n_ranked_objects = int(rankable.sum())
+    n_erased_objects = int(erased.sum())
+    base_metrics = {
+        "P2_n_objects": n_raw_objects,
+        "P2_n_ranked_objects": n_ranked_objects,
+        "P2_n_erased_objects": n_erased_objects,
+        "P2_frac_erased_objects": (
+            float(n_erased_objects / n_raw_objects) if n_raw_objects else 0.0
+        ),
+    }
+    if n_ranked_objects < 10:
         return {
-            "P2_n_objects": int(keep.sum()),
+            **base_metrics,
             "P2_spearman": float("nan"),
             "P2_applicable": False,
+            "P2_corrected_constant": False,
         }
     from scipy.stats import spearmanr
 
-    raw_values = raw_sum[keep]
-    corrected_values = corrected_sum[keep]
+    raw_values = raw_sum[rankable]
+    corrected_values = corrected_sum[rankable]
     if np.ptp(raw_values) <= np.finfo(float).eps:
         return {
-            "P2_n_objects": int(keep.sum()),
+            **base_metrics,
             "P2_spearman": float("nan"),
             "P2_applicable": False,
             "P2_corrected_constant": bool(
@@ -1194,7 +1203,7 @@ def p2_object_intensity(
         }
     if np.ptp(corrected_values) <= np.finfo(float).eps:
         return {
-            "P2_n_objects": int(keep.sum()),
+            **base_metrics,
             "P2_spearman": 0.0,
             "P2_applicable": True,
             "P2_corrected_constant": True,
@@ -1202,13 +1211,13 @@ def p2_object_intensity(
     statistic = float(spearmanr(raw_values, corrected_values).statistic)
     if not np.isfinite(statistic):
         return {
-            "P2_n_objects": int(keep.sum()),
+            **base_metrics,
             "P2_spearman": float("nan"),
             "P2_applicable": False,
             "P2_corrected_constant": False,
         }
     return {
-        "P2_n_objects": int(keep.sum()),
+        **base_metrics,
         "P2_spearman": statistic,
         "P2_applicable": True,
         "P2_corrected_constant": False,
@@ -1297,6 +1306,7 @@ def p5_range(raw: np.ndarray, corrected: np.ndarray) -> dict:
 
 GUARDRAILS = {
     "P2_spearman": ("min", 0.98),
+    "P2_frac_erased_objects": ("max", 0.0),
     "P3_hf_power_ratio": ("min", 0.90),
     "P5_frac_source_nonfinite": ("max", 0.0),
     "P5_frac_nonfinite": ("max", 0.0),
