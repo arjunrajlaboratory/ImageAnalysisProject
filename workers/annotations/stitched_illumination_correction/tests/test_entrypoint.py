@@ -211,6 +211,14 @@ def test_docker_identity_is_distinct_and_cpu_routed():
     assert 'interfaceName="Stitched TIFF Illumination Correction"' in dockerfile
 
 
+def test_production_pyvips_runtime_can_initialize():
+    """The TIFF sink depends on pyvips loading, not merely being installed."""
+    import pyvips
+
+    assert pyvips.API_mode
+    assert tuple(pyvips.version(index) for index in range(3)) == (8, 18, 2)
+
+
 def test_compute_corrects_selected_channels_and_uploads_tiff():
     tile_client = _tile_client()
     sink = MagicMock()

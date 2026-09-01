@@ -97,7 +97,7 @@ Channel names, pixel size, and magnification are copied when present in the sour
 - Float32 is the recommended audit output. Preserve-source-dtype mode allows only negligible (`<=1e-4`) range clipping and otherwise fails with a request to use Float32.
 - Conditional guardrails are recorded as unavailable rather than silently passed. Non-finite input/output and newly nonpositive-pixel checks are always required.
 - Missing or stale select values are rejected before image loading. The worker reports which setting must be re-selected and raises so Girder records the job as failed rather than successful.
-- The worker is CPU-routed (`isGPUWorker=false`). BaSiCPy uses a CPU PyTorch backend, so its image is larger than other classical image-processing workers. The image intentionally overrides BaSiCPy's stale `scipy<1.13` metadata pin while installing its `hyperactive` runtime dependency explicitly; Docker tests run real BaSiC fits with darkfield both off and on.
+- The worker is CPU-routed (`isGPUWorker=false`). BaSiCPy uses a CPU PyTorch backend, so its image is larger than other classical image-processing workers. The image intentionally overrides BaSiCPy's stale `scipy<1.13` metadata pin while installing its `hyperactive` runtime dependency explicitly. It also pins the matching `pyvips`/libvips wheel used by the TIFF converter and verifies that runtime during the Docker build and tests. Docker tests run real BaSiC fits with darkfield both off and on.
 
 ## Build and Test
 
