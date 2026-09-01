@@ -19,7 +19,7 @@ COPY ./workers/annotations/illumination_correction/illumination.py /
 COPY ./workers/annotations/illumination_correction/pipeline.py /
 
 LABEL isUPennContrastWorker="" \
-      isGPUWorker="false" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       workerVersion="1.0.3" \
       interfaceName="Stitch Refinement + Illumination Correction" \

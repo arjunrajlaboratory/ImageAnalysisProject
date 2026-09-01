@@ -37,8 +37,8 @@ Create new annotations by segmenting images or connecting existing annotations.
 | Gaussian Blur | Applies Gaussian blur to images |  | Yes | [docs](workers/annotations/gaussian_blur/GAUSSIAN_BLUR.md) |
 | H&E Deconvolution | Deconvolves H&E stains |  | Yes | [docs](workers/annotations/h_and_e_deconvolution/H_AND_E_DECONVOLUTION.md) |
 | Histogram Matching | Corrects images using histogram matching |  | Yes | [docs](workers/annotations/histogram_matching/HISTOGRAM_MATCHING.md) |
-| Stitch Refinement + Illumination Correction | Refines composite translations and corrects raw-tile illumination; existing annotations are not shifted |  | Yes | [docs](workers/annotations/illumination_correction/ILLUMINATION_CORRECTION.md) |
-| Stitched TIFF Illumination Correction | Corrects grid-locked illumination in existing TIFFs without requiring the original raw tiles |  | Yes | [docs](workers/annotations/stitched_illumination_correction/STITCHED_ILLUMINATION_CORRECTION.md) |
+| Stitch Refinement + Illumination Correction | Refines composite translations and corrects raw-tile illumination; existing annotations are not shifted | Yes | Yes | [docs](workers/annotations/illumination_correction/ILLUMINATION_CORRECTION.md) |
+| Stitched TIFF Illumination Correction | Corrects grid-locked illumination in existing TIFFs without requiring the original raw tiles | Yes | Yes | [docs](workers/annotations/stitched_illumination_correction/STITCHED_ILLUMINATION_CORRECTION.md) |
 | Laplacian of Gaussian | This tool finds spots in an image using the Laplacian of Gaussian method.It uses a filt... |  |  | [docs](workers/annotations/laplacian_of_gaussian/LAPLACIAN_OF_GAUSSIAN.md) |
 | Time lapse registration | Corrects images using time lapse registration |  | Yes | [docs](workers/annotations/registration/REGISTRATION.md) |
 | Rolling Ball | Corrects images using a rolling ball |  | Yes | [docs](workers/annotations/rolling_ball/ROLLING_BALL.md) |

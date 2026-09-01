@@ -203,10 +203,10 @@ def test_interface_exposes_auto_and_manual_controls():
     )
 
 
-def test_docker_identity_is_distinct_and_cpu_routed():
+def test_docker_identity_is_distinct_and_gpu_routed():
     dockerfile = (WORKER_DIR / "Dockerfile").read_text()
 
-    assert 'isGPUWorker="false"' in dockerfile
+    assert 'isGPUWorker="true"' in dockerfile
     assert 'workerVersion="1.0.3"' in dockerfile
     assert 'interfaceName="Stitched TIFF Illumination Correction"' in dockerfile
 

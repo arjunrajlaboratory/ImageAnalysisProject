@@ -27,7 +27,7 @@ COPY ./workers/annotations/stitched_illumination_correction/entrypoint.py /
 COPY ./workers/annotations/stitched_illumination_correction/illumination.py /
 
 LABEL isUPennContrastWorker="" \
-      isGPUWorker="false" \
+      isGPUWorker="true" \
       isAnnotationWorker="" \
       workerVersion="1.0.3" \
       interfaceName="Stitched TIFF Illumination Correction" \
