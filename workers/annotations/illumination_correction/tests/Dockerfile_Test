@@ -8,6 +8,7 @@ COPY ./workers/annotations/illumination_correction/tests/*.py /tests/
 COPY ./workers/annotations/illumination_correction/refinement.py /tests/
 COPY ./workers/annotations/illumination_correction/illumination.py /tests/
 COPY ./workers/annotations/illumination_correction/pipeline.py /tests/
+COPY ./workers/annotations/illumination_correction/Dockerfile /Dockerfile
 WORKDIR /tests
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "worker", "python3", "-m", "pytest", "-v"]

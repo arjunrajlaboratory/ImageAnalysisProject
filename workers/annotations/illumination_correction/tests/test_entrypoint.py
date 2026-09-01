@@ -98,6 +98,12 @@ def test_interface_surfaces_position_and_annotation_warning() -> None:
     )
 
 
+def test_docker_identity_is_gpu_routed() -> None:
+    dockerfile = (WORKER_DIR / "Dockerfile").read_text()
+
+    assert 'isGPUWorker="true"' in dockerfile
+
+
 def test_disabled_refinement_preserves_fractional_positions() -> None:
     deployed = np.asarray(((100.25, 200.75), (60.5, 199.125)))
     refined = np.asarray(((101, 201), (59, 198)))

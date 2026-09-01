@@ -46,7 +46,7 @@ The implementation follows the supplied raw-tile v7 model:
 
 The flat-field reference is the ND2 Z-stack home plane at T=0 (or the middle Z plane when the metadata has no valid home index). Training reads those T=0 P×Z camera frames one at a time and never materializes the full time series; correction still streams and preserves every time point. Fields are fitted at 128×128 and bicubically expanded to the raw camera dimensions. Corrected data is clipped only when written back to lossless uint16.
 
-Each scratch TIFF page records explicit `IndexC`, `IndexT`, and `IndexZ` frame metadata so `large_image` groups positions while preserving the source channel/Z/time axes. The image pins the matching bundled `pyvips`/`libvips` wheel used by `large_image` and asserts the native binding version during its build; conversion is serialized to avoid oversubscribing a CPU worker.
+Each scratch TIFF page records explicit `IndexC`, `IndexT`, and `IndexZ` frame metadata so `large_image` groups positions while preserving the source channel/Z/time axes. The image pins the matching bundled `pyvips`/`libvips` wheel used by `large_image` and asserts the native binding version during its build; conversion is serialized to avoid oversubscribing the container. The image is GPU-queue routed (`isGPUWorker=true`) so this long-running compute does not occupy the CPU queue that serves interactive worker-interface requests. This label controls Celery placement; the implementation does not require CUDA.
 
 ## Output and Metadata
 
