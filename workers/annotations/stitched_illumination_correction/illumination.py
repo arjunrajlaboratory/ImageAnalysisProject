@@ -1183,13 +1183,21 @@ def p2_object_intensity(
 
     raw_values = raw_sum[keep]
     corrected_values = corrected_sum[keep]
-    if np.ptp(raw_values) <= np.finfo(float).eps or np.ptp(
-        corrected_values
-    ) <= np.finfo(float).eps:
+    if np.ptp(raw_values) <= np.finfo(float).eps:
         return {
             "P2_n_objects": int(keep.sum()),
             "P2_spearman": float("nan"),
             "P2_applicable": False,
+            "P2_corrected_constant": bool(
+                np.ptp(corrected_values) <= np.finfo(float).eps
+            ),
+        }
+    if np.ptp(corrected_values) <= np.finfo(float).eps:
+        return {
+            "P2_n_objects": int(keep.sum()),
+            "P2_spearman": 0.0,
+            "P2_applicable": True,
+            "P2_corrected_constant": True,
         }
     statistic = float(spearmanr(raw_values, corrected_values).statistic)
     if not np.isfinite(statistic):
@@ -1197,11 +1205,13 @@ def p2_object_intensity(
             "P2_n_objects": int(keep.sum()),
             "P2_spearman": float("nan"),
             "P2_applicable": False,
+            "P2_corrected_constant": False,
         }
     return {
         "P2_n_objects": int(keep.sum()),
         "P2_spearman": statistic,
         "P2_applicable": True,
+        "P2_corrected_constant": False,
     }
 
 
@@ -1554,12 +1564,34 @@ def rank_candidates(
     if not scorable:
         raise ValueError("No safe candidate produced a finite artifact score")
 
+    base_margin = math.log1p(tie_fraction)
+    identity = next(
+        (candidate for candidate in scorable if candidate.name == "identity"), None
+    )
+    selection_pool = scorable
+    if identity is not None:
+        eligible = []
+        for candidate in scorable:
+            if candidate is identity:
+                continue
+            aggregate_improvement = math.log(
+                identity.selection_score / candidate.selection_score
+            )
+            consistent = _consistently_improves(
+                candidate, identity, use_spot_uniformity
+            )
+            if aggregate_improvement > base_margin and consistent:
+                eligible.append(candidate)
+        selection_pool = eligible
+
+    for candidate in scorable:
+        candidate.pareto_optimal = False
     frontier = [
         candidate
-        for candidate in scorable
+        for candidate in selection_pool
         if not any(
             other is not candidate and _dominates(other, candidate)
-            for other in scorable
+            for other in selection_pool
         )
     ]
     for candidate in frontier:
@@ -1574,12 +1606,53 @@ def rank_candidates(
             c.name,
         ),
     )
+    if identity is not None and not selection_pool:
+        proposed_candidates = [
+            candidate for candidate in scorable if candidate is not identity
+        ]
+        proposed = min(
+            proposed_candidates,
+            key=lambda c: (c.selection_score, c.complexity, c.name),
+            default=None,
+        )
+        aggregate_improvement = (
+            math.log(identity.selection_score / proposed.selection_score)
+            if proposed is not None
+            else float("nan")
+        )
+        consistent = (
+            _consistently_improves(proposed, identity, use_spot_uniformity)
+            if proposed is not None
+            else False
+        )
+        identity.metrics["selection_basis"] = "identity_conservative_gate"
+        identity.metrics["proposed_candidate"] = (
+            proposed.name if proposed is not None else None
+        )
+        identity.metrics["proposed_aggregate_log_improvement"] = float(
+            aggregate_improvement
+        )
+        identity.metrics["paired_improvement_consistent"] = bool(consistent)
+        diagnostics = getattr(identity.model, "diagnostics", None)
+        if isinstance(diagnostics, dict):
+            diagnostics.update(
+                {
+                    "selection_basis": "identity_conservative_gate",
+                    "reason": (
+                        "No correction improved the identity baseline by more "
+                        "than the fixed tie margin on aggregate and on every "
+                        "held-out plane"
+                    ),
+                }
+            )
+        return identity, ranked
+
     selectable = sorted(
         frontier, key=lambda c: (c.selection_score, c.complexity, c.name)
     )
+
     best = selectable[0]
     best_score = best.selection_score
-    base_margin = math.log1p(tie_fraction)
     tied = [
         candidate
         for candidate in selectable
@@ -1587,37 +1660,6 @@ def rank_candidates(
         <= base_margin
     ]
     selected = min(tied, key=lambda c: (c.complexity, c.selection_score, c.name))
-
-    identity = next(
-        (candidate for candidate in scorable if candidate.name == "identity"), None
-    )
-    if identity is not None and selected is not identity:
-        aggregate_improvement = math.log(
-            identity.selection_score / selected.selection_score
-        )
-        consistent = _consistently_improves(
-            selected, identity, use_spot_uniformity
-        )
-        if aggregate_improvement <= base_margin or not consistent:
-            identity.metrics["selection_basis"] = "identity_conservative_gate"
-            identity.metrics["proposed_candidate"] = selected.name
-            identity.metrics["proposed_aggregate_log_improvement"] = float(
-                aggregate_improvement
-            )
-            identity.metrics["paired_improvement_consistent"] = bool(consistent)
-            diagnostics = getattr(identity.model, "diagnostics", None)
-            if isinstance(diagnostics, dict):
-                diagnostics.update(
-                    {
-                        "selection_basis": "identity_conservative_gate",
-                        "reason": (
-                            "No correction improved the identity baseline by more "
-                            "than the fixed tie margin on aggregate and on every "
-                            "held-out plane"
-                        ),
-                    }
-                )
-            selected = identity
     return selected, ranked
 
 

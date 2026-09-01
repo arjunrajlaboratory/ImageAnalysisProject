@@ -15,7 +15,7 @@ import illumination as correction
 
 OUTPUT_PATH = "/tmp/illumination_corrected.tiff"
 WORKER_NAME = "Stitched TIFF Illumination Correction"
-WORKER_VERSION = "1.0.1"
+WORKER_VERSION = "1.0.2"
 ALGORITHM_OPTIONS = correction.ALGORITHM_OPTIONS
 REFERENCE_CHANNEL_MODE_OPTIONS = correction.REFERENCE_CHANNEL_MODE_OPTIONS
 DARKFIELD_OPTIONS = correction.DARKFIELD_OPTIONS

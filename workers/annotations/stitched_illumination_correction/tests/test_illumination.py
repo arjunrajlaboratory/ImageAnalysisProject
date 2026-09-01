@@ -284,6 +284,63 @@ def test_identity_can_be_displaced_by_strong_consistent_improvement():
     assert selected.name == "fold_log_gradient"
 
 
+def test_identity_gate_filters_inconsistent_model_before_tie_breaking():
+    identity = _candidate(
+        "identity",
+        1.0,
+        complexity=-1,
+        sample_scores=(1.0, 1.0, 1.0),
+    )
+    consistent = _candidate(
+        "basic_darkfield_off",
+        0.70,
+        complexity=2,
+        sample_scores=(0.70, 0.70, 0.70),
+    )
+    simpler_but_inconsistent = _candidate(
+        "split_half_affine",
+        0.72,
+        complexity=0,
+        sample_scores=(0.60, 1.05, 0.60),
+    )
+
+    selected, _ = rank_candidates(
+        [identity, consistent, simpler_but_inconsistent], tie_fraction=0.05
+    )
+
+    assert selected.name == "basic_darkfield_off"
+
+
+def test_identity_gate_filters_inconsistent_model_before_pareto_selection():
+    identity = _candidate(
+        "identity",
+        1.0,
+        complexity=-1,
+        artifact_ratios={key: 1.0 for key in "abcde"},
+        sample_scores=(1.0, 1.0, 1.0),
+    )
+    consistent = _candidate(
+        "basic_darkfield_off",
+        0.75,
+        complexity=2,
+        artifact_ratios={key: 0.80 for key in "abcde"},
+        sample_scores=(0.70, 0.75, 0.80),
+    )
+    dominating_but_inconsistent = _candidate(
+        "split_half_affine",
+        0.70,
+        complexity=0,
+        artifact_ratios={key: 0.70 for key in "abcde"},
+        sample_scores=(0.60, 1.05, 0.60),
+    )
+
+    selected, _ = rank_candidates(
+        [identity, consistent, dominating_but_inconsistent], tie_fraction=0.05
+    )
+
+    assert selected.name == "basic_darkfield_off"
+
+
 def test_candidate_uncertainty_cannot_expand_the_fixed_tie_margin():
     best = _candidate(
         "basic_darkfield_on",
@@ -370,6 +427,18 @@ def test_constant_object_intensities_make_rank_guardrail_inapplicable():
 
     assert metrics["P2_applicable"] is False
     assert np.isnan(metrics["P2_spearman"])
+
+
+def test_constant_corrected_intensities_are_a_rank_guardrail_violation():
+    labels = np.arange(1, 11, dtype=np.int32).reshape(2, 5)
+    raw = np.arange(1, 11, dtype=np.float32).reshape(2, 5)
+    corrected = np.ones(labels.shape, dtype=np.float32)
+
+    metrics = p2_object_intensity(raw, corrected, labels, count=10)
+
+    assert metrics["P2_applicable"] is True
+    assert metrics["P2_spearman"] == 0.0
+    assert metrics["P2_corrected_constant"] is True
 
 
 def test_automatic_selection_without_held_out_plane_returns_identity():

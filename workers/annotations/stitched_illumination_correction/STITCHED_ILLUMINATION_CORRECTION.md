@@ -15,7 +15,7 @@ This worker is the stitched-TIFF fallback described by the illumination-correcti
    - Folded log-gradient
    - Split-half affine
 5. Rejects candidates that damage object-intensity ranking, fine detail, or numeric range, contain non-finite values, or infer an implausible field. Metrics that cannot be measured on a plane are explicitly recorded as unavailable.
-6. Finds the Pareto-optimal candidates across the artifact panel and prefers the simpler model inside a fixed 5% tie margin. A correction can displace identity only when it improves the aggregate score by more than that margin and improves every paired held-out Z plane. Spot uniformity participates only for channels explicitly marked punctate.
+6. Filters candidates through the identity-displacement rule before Pareto selection, then prefers the simpler eligible model inside a fixed 5% tie margin. A correction is eligible only when it improves the aggregate score by more than that margin and improves every paired held-out Z plane. Spot uniformity participates only for channels explicitly marked punctate.
 7. Applies the selected channel model across Z only at the reference XY and reference time, preserves other acquisitions and unselected channels, writes a TIFF, and uploads it to Girder.
 
 Automatic selection is deliberately conservative: if there is no independent Z plane, the identity candidate is returned and the channel is left unchanged with a warning. A manual algorithm can still be requested for a single-plane dataset. Candidate algorithms that are unavailable or fail are reported in a frontend warning and in output metadata. If the identity baseline fails, or every non-identity algorithm fails, the job fails rather than reporting a winner from an unsafe or incomplete comparison.
@@ -67,7 +67,7 @@ Artifact metrics are calculated against each channel's raw plane. Models are fit
 
 The unchanged image is the baseline candidate. A correction must improve the aggregate score by more than the fixed 5% tie margin and improve every paired held-out plane to displace it. This deterministic paired rule avoids treating the two or three correlated validation planes as independent normal samples. Candidates are rejected when any applicable hard preservation guardrail fails:
 
-- Object-intensity Spearman rank below 0.98, when at least 10 measurable objects with nonconstant intensities are available
+- Object-intensity Spearman rank below 0.98, when at least 10 measurable objects are available. Constant raw object intensities make the guardrail unavailable; constant corrected intensities with variable raw values are treated as a destructive collapse and fail the guardrail.
 - Locally normalized high-frequency power below 0.90 of raw, when finite source high-frequency power is available
 - Any non-finite source or output pixels
 - More than `1e-4` newly nonpositive pixels (pre-existing source zeros are not treated as correction damage)
