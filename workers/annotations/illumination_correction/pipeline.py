@@ -27,6 +27,67 @@ class RawCompositeRequiredError(FileNotFoundError):
     """The dataset cannot supply the raw overlapping tiles this worker needs."""
 
 
+def _validated_loop_coordinates(
+    loop_indices: Sequence[Mapping[str, int]],
+    *,
+    positions: int,
+    time_points: int,
+    z_planes: int,
+) -> tuple[tuple[int, int, int], ...]:
+    """Return sequence-order P/T/Z coordinates after validating full coverage."""
+    axis_sizes = {
+        "P": int(positions),
+        "T": int(time_points),
+        "Z": int(z_planes),
+    }
+    if any(size < 1 for size in axis_sizes.values()):
+        raise ValueError(f"ND2 axis sizes must be positive: {axis_sizes}")
+    expected_sequences = int(np.prod(tuple(axis_sizes.values())))
+    if len(loop_indices) != expected_sequences:
+        raise ValueError(
+            f"expected {expected_sequences} ND2 P×T×Z loop indices, "
+            f"found {len(loop_indices)}"
+        )
+    coordinates = []
+    seen_coordinates = set()
+    for sequence_index, indices in enumerate(loop_indices):
+        if not isinstance(indices, Mapping):
+            raise ValueError(f"ND2 loop index {sequence_index} is not a mapping")
+        coordinate = []
+        for axis, size in axis_sizes.items():
+            if axis not in indices:
+                if size != 1:
+                    raise ValueError(
+                        f"ND2 loop index {sequence_index} lacks required {axis} axis"
+                    )
+                value = 0
+            else:
+                raw_value = indices[axis]
+                if isinstance(raw_value, bool) or not isinstance(
+                    raw_value, (int, np.integer)
+                ):
+                    raise ValueError(
+                        f"ND2 loop index {sequence_index} has non-integer "
+                        f"{axis}={raw_value!r}"
+                    )
+                value = int(raw_value)
+            if not 0 <= value < size:
+                raise ValueError(
+                    f"ND2 loop index {sequence_index} has {axis}={value} outside "
+                    f"0..{size - 1}"
+                )
+            coordinate.append(value)
+        coordinate_key = tuple(coordinate)
+        if coordinate_key in seen_coordinates:
+            raise ValueError(
+                f"ND2 loop index {sequence_index} duplicates P×T×Z "
+                f"coordinate {coordinate_key}"
+            )
+        seen_coordinates.add(coordinate_key)
+        coordinates.append(coordinate_key)
+    return tuple(coordinates)
+
+
 @dataclass(frozen=True)
 class SourceLayout:
     source_path: str
@@ -168,50 +229,13 @@ def parse_source_layout(
     if len(paths) != 1 or not next(iter(paths)):
         raise ValueError("v1 requires all source records to reference one ND2 path")
 
-    expected_sequences = int(positions) * int(time_points) * int(z_planes)
-    if len(loop_indices) != expected_sequences:
-        raise ValueError(
-            f"expected {expected_sequences} ND2 P×T×Z loop indices, "
-            f"found {len(loop_indices)}"
-        )
-    sequence_position_indices = []
-    seen_coordinates = set()
-    axis_sizes = {"P": positions, "T": time_points, "Z": z_planes}
-    for sequence_index, indices in enumerate(loop_indices):
-        if not isinstance(indices, Mapping):
-            raise ValueError(f"ND2 loop index {sequence_index} is not a mapping")
-        coordinate = []
-        for axis, size in axis_sizes.items():
-            if axis not in indices:
-                if size != 1:
-                    raise ValueError(
-                        f"ND2 loop index {sequence_index} lacks required {axis} axis"
-                    )
-                value = 0
-            else:
-                raw_value = indices[axis]
-                if isinstance(raw_value, bool) or not isinstance(
-                    raw_value, (int, np.integer)
-                ):
-                    raise ValueError(
-                        f"ND2 loop index {sequence_index} has non-integer "
-                        f"{axis}={raw_value!r}"
-                    )
-                value = int(raw_value)
-            if not 0 <= value < int(size):
-                raise ValueError(
-                    f"ND2 loop index {sequence_index} has {axis}={value} outside "
-                    f"0..{int(size) - 1}"
-                )
-            coordinate.append(value)
-        coordinate_key = tuple(coordinate)
-        if coordinate_key in seen_coordinates:
-            raise ValueError(
-                f"ND2 loop index {sequence_index} duplicates P×T×Z "
-                f"coordinate {coordinate_key}"
-            )
-        seen_coordinates.add(coordinate_key)
-        sequence_position_indices.append(coordinate[0])
+    loop_coordinates = _validated_loop_coordinates(
+        loop_indices,
+        positions=positions,
+        time_points=time_points,
+        z_planes=z_planes,
+    )
+    sequence_position_indices = [coordinate[0] for coordinate in loop_coordinates]
     frame_position_indices = tuple(
         position_index
         for position_index in sequence_position_indices
@@ -298,8 +322,8 @@ def corrected_source_document(
         source["path"] = str(corrected_tiles_name)
         source["sourceName"] = "tiff"
         # Deliberately preserve s11..s22 verbatim from the deployed geometry.
-        source["position"]["x"] = int(positions[position_index, 0])
-        source["position"]["y"] = int(positions[position_index, 1])
+        source["position"]["x"] = positions[position_index, 0].item()
+        source["position"]["y"] = positions[position_index, 1].item()
     return output
 
 
@@ -344,62 +368,49 @@ def load_training_data(
     model_stacks = np.empty(
         (channels, positions, model_size, model_size), dtype=np.float32
     )
+    loop_coordinates = _validated_loop_coordinates(
+        raw_file.loop_indices,
+        positions=positions,
+        time_points=time_points,
+        z_planes=z_planes,
+    )
+    time_zero_sequences = {
+        (position, z_index): sequence_index
+        for sequence_index, (position, time, z_index) in enumerate(loop_coordinates)
+        if time == 0
+    }
     stage_positions = []
     for position in range(positions):
-        position_stack = np.asarray(raw_file.asarray(position))
-        # nd2 retains a singleton P axis even after selecting a position.
-        if position_stack.shape[0] != 1:
-            raise ValueError(
-                f"unexpected selected-position ND2 shape {position_stack.shape}"
-            )
-        position_stack = position_stack[0]
-        if time_points > 1:
-            if position_stack.ndim == 4 and z_planes == 1:
-                position_stack = position_stack[:, None, ...]
-            expected_position_shape = (
-                time_points,
-                z_planes,
-                channels,
-                height,
-                width,
-            )
-            if position_stack.shape != expected_position_shape:
+        reference_tile = None
+        for z_index in range(z_planes):
+            sequence_index = time_zero_sequences[(position, z_index)]
+            frame = np.asarray(raw_file.read_frame(sequence_index))
+            if frame.ndim == 2 and channels == 1:
+                frame = frame[None, ...]
+            expected_shape = (channels, height, width)
+            if frame.shape != expected_shape:
                 raise ValueError(
-                    f"expected selected-position ND2 shape {expected_position_shape}, "
-                    f"found {position_stack.shape}"
+                    f"raw frame has shape {frame.shape}; expected {expected_shape}"
                 )
-            position_stack = position_stack[0]
-        elif position_stack.ndim == 3 and z_planes == 1:
-            position_stack = position_stack[None, ...]
-        expected_shape = (z_planes, channels, height, width)
-        if position_stack.shape != expected_shape:
-            raise ValueError(
-                f"expected selected-position ND2 shape {expected_shape}, found "
-                f"{position_stack.shape}"
+            reference_plane = frame[refinement_channel].astype(
+                np.float32, copy=False
             )
-        reference_tiles.append(
-            np.max(position_stack[:, refinement_channel], axis=0).astype(np.float32)
-        )
-        home_frame = position_stack[home_z]
-        for channel in range(channels):
-            model_stacks[channel, position] = resize(
-                home_frame[channel],
-                (model_size, model_size),
-                order=1,
-                mode="reflect",
-                anti_aliasing=True,
-                preserve_range=True,
-            ).astype(np.float32)
-        # frame_metadata expects the raw sequence index, not the P index. In the
-        # validated P×Z file this is position * Z; loop_indices also handles T.
-        sequence_index = next(
-            index
-            for index, indices in enumerate(raw_file.loop_indices)
-            if int(indices.get("P", 0)) == position
-            and int(indices.get("T", 0)) == 0
-            and int(indices.get("Z", 0)) == 0
-        )
-        metadata = raw_file.frame_metadata(sequence_index)
+            if reference_tile is None:
+                reference_tile = reference_plane.copy()
+            else:
+                np.maximum(reference_tile, reference_plane, out=reference_tile)
+            if z_index == home_z:
+                for channel in range(channels):
+                    model_stacks[channel, position] = resize(
+                        frame[channel],
+                        (model_size, model_size),
+                        order=1,
+                        mode="reflect",
+                        anti_aliasing=True,
+                        preserve_range=True,
+                    ).astype(np.float32)
+        reference_tiles.append(reference_tile)
+        metadata = raw_file.frame_metadata(time_zero_sequences[(position, 0)])
         stage = metadata.channels[0].position.stagePositionUm
         stage_positions.append((float(stage.x), float(stage.y)))
     return RawTrainingData(

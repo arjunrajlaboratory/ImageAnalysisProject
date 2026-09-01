@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import tifffile
@@ -20,6 +21,7 @@ from pipeline import (  # noqa: E402
     corrected_source_document,
     convert_multi_source,
     download_composite_sources,
+    load_training_data,
     parse_source_layout,
     transformed_bounds,
     write_corrected_tile_tiff,
@@ -178,6 +180,28 @@ def test_source_document_updates_translations_only() -> None:
     assert document["sources"][0]["path"] == "source.nd2"
 
 
+def test_source_document_preserves_fractional_translations() -> None:
+    document = _document()
+    layout = parse_source_layout(
+        document,
+        positions=2,
+        z_planes=2,
+        channels=2,
+        loop_indices=P_MAJOR_LOOP_INDICES,
+    )
+    deployed = np.asarray(((100.25, 200.75), (60.5, 199.125)))
+
+    output = corrected_source_document(
+        document, layout, deployed, "corrected_tiles.tiff"
+    )
+
+    assert output["sources"][0]["position"]["x"] == 100.25
+    assert output["sources"][0]["position"]["y"] == 200.75
+    assert output["sources"][4]["position"]["x"] == 60.5
+    assert output["sources"][4]["position"]["y"] == 199.125
+    json.dumps(output)
+
+
 def test_source_layout_uses_nd2_position_indices_for_time_major_frames() -> None:
     positions = ((100, 200), (60, 200))
     loop_indices = (
@@ -220,6 +244,66 @@ def test_source_layout_uses_nd2_position_indices_for_time_major_frames() -> None
 
     np.testing.assert_array_equal(layout.positions, positions)
     assert layout.source_position_indices == (0, 0, 1, 1, 0, 0, 1, 1)
+
+
+class _TimeLapseRawFile:
+    sizes = {"T": 3, "P": 2, "Z": 2, "C": 2, "Y": 4, "X": 4}
+    loop_indices = tuple(
+        {"T": time, "P": position, "Z": z_index}
+        for time in range(3)
+        for position in range(2)
+        for z_index in range(2)
+    )
+    experiment = ()
+    metadata = SimpleNamespace(
+        channels=(
+            SimpleNamespace(channel=SimpleNamespace(name="DAPI")),
+            SimpleNamespace(channel=SimpleNamespace(name="YFP")),
+        )
+    )
+
+    def __init__(self):
+        self.read_calls = []
+
+    def asarray(self, position):
+        raise AssertionError("training must not materialize every time point")
+
+    def read_frame(self, sequence_index):
+        self.read_calls.append(sequence_index)
+        indices = self.loop_indices[sequence_index]
+        base = 100 * indices["P"] + 10 * indices["T"] + indices["Z"]
+        return np.stack(
+            (
+                np.full((4, 4), base, dtype=np.uint16),
+                np.full((4, 4), 1000 + base, dtype=np.uint16),
+            )
+        )
+
+    def frame_metadata(self, sequence_index):
+        position = self.loop_indices[sequence_index]["P"]
+        stage = SimpleNamespace(x=100.0 * position, y=10.0 * position)
+        return SimpleNamespace(
+            channels=(
+                SimpleNamespace(
+                    position=SimpleNamespace(stagePositionUm=stage)
+                ),
+            )
+        )
+
+
+def test_training_reads_only_time_zero_sequences() -> None:
+    raw_file = _TimeLapseRawFile()
+
+    training = load_training_data(raw_file, refinement_channel=0, model_size=4)
+
+    assert raw_file.read_calls == [0, 1, 2, 3]
+    assert all(raw_file.loop_indices[index]["T"] == 0 for index in raw_file.read_calls)
+    assert [int(tile[0, 0]) for tile in training.reference_tiles] == [1, 101]
+    assert int(training.model_stacks[0, 0, 0, 0]) == 1
+    assert int(training.model_stacks[1, 1, 0, 0]) == 1101
+    np.testing.assert_array_equal(
+        training.stage_positions_um, ((0.0, 0.0), (100.0, 10.0))
+    )
 
 
 def test_source_document_rejects_multiple_original_files() -> None:

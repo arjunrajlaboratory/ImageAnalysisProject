@@ -20,7 +20,7 @@ Existing annotations are not transformed. If a dataset already has annotations, 
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| **Refine stitch positions** | checkbox | true | Apply the globally solved translations. Clearing it still measures overlaps for DCT correction but retains the deployed positions. |
+| **Refine stitch positions** | checkbox | true | Apply the globally solved translations. Clearing it still measures overlaps for DCT correction but retains the exact deployed positions, including fractional translations. |
 | **Refinement channel** | channel | 0 | Channel used for max-Z alignment. Channel 0 (the first channel, normally DAPI) is the validated default. |
 | **NCC threshold** | number | 0.5 | Reject adjacent pairs below this score. Lower values retain more dim/low-texture pairs but risk false matches; higher values are stricter but can disconnect the grid or reject every pair. Valid range: 0.5–1.0. |
 | **Illumination algorithm** | select | Overlap DCT + tile gains (recommended) | Use overlap-DCT with or without small regularized per-position gains. |
@@ -44,7 +44,7 @@ The implementation follows the supplied raw-tile v7 model:
 - Six IRLS iterations
 - Optional overlap-derived per-position gains with ridge 8 and a 1.10-fold cap
 
-The flat-field reference is the ND2 Z-stack home plane (or the middle Z plane when the metadata has no valid home index). Fields are fitted at 128×128 and bicubically expanded to the raw camera dimensions. Corrected data is clipped only when written back to lossless uint16.
+The flat-field reference is the ND2 Z-stack home plane at T=0 (or the middle Z plane when the metadata has no valid home index). Training reads those T=0 P×Z camera frames one at a time and never materializes the full time series; correction still streams and preserves every time point. Fields are fitted at 128×128 and bicubically expanded to the raw camera dimensions. Corrected data is clipped only when written back to lossless uint16.
 
 Each scratch TIFF page records explicit `IndexC`, `IndexT`, and `IndexZ` frame metadata so `large_image` groups positions while preserving the source channel/Z/time axes. The image pins the matching bundled `pyvips`/`libvips` wheel used by `large_image` and asserts the native binding version during its build; conversion is serialized to avoid oversubscribing a CPU worker.
 

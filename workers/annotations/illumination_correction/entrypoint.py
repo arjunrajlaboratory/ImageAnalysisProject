@@ -29,7 +29,7 @@ from refinement import refine_positions
 
 
 WORKER_NAME = "Stitch Refinement + Illumination Correction"
-WORKER_VERSION = "1.0.2"
+WORKER_VERSION = "1.0.3"
 ALGORITHM_OPTIONS = (
     "Overlap DCT + tile gains (recommended)",
     "Overlap DCT",
@@ -150,6 +150,12 @@ def _worker_settings(params):
     }
 
 
+def _output_positions(refine, deployed_positions, refined_positions):
+    """Select output translations without changing their numeric precision."""
+    selected = refined_positions if refine else deployed_positions
+    return np.array(selected, copy=True)
+
+
 def compute(datasetId, apiUrl, token, params):
     try:
         settings = _worker_settings(params)
@@ -208,10 +214,8 @@ def compute(datasetId, apiUrl, token, params):
                         "The refined stitch has a residual above the 2 px quality gate.",
                         info=f"Maximum confident-pair residual: {refinement.max_residual:.2f} px",
                     )
-                output_positions = (
-                    refinement.positions
-                    if settings["refine"]
-                    else np.rint(layout.positions).astype(np.int64)
+                output_positions = _output_positions(
+                    settings["refine"], layout.positions, refinement.positions
                 )
                 original_bounds = transformed_bounds(
                     layout.positions, layout.linear_transform, training.raw_shape

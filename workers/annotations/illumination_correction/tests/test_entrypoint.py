@@ -62,6 +62,7 @@ from pipeline import (  # noqa: E402
     SourceLayout,
 )
 from refinement import PairMeasurement, RefinementResult  # noqa: E402
+import entrypoint as entrypoint_module  # noqa: E402
 from entrypoint import ALGORITHM_OPTIONS, compute, interface  # noqa: E402
 
 
@@ -95,6 +96,15 @@ def test_interface_surfaces_position_and_annotation_warning() -> None:
     assert sorted(field["displayOrder"] for field in values.values()) == list(
         range(len(values))
     )
+
+
+def test_disabled_refinement_preserves_fractional_positions() -> None:
+    deployed = np.asarray(((100.25, 200.75), (60.5, 199.125)))
+    refined = np.asarray(((101, 201), (59, 198)))
+
+    output = entrypoint_module._output_positions(False, deployed, refined)
+
+    np.testing.assert_array_equal(output, deployed)
 
 
 def test_compute_refines_fits_all_channels_converts_and_uploads() -> None:
@@ -179,7 +189,7 @@ def test_compute_refines_fits_all_channels_converts_and_uploads() -> None:
     assert fit.call_args.kwargs["adaptive_tile_gains"] is True
     metadata = upload.call_args.args[-1]
     assert metadata["tool"] == "Stitch Refinement + Illumination Correction"
-    assert metadata["worker_version"] == "1.0.2"
+    assert metadata["worker_version"] == "1.0.3"
     assert metadata["refinement"]["pairs_matched"] == 1
     assert metadata["parameters"]["refinement_channel_name"] == "DAPI"
     assert metadata["source"]["original_nd2_item_id"] == "source-item"
