@@ -206,6 +206,15 @@ services:
     depends_on:
       - image-processing-base
 
+  stitched_illumination_correction:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/stitched_illumination_correction/Dockerfile
+    image: annotations/stitched_illumination_correction:latest
+    profiles: ["worker", "image-processing"]
+    depends_on:
+      - image-processing-base
+
   registration:
     build:
       context: .
@@ -463,6 +472,15 @@ services:
     image: annotations/illumination_correction:test
     depends_on:
       - illumination_correction
+    profiles: ["test"]
+
+  stitched_illumination_correction_test:
+    build:
+      context: .
+      dockerfile: ./workers/annotations/stitched_illumination_correction/tests/Dockerfile_Test
+    image: annotations/stitched_illumination_correction:test
+    depends_on:
+      - stitched_illumination_correction
     profiles: ["test"]
 
   rolling_ball_test:
