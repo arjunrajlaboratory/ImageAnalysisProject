@@ -112,33 +112,49 @@ def test_source_discovery_rejects_a_multisource_document_backed_by_tiff(
         raise AssertionError("a TIFF-backed composite should be rejected")
 
 
+P_MAJOR_LOOP_INDICES = tuple(
+    {"P": position, "T": 0, "Z": z_index}
+    for position in range(2)
+    for z_index in range(2)
+)
+
+
 def _document(paths=("source.nd2",)):
     sources = []
     positions = ((100, 200), (60, 200))
-    for frame in range(8):
-        position = frame // 4
-        sources.append(
-            {
-                "path": paths[position % len(paths)],
-                "zSet": (frame % 4) // 2,
-                "cSet": frame % 2,
-                "frames": [frame],
-                "position": {
-                    "x": positions[position][0],
-                    "y": positions[position][1],
-                    "s11": -1,
-                    "s12": 0,
-                    "s21": 0,
-                    "s22": -1,
-                },
-            }
-        )
+    for sequence_index, indices in enumerate(P_MAJOR_LOOP_INDICES):
+        position_index = indices["P"]
+        for channel in range(2):
+            sources.append(
+                {
+                    "path": paths[position_index % len(paths)],
+                    "xySet": 0,
+                    "zSet": indices["Z"],
+                    "tSet": indices["T"],
+                    "cSet": channel,
+                    "frames": [sequence_index * 2 + channel],
+                    "position": {
+                        "x": positions[position_index][0],
+                        "y": positions[position_index][1],
+                        "s11": -1,
+                        "s12": 0,
+                        "s21": 0,
+                        "s22": -1,
+                    },
+                }
+            )
     return {"channels": ["A", "B"], "sources": sources}
 
 
 def test_source_document_updates_translations_only() -> None:
     document = _document()
-    layout = parse_source_layout(document, positions=2, z_planes=2, channels=2)
+    layout = parse_source_layout(
+        document,
+        positions=2,
+        z_planes=2,
+        channels=2,
+        loop_indices=P_MAJOR_LOOP_INDICES,
+    )
     refined = np.asarray(((103, 198), (58, 202)))
 
     output = corrected_source_document(
@@ -162,6 +178,50 @@ def test_source_document_updates_translations_only() -> None:
     assert document["sources"][0]["path"] == "source.nd2"
 
 
+def test_source_layout_uses_nd2_position_indices_for_time_major_frames() -> None:
+    positions = ((100, 200), (60, 200))
+    loop_indices = (
+        {"T": 0, "P": 0, "Z": 0},
+        {"T": 0, "P": 1, "Z": 0},
+        {"T": 1, "P": 0, "Z": 0},
+        {"T": 1, "P": 1, "Z": 0},
+    )
+    sources = []
+    for sequence_index, indices in enumerate(loop_indices):
+        for channel in range(2):
+            position = positions[indices["P"]]
+            sources.append(
+                {
+                    "path": "source.nd2",
+                    "xySet": 0,
+                    "tSet": indices["T"],
+                    "zSet": indices["Z"],
+                    "cSet": channel,
+                    "frames": [sequence_index * 2 + channel],
+                    "position": {
+                        "x": position[0],
+                        "y": position[1],
+                        "s11": -1,
+                        "s12": 0,
+                        "s21": 0,
+                        "s22": -1,
+                    },
+                }
+            )
+
+    layout = parse_source_layout(
+        {"channels": ["A", "B"], "sources": sources},
+        positions=2,
+        time_points=2,
+        z_planes=1,
+        channels=2,
+        loop_indices=loop_indices,
+    )
+
+    np.testing.assert_array_equal(layout.positions, positions)
+    assert layout.source_position_indices == (0, 0, 1, 1, 0, 0, 1, 1)
+
+
 def test_source_document_rejects_multiple_original_files() -> None:
     try:
         parse_source_layout(
@@ -169,6 +229,7 @@ def test_source_document_rejects_multiple_original_files() -> None:
             positions=2,
             z_planes=2,
             channels=2,
+            loop_indices=P_MAJOR_LOOP_INDICES,
         )
     except ValueError as exc:
         assert "one ND2" in str(exc)

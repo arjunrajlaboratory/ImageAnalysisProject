@@ -13,7 +13,7 @@ Existing annotations are not transformed. If a dataset already has annotations, 
 5. Searches each overlap around its metadata prediction (±24 px at 3 px steps, then ±4 px at 1 px steps), measures NCC, and drops pairs below the selected threshold.
 6. Solves all confident translation constraints together with NCC weights and a zero-mean coordinate-shift constraint. Disconnected tiles use a global similarity fit as a conservative fallback.
 7. Fits an order-5 smooth DCT flat field per channel from aligned raw-tile overlaps. The recommended mode also fits regularized per-position gains capped to a 1.10-fold range.
-8. Corrects every raw P×T×Z×C plane into a scratch BigTIFF, writes a refined multi-source document pointing to those frames, and streams that document through `large_image_converter` into a lossless pyramidal TIFF. The complete mosaic is never materialized in memory.
+8. Corrects every raw P×T×Z×C plane into a scratch BigTIFF, using the ND2's explicit `loop_indices` to preserve position even when its flattened sequence is not P-major. It writes a refined multi-source document pointing to those frames and streams that document through `large_image_converter` into a lossless pyramidal TIFF. The complete mosaic is never materialized in memory.
 9. Uploads the pyramidal TIFF as a new item in the dataset folder and records the source IDs, parameters, pair measurements, residuals, bounds, and channel-model diagnostics in Girder metadata.
 
 ## Interface Parameters

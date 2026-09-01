@@ -158,7 +158,7 @@ def test_compute_refines_fits_all_channels_converts_and_uploads() -> None:
         patch("entrypoint.download_composite_sources", return_value=downloaded),
         patch("entrypoint.ND2File") as nd2_file,
         patch("entrypoint.load_training_data", return_value=training),
-        patch("entrypoint.parse_source_layout", return_value=layout),
+        patch("entrypoint.parse_source_layout", return_value=layout) as parse_layout,
         patch("entrypoint.refine_positions", return_value=refinement),
         patch("entrypoint.fit_overlap_dct", return_value=model) as fit,
         patch("entrypoint.write_corrected_tile_tiff"),
@@ -179,10 +179,14 @@ def test_compute_refines_fits_all_channels_converts_and_uploads() -> None:
     assert fit.call_args.kwargs["adaptive_tile_gains"] is True
     metadata = upload.call_args.args[-1]
     assert metadata["tool"] == "Stitch Refinement + Illumination Correction"
-    assert metadata["worker_version"] == "1.0.1"
+    assert metadata["worker_version"] == "1.0.2"
     assert metadata["refinement"]["pairs_matched"] == 1
     assert metadata["parameters"]["refinement_channel_name"] == "DAPI"
     assert metadata["source"]["original_nd2_item_id"] == "source-item"
+    assert (
+        parse_layout.call_args.kwargs["loop_indices"]
+        is nd2_file.return_value.__enter__.return_value.loop_indices
+    )
     send_warning.assert_called_once()
     assert "coordinate-stability" in send_warning.call_args.args[0]
 

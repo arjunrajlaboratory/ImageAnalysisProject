@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -151,6 +152,7 @@ def parse_source_layout(
     time_points: int = 1,
     z_planes: int,
     channels: int,
+    loop_indices: Sequence[Mapping[str, int]],
 ) -> SourceLayout:
     """Validate the single-ND2 source/frame contract and recover seeded geometry."""
     sources = document.get("sources")
@@ -166,6 +168,56 @@ def parse_source_layout(
     if len(paths) != 1 or not next(iter(paths)):
         raise ValueError("v1 requires all source records to reference one ND2 path")
 
+    expected_sequences = int(positions) * int(time_points) * int(z_planes)
+    if len(loop_indices) != expected_sequences:
+        raise ValueError(
+            f"expected {expected_sequences} ND2 P×T×Z loop indices, "
+            f"found {len(loop_indices)}"
+        )
+    sequence_position_indices = []
+    seen_coordinates = set()
+    axis_sizes = {"P": positions, "T": time_points, "Z": z_planes}
+    for sequence_index, indices in enumerate(loop_indices):
+        if not isinstance(indices, Mapping):
+            raise ValueError(f"ND2 loop index {sequence_index} is not a mapping")
+        coordinate = []
+        for axis, size in axis_sizes.items():
+            if axis not in indices:
+                if size != 1:
+                    raise ValueError(
+                        f"ND2 loop index {sequence_index} lacks required {axis} axis"
+                    )
+                value = 0
+            else:
+                raw_value = indices[axis]
+                if isinstance(raw_value, bool) or not isinstance(
+                    raw_value, (int, np.integer)
+                ):
+                    raise ValueError(
+                        f"ND2 loop index {sequence_index} has non-integer "
+                        f"{axis}={raw_value!r}"
+                    )
+                value = int(raw_value)
+            if not 0 <= value < int(size):
+                raise ValueError(
+                    f"ND2 loop index {sequence_index} has {axis}={value} outside "
+                    f"0..{int(size) - 1}"
+                )
+            coordinate.append(value)
+        coordinate_key = tuple(coordinate)
+        if coordinate_key in seen_coordinates:
+            raise ValueError(
+                f"ND2 loop index {sequence_index} duplicates P×T×Z "
+                f"coordinate {coordinate_key}"
+            )
+        seen_coordinates.add(coordinate_key)
+        sequence_position_indices.append(coordinate[0])
+    frame_position_indices = tuple(
+        position_index
+        for position_index in sequence_position_indices
+        for _channel in range(int(channels))
+    )
+
     by_position: list[dict | None] = [None] * positions
     source_position_indices = []
     seen_frames = set()
@@ -180,7 +232,10 @@ def parse_source_layout(
         if frame < 0 or frame >= expected_sources or frame in seen_frames:
             raise ValueError(f"source {source_index} has invalid or duplicate frame {frame}")
         seen_frames.add(frame)
-        position_index = frame // frames_per_position
+        # large_image expands each explicit ND2 sequence into C-fastest frames.
+        # P may be anywhere in the ND2 loop order, and xySet is deliberately
+        # reset to 0 for a composite, so use the expanded metadata map directly.
+        position_index = frame_position_indices[frame]
         source_position_indices.append(position_index)
         position = source.get("position")
         required = ("x", "y", "s11", "s12", "s21", "s22")

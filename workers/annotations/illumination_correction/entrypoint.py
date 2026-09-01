@@ -29,7 +29,7 @@ from refinement import refine_positions
 
 
 WORKER_NAME = "Stitch Refinement + Illumination Correction"
-WORKER_VERSION = "1.0.1"
+WORKER_VERSION = "1.0.2"
 ALGORITHM_OPTIONS = (
     "Overlap DCT + tile gains (recommended)",
     "Overlap DCT",
@@ -180,6 +180,7 @@ def compute(datasetId, apiUrl, token, params):
                     time_points=training.time_points,
                     z_planes=training.z_planes,
                     channels=training.channels,
+                    loop_indices=raw_file.loop_indices,
                 )
 
                 def pair_progress(done, total, edge):
