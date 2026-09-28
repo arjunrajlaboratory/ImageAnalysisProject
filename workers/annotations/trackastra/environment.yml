@@ -1,0 +1,13 @@
+name: worker
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - scikit-image
+  - shapely
+  - rasterio
+  - pip:
+    - rtree

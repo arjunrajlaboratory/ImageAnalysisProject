@@ -50,6 +50,8 @@ Create new annotations by segmenting images or connecting existing annotations.
 | SAM automatic mask generator | Uses SAM to find all masks in the image | Yes |  | [docs](workers/annotations/sam_automatic_mask_generator/SAM_AUTOMATIC_MASK_GENERATOR.md) |
 | SAM few-shot segmentation | Uses SAM1 ViT-H features for few-shot segmentation based on training annotations | Yes | Yes | [docs](workers/annotations/sam_fewshot_segmentation/SAM_FEWSHOT_SEGMENTATION.md) |
 | Stardist | Uses Stardist to find cells and nuclei | Yes | Yes | [docs](workers/annotations/stardist/STARDIST.md) |
+| Trackastra tracking | This tool links existing segmentation objects across time into tracks using the Trackas... | Yes | Yes | [docs](workers/annotations/trackastra/TRACKASTRA.md) |
+| Ultrack tracking | This tool links existing segmentation objects across time into tracks using Ultrack, wh... |  | Yes | [docs](workers/annotations/ultrack/ULTRACK.md) |
 
 ## Property Workers -- Blobs
 
