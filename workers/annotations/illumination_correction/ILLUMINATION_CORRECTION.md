@@ -42,7 +42,10 @@ The implementation follows the supplied raw-tile v7 model:
 - Robust Huber IRLS fit of all nonconstant order-5 2-D DCT terms
 - Ridge penalty `4 × (1 + order_y² + order_x²)²`
 - Six IRLS iterations
+- Interior anchoring: a fixed quadratic prior pulling the DCT correction toward zero at camera pixels that no used overlap observes, weighted at 0.3× the overlap sample count (evaluated on at most 4,096 interior pixels) and never Huber-reweighted
 - Optional overlap-derived per-position gains with ridge 8 and a 1.10-fold cap
+
+Overlaps only observe the tile margins (about 38% of each tile on a 49-tile, ~10%-overlap grid), so the overlap terms carry no information about the tile interior. Without anchoring, the low-order DCT correction extrapolated into that unobserved interior and made the field too peaked, leaving every corrected channel 2.5–6.4% darker at tile centres than at tile edges. That residual is most visible in low-contrast background channels such as YFP when display contrast is stretched. Anchoring keeps the correction near the log-median base field where there is no overlap evidence; on that dataset it brought the centre/edge residual to within ±0.2% in every channel with unchanged seam agreement, and the result is insensitive to the weight between 0.03 and 0.3. Diagnostics record `overlap_coverage_fraction`, `interior_anchor_weight`, and `interior_anchor_samples`.
 
 The flat-field reference is the ND2 Z-stack home plane at T=0 (or the middle Z plane when the metadata has no valid home index). Training reads those T=0 P×Z camera frames one at a time and never materializes the full time series; correction still streams and preserves every time point. Fields are fitted at 128×128 and bicubically expanded to the raw camera dimensions. Corrected data is clipped only when written back to lossless uint16.
 

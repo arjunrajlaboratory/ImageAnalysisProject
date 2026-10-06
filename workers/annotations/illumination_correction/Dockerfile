@@ -21,7 +21,7 @@ COPY ./workers/annotations/illumination_correction/pipeline.py /
 LABEL isUPennContrastWorker="" \
       isGPUWorker="true" \
       isAnnotationWorker="" \
-      workerVersion="1.0.3" \
+      workerVersion="1.1.0" \
       interfaceName="Stitch Refinement + Illumination Correction" \
       interfaceCategory="Image Processing" \
       description="Refines composite translations and corrects raw-tile illumination; existing annotations are not shifted" \

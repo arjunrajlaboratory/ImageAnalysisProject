@@ -29,7 +29,7 @@ from refinement import refine_positions
 
 
 WORKER_NAME = "Stitch Refinement + Illumination Correction"
-WORKER_VERSION = "1.0.3"
+WORKER_VERSION = "1.1.0"
 ALGORITHM_OPTIONS = (
     "Overlap DCT + tile gains (recommended)",
     "Overlap DCT",
