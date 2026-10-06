@@ -195,7 +195,7 @@ def test_compute_refines_fits_all_channels_converts_and_uploads() -> None:
     assert fit.call_args.kwargs["adaptive_tile_gains"] is True
     metadata = upload.call_args.args[-1]
     assert metadata["tool"] == "Stitch Refinement + Illumination Correction"
-    assert metadata["worker_version"] == "1.0.3"
+    assert metadata["worker_version"] == "1.1.0"
     assert metadata["refinement"]["pairs_matched"] == 1
     assert metadata["parameters"]["refinement_channel_name"] == "DAPI"
     assert metadata["source"]["original_nd2_item_id"] == "source-item"

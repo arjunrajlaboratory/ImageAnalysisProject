@@ -24,6 +24,15 @@ OVERLAP_CHUNK_SIZE = 16
 VALIDATION_LOW_PERCENTILE = 10.0
 VALIDATION_HIGH_PERCENTILE = 90.0
 MAX_DCT_SAMPLES = 250_000
+# Overlaps only observe the tile margins, so the DCT correction is
+# unconstrained in the interior and extrapolates there (measured: tile
+# centres over-corrected by 2.5-6.4% on a 49-tile ND2). A fixed quadratic
+# prior pulling the correction toward zero at un-overlapped pixels keeps it
+# near the log-median base field where no overlap evidence exists. The prior
+# is not Huber-reweighted, and its total weight is this fraction of the
+# overlap rows' unit weight.
+INTERIOR_ANCHOR_WEIGHT = 0.3
+MAX_INTERIOR_ANCHOR_SAMPLES = 4096
 
 
 @dataclass(frozen=True)
@@ -114,7 +123,11 @@ def robust_ridge(
     response: np.ndarray,
     penalty: np.ndarray,
     iterations: int = OVERLAP_DCT_IRLS_ITERATIONS,
+    prior: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, float]]:
+    """Huber IRLS ridge fit; ``prior`` is a fixed quadratic penalty matrix
+    that is never reweighted, unlike the ``design`` observations."""
+    regularizer = np.diag(penalty) if prior is None else np.diag(penalty) + prior
     weights = np.ones(response.shape[0], dtype=np.float64)
     coefficient = np.zeros(design.shape[1], dtype=np.float64)
     residual = response.copy()
@@ -123,7 +136,7 @@ def robust_ridge(
         root_weight = np.sqrt(weights)
         weighted_design = design * root_weight[:, None]
         weighted_response = response * root_weight
-        system = weighted_design.T @ weighted_design + np.diag(penalty)
+        system = weighted_design.T @ weighted_design + regularizer
         target = weighted_design.T @ weighted_response
         coefficient = np.linalg.solve(system, target)
         residual = response - design @ coefficient
@@ -226,6 +239,44 @@ def _overlap_design(
     response = np.log(np.maximum(first[finite], MIN_POSITIVE_SIGNAL))
     response -= np.log(np.maximum(second[finite], MIN_POSITIVE_SIGNAL))
     return design, response.astype(np.float64)
+
+
+def overlap_coverage(
+    shape: tuple[int, int],
+    measurements: Sequence[PairMeasurement],
+    raw_shape: tuple[int, int],
+) -> np.ndarray:
+    """Camera pixels observed by at least one overlap, in either tile role."""
+    covered = np.zeros(shape, dtype=bool)
+    for measurement in measurements:
+        shift_x, shift_y = _scaled_shift(measurement, shape, raw_shape)
+        slices = aligned_slices(shape, shift_x, shift_y)
+        if slices is not None:
+            covered[slices[0]] = True
+            covered[slices[1]] = True
+    return covered
+
+
+def _interior_anchor_design(
+    covered: np.ndarray,
+    terms: Sequence[tuple[int, int]],
+    overlap_rows: int,
+) -> np.ndarray | None:
+    height, width = covered.shape
+    interior_y, interior_x = np.nonzero(~covered)
+    if interior_y.size == 0:
+        return None
+    if interior_y.size > MAX_INTERIOR_ANCHOR_SAMPLES:
+        selection = np.linspace(
+            0, interior_y.size - 1, MAX_INTERIOR_ANCHOR_SAMPLES, dtype=np.int64
+        )
+        interior_y = interior_y[selection]
+        interior_x = interior_x[selection]
+    coordinates = np.column_stack(
+        (interior_y / max(height - 1, 1), interior_x / max(width - 1, 1))
+    )
+    scale = math.sqrt(INTERIOR_ANCHOR_WEIGHT * overlap_rows / interior_y.size)
+    return dct_basis(coordinates, terms) * scale
 
 
 def overlap_chunk_mask(
@@ -354,13 +405,13 @@ def fit_overlap_dct(
     ]
     design_parts = []
     response_parts = []
-    used_pairs = 0
+    used = []
     for measurement in accepted:
         part = _overlap_design(base_corrected, measurement, terms, raw_shape)
         if part is not None:
             design_parts.append(part[0])
             response_parts.append(part[1])
-            used_pairs += 1
+            used.append(measurement)
     if not design_parts:
         raise ValueError("confident pairs contained no usable overlap pixels")
     design = np.concatenate(design_parts, axis=0)
@@ -371,6 +422,9 @@ def fit_overlap_dct(
         )
         design = design[selection]
         response = response[selection]
+    overlap_samples = int(response.size)
+    covered = overlap_coverage(values.shape[-2:], used, raw_shape)
+    anchor = _interior_anchor_design(covered, terms, overlap_samples)
     penalty = np.asarray(
         [
             OVERLAP_DCT_RIDGE * (1.0 + order_y**2 + order_x**2) ** 2
@@ -378,7 +432,12 @@ def fit_overlap_dct(
         ],
         dtype=np.float64,
     )
-    coefficient, fit_diagnostics = robust_ridge(design, response, penalty)
+    coefficient, fit_diagnostics = robust_ridge(
+        design,
+        response,
+        penalty,
+        prior=None if anchor is None else anchor.T @ anchor,
+    )
     grid_y, grid_x = np.meshgrid(
         np.linspace(0.0, 1.0, values.shape[-2]),
         np.linspace(0.0, 1.0, values.shape[-1]),
@@ -407,12 +466,15 @@ def fit_overlap_dct(
         "base_method": "log_median",
         "training_tiles": int(values.shape[0]),
         "confident_pairs": len(accepted),
-        "used_pairs": used_pairs,
+        "used_pairs": len(used),
         "dct_order": OVERLAP_DCT_ORDER,
         "dct_terms": len(terms),
         "ridge": OVERLAP_DCT_RIDGE,
         "irls_iterations": OVERLAP_DCT_IRLS_ITERATIONS,
-        "dct_samples": int(response.size),
+        "dct_samples": overlap_samples,
+        "overlap_coverage_fraction": float(np.mean(covered)),
+        "interior_anchor_weight": INTERIOR_ANCHOR_WEIGHT,
+        "interior_anchor_samples": 0 if anchor is None else int(anchor.shape[0]),
         "delta_log_range": float(np.max(delta) - np.min(delta)),
         "flat_min": float(np.min(flat)),
         "flat_max": float(np.max(flat)),

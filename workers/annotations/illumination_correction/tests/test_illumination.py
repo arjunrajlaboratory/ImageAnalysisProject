@@ -127,3 +127,61 @@ def test_overlap_dct_can_disable_adaptive_tile_gains() -> None:
 
     np.testing.assert_array_equal(model.gains, np.ones(2, dtype=np.float32))
     assert model.diagnostics["method"] == "overlap_dct"
+
+
+def test_overlap_dct_does_not_overcorrect_unobserved_tile_interior() -> None:
+    # Narrow (~10%) overlaps leave the tile centre unobserved by any pair, as
+    # in real ND2 grids. Without interior anchoring the DCT correction
+    # extrapolated there and the fitted field came out 7-9% too peaked.
+    rng = np.random.default_rng(0)
+    grid, tile_size, pitch = 5, 128, 116
+    size = pitch * (grid - 1) + tile_size
+    scene = (
+        2000.0
+        + 300.0 * ndimage.gaussian_filter(rng.normal(size=(size, size)), 1.5)
+        + 8000.0 * ndimage.gaussian_filter(rng.normal(size=(size, size)), 25)
+    ).astype(np.float32)
+    coordinate = np.linspace(-1.0, 1.0, tile_size, dtype=np.float32)
+    true_flat = np.exp(-0.3 * (coordinate[:, None] ** 2 + coordinate[None, :] ** 2))
+    true_flat /= np.mean(true_flat)
+
+    tiles, stages, origins = [], [], []
+    for row in range(grid):
+        order = range(grid) if row % 2 == 0 else range(grid - 1, -1, -1)
+        for column in order:
+            x0, y0 = column * pitch, row * pitch
+            tiles.append(scene[y0 : y0 + tile_size, x0 : x0 + tile_size] * true_flat)
+            stages.append((column * 100.0, row * 100.0))
+            origins.append((x0, y0))
+    origins = np.asarray(origins)
+    measurements = []
+    for edge in build_adjacency(np.asarray(stages)):
+        shift = origins[edge.second] - origins[edge.first]
+        measurements.append(
+            PairMeasurement(
+                first=edge.first,
+                second=edge.second,
+                axis=edge.axis,
+                predicted_shift_x=int(shift[0]),
+                predicted_shift_y=int(shift[1]),
+                shift_x=int(shift[0]),
+                shift_y=int(shift[1]),
+                ncc=0.99,
+                accepted=True,
+            )
+        )
+
+    model = fit_overlap_dct(
+        np.stack(tiles).astype(np.float32),
+        measurements,
+        adaptive_tile_gains=False,
+    )
+
+    ratio = model.flatfield / true_flat
+    margin = np.concatenate(
+        [ratio[:8].ravel(), ratio[-8:].ravel(), ratio[:, :8].ravel(), ratio[:, -8:].ravel()]
+    )
+    centre_bias = float(np.mean(ratio[40:88, 40:88]) / np.mean(margin) - 1.0)
+    assert abs(centre_bias) < 0.025
+    assert 0.0 < model.diagnostics["overlap_coverage_fraction"] < 0.5
+    assert model.diagnostics["interior_anchor_samples"] > 0
